@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gamenet Manager Alvand</title>
+    <title>Gamenet Manager Pro</title>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -628,6 +628,11 @@
         .tariff-badge, .reservation-badge, .profit-badge { transition: all 0.3s ease; }
         .lang-btn.active { background: rgba(34,197,94,0.25) !important; border-color: rgba(34,197,94,0.5) !important; }
 
+
+        /* ========== Pro logo ========== */
+        .logo-container.logo-img { padding: 0; overflow: hidden; background: none; box-shadow: none; }
+        .logo-container.logo-img img { width: 100%; height: 100%; object-fit: contain; }
+
 </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -645,10 +650,10 @@
     <!-- Mobile Header -->
     <div class="mobile-header">
         <div style="display: flex; align-items: center; gap: 10px;">
-            <div class="logo-container" style="width: 40px; height: 40px; border-radius: 12px; font-size: 18px;">A</div>
+            <div class="logo-container logo-img" style="width: 40px; height: 40px; border-radius: 12px; font-size: 18px;"><img src="assets/logo.png" alt="A" onerror="this.outerHTML='A'"></div>
             <div>
-                <h1 style="font-size: 0.9rem; font-weight: 900; background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Gamenet Manager</h1>
-                <p style="font-size: 0.65rem; color: rgba(255,255,255,0.5);">Alvand Edition</p>
+                <h1 style="font-size: 0.9rem; font-weight: 900; background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Gamenet Manager Pro</h1>
+                <p style="font-size: 0.65rem; color: rgba(255,255,255,0.5);">Owner : Alvandcode</p>
             </div>
         </div>
         <div class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()">
@@ -663,10 +668,10 @@
         <aside class="glass" style="width: 280px; margin: 20px; padding: 24px; display: flex; flex-direction: column; position: sticky; top: 20px; height: calc(100vh - 40px);">
             <div class="mobile-close-btn" onclick="toggleSidebar()" style="display: none;">&#10005;</div>
             <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                <div class="logo-container">A</div>
+                <div class="logo-container logo-img"><img src="assets/logo.png" alt="A" onerror="this.outerHTML='A'"></div>
                 <div>
-                    <h1 style="font-size: 1.1rem; font-weight: 900; background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Gamenet Manager</h1>
-                    <p style="font-size: 0.75rem; color: rgba(255,255,255,0.5); margin-top: 2px;">Alvand Edition</p>
+                    <h1 style="font-size: 1.1rem; font-weight: 900; background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Gamenet Manager Pro</h1>
+                    <p style="font-size: 0.75rem; color: rgba(255,255,255,0.5); margin-top: 2px;">Owner : Alvandcode</p>
                 </div>
             </div>
 
@@ -1367,13 +1372,13 @@
     <!-- Hidden PDF Template -->
     <div id="pdfTemplate" style="position: absolute; left:-9999px; top:-9999px; width:800px; background:white; color:#1e293b; padding:40px; font-family: 'Vazirmatn', Tahoma, sans-serif; direction:rtl;">
         <div style="text-align:center; border-bottom:3px solid #6366f1; padding-bottom:16px; margin-bottom:20px;">
-            <h1 style="color:#4f46e5; margin:0; font-size:28px;">🎮 Gamenet Manager Alvand</h1>
+            <h1 style="color:#4f46e5; margin:0; font-size:28px;">🎮 Gamenet Manager Pro</h1>
             <p style="color:#64748b; margin:4px 0 0;">گزارش کارکرد کلاینت</p>
         </div>
         <div id="pdfContentInner"></div>
         <div style="margin-top:30px; border-top:1px solid #e2e8f0; padding-top:12px; display:flex; justify-content:space-between; font-size:12px; color:#64748b;">
             <span id="pdfDate"></span>
-            <span>Alvand Gamenet Manager v1.1.0</span>
+            <span>Gamenet Manager Pro v1.8.0</span>
         </div>
     </div>
 
@@ -1562,7 +1567,7 @@
     <!-- Login Modal -->
     <div id="loginOverlay" class="login-overlay" style="display:none;">
         <div class="glass" style="width:90%; max-width:400px; padding:32px; text-align:center;">
-            <div class="logo-container" style="margin:0 auto 16px;">A</div>
+            <div class="logo-container logo-img" style="margin:0 auto 16px;"><img src="assets/logo.png" alt="A" onerror="this.outerHTML='A'"></div>
             <h2 style="margin-bottom:8px;">ورود به سیستم</h2>
             <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:20px;">نام کاربری و رمز را وارد کنید</p>
             <input type="text" id="loginUser" placeholder="نام کاربری (مثلا admin)" style="margin-bottom:12px;">
@@ -4286,7 +4291,7 @@
 `+
 `با تشکر از حضور شما 🙏
 `+
-`Gamenet Manager Alvand`;
+`Gamenet Manager Pro`;
     }
     function openShareModalForClient(idx){
         let c=clients[idx];
@@ -4311,7 +4316,7 @@
 `+
 `تاریخ: ${new Date(s.date).toLocaleString('fa-IR')}
 `+
-`Gamenet Manager Alvand`;
+`Gamenet Manager Pro`;
         openShareModal(s.clientName, text, {sessionIdx});
         preparePdfForSession(s);
     }
@@ -4330,7 +4335,7 @@
 `+
 `تماس: ${r.phone||'-'}
 `+
-`Gamenet Manager Alvand`;
+`Gamenet Manager Pro`;
         openShareModal(r.customerName, text, {});
         preparePdfForReservation(r);
     }
@@ -4339,7 +4344,7 @@
 `+
 `مشتری: ${name}
 `+
-`این گزارش از Gamenet Manager Alvand ارسال شده است.`;
+`این گزارش از Gamenet Manager Pro ارسال شده است.`;
         openShareModal(name, text, {});
         document.getElementById('sharePhone').value=phone||'';
         document.getElementById('shareEmail').value=email||'';
