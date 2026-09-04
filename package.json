@@ -1,6 +1,6 @@
 {
   "name": "gamenet-manager-alvand",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Gamenet Manager Alvand - Desktop",
   "author": "Alvand",
   "main": "main.js",
@@ -40,7 +40,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Gamenet Manager"
+      "shortcutName": "Gamenet Manager",
+      "uninstallDisplayName": "Gamenet Manager Alvand"
     },
     "portable": {
       "artifactName": "GamenetManager-Portable-${version}.exe"
@@ -51,3 +52,10 @@
     "electron-builder": "^24.13.0"
   }
 }
+
+
+
+
+
+
+
