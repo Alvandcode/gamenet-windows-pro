@@ -3004,6 +3004,33 @@
         for(let i=0;i<3;i++){ if(a[i]>b[i]) return true; if(a[i]<b[i]) return false; }
         return false;
     }
+    function releaseAppVersion(rel){
+        try{
+            let vers=[];
+            (rel.assets||[]).forEach(a=>{
+                let m=String(a.name||'').match(/(\d+)\.(\d+)\.(\d+)/);
+                if(m) vers.push([parseInt(m[1]),parseInt(m[2]),parseInt(m[3])]);
+            });
+            if(!vers.length) return null;
+            vers.sort((a,b)=> a[0]-b[0]||a[1]-b[1]||a[2]-b[2]);
+            return vers[vers.length-1].join('.');
+        }catch(e){ return null; }
+    }
+    function cleanNotes(body){
+        try{
+            let lines=String(body||'').split('\n');
+            let out=[];
+            for(let l of lines){
+                if(/full changelog/i.test(l)) continue;
+                if(/\u0641\u0627\u06cc\u0644 \u0646\u0635\u0628/.test(l)) break;
+                l=l.replace(/^[#>*\s-]+/,'').replace(/`/g,'').trim();
+                if(!l) continue;
+                if(/^\u0642\u0627\u0628\u0644\u06cc\u062a/.test(l)) continue;
+                out.push('\u2022 '+l);
+            }
+            return out.join('\n').substring(0,600);
+        }catch(e){ return ''; }
+    }
     async function checkForUpdate(manual){
         updateUpdateUI('checking');
         let online=false;
@@ -3018,7 +3045,9 @@
             if(!r.ok) throw new Error('http '+r.status);
             let j=await r.json();
             latestRelease=j;
-            if(isNewer(j.tag_name, APP_VERSION)){
+            let relVer=releaseAppVersion(j) || String(j.tag_name||'').replace(/^v/i,'');
+            window._relVer=relVer;
+            if(isNewer(relVer, APP_VERSION)){
                 updateUpdateUI('available');
                 if(manual) showToast('🎉 نسخه جدید اومده!','success');
             } else {
@@ -3043,9 +3072,9 @@
         else if(state==='error'){ st.textContent='⚠️ خطا در بررسی - بعدا دوباره امتحان کن'; st.style.color='#ef4444'; btn.disabled=true; }
         else if(state==='latest'){ st.textContent='✅ به‌روزی - نسخه '+APP_VERSION; st.style.color='#22c55e'; btn.disabled=true; if(notes) notes.style.display='none'; }
         else if(state==='available'){
-            let tag=latestRelease? latestRelease.tag_name : '';
+            let tag=window._relVer || (latestRelease? latestRelease.tag_name : '');
             st.innerHTML='🎉 نسخه جدید <b>'+tag+'</b> منتشر شده!'; st.style.color='#22c55e'; btn.disabled=false;
-            if(notes && latestRelease && latestRelease.body){ notes.textContent=latestRelease.body.substring(0,600); notes.style.display='block'; }
+            if(notes && latestRelease && latestRelease.body){ let cn=cleanNotes(latestRelease.body); notes.textContent=cn; notes.style.display=cn?'block':'none'; }
         }
         else { st.textContent='هنوز بررسی نشده - برای بررسی به اینترنت وصل شو'; st.style.color='rgba(255,255,255,0.5)'; btn.disabled=true; }
     }
