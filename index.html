@@ -1666,6 +1666,35 @@
     </div>
 
 
+    <!-- Owner PIN Modal -->
+    <div class="modal-overlay" id="ownerPinModal">
+        <div class="glass" style="width: 90%; max-width: 380px; padding: 28px; text-align: center;">
+            <div style="font-size: 2.5rem; margin-bottom: 8px;">👑</div>
+            <h2 style="margin-bottom: 6px;">ورود سازنده</h2>
+            <p style="color: rgba(255,255,255,0.55); font-size: 0.85rem; margin-bottom: 8px;">رمز سازنده را وارد کنید</p>
+            <input type="password" id="ownerPinInput" inputmode="numeric" placeholder="••••" onkeydown="if(event.key==='Enter')submitOwnerPin()" style="text-align: center; font-size: 1.4rem; letter-spacing: 10px; margin-bottom: 8px; direction: ltr;">
+            <p id="ownerPinError" style="display: none; color: #ef4444; font-size: 0.85rem; margin-bottom: 8px;"></p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button class="glass-btn glass-btn-success" onclick="submitOwnerPin()">✅ تایید</button>
+                <button class="glass-btn glass-btn-danger" onclick="closeModal('ownerPinModal')">❌ انصراف</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charge Modal -->
+    <div class="modal-overlay" id="chargeModal">
+        <div class="glass" style="width: 90%; max-width: 380px; padding: 28px; text-align: center;">
+            <div style="font-size: 2.5rem; margin-bottom: 8px;">💰</div>
+            <h2 style="margin-bottom: 6px;">شارژ کیف پول</h2>
+            <p id="chargeCustomerName" style="color: rgba(255,255,255,0.6); font-size: 0.85rem; margin-bottom: 8px;"></p>
+            <input type="number" id="chargeAmount" placeholder="مبلغ (تومان)" onkeydown="if(event.key==='Enter')submitCharge()" style="text-align: center; font-size: 1.2rem; font-weight: 800; margin-bottom: 12px;">
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button class="glass-btn glass-btn-success" onclick="submitCharge()">✅ شارژ</button>
+                <button class="glass-btn glass-btn-danger" onclick="closeModal('chargeModal')">❌ انصراف</button>
+            </div>
+        </div>
+    </div>
+
     <!-- License Gate Overlay -->
     <div id="licenseOverlay" class="license-overlay">
         <div class="license-box">
@@ -2441,18 +2470,25 @@
         showToast('حذف شد','success');
     }
     function quickCharge(id){
-        let amount=prompt('مبلغ شارژ (تومان):');
-        if(!amount) return;
-        amount=parseInt(amount);
-        if(!amount) return;
         let c=customers.find(x=>x.id===id);
+        if(!c) return;
+        window._chargeId=id;
+        document.getElementById('chargeCustomerName').textContent=c.name;
+        document.getElementById('chargeAmount').value='';
+        document.getElementById('chargeModal').classList.add('show');
+        setTimeout(()=>{ try{ document.getElementById('chargeAmount').focus(); }catch(e){} },300);
+    }
+    function submitCharge(){
+        let id=window._chargeId;
+        let amount=parseInt(document.getElementById('chargeAmount').value);
+        if(!amount||amount<=0){ showToast('مبلغ معتبر وارد کن','error'); return; }
+        let c=customers.find(x=>x.id===id);
+        if(!c) return;
         c.wallet=(c.wallet||0)+amount;
         walletHistory.push({customerId:id, amount, action:'شارژ', date:new Date().toISOString()});
         localStorage.setItem('alvand_customers', JSON.stringify(customers));
         localStorage.setItem('alvand_walletHistory', JSON.stringify(walletHistory));
-        localStorage.setItem('alvand_theme', currentTheme);
-        localStorage.setItem('alvand_alarmSound', alarmSound);
-        localStorage.setItem('alvand_alarmRepeat', alarmRepeat.toString());
+        closeModal('chargeModal');
         renderCustomersEnhanced();
         showToast('شارژ شد','success');
     }
@@ -3269,16 +3305,27 @@
     const _op=[49,52,48,53].map(c=>String.fromCharCode(c)).join('');
     function isOwner(){ try{ return sessionStorage.getItem('alvand_owner')==='1'; }catch(e){ return window._isOwner===true; } }
     function askOwnerPin(){
-        let p=prompt('🔑 رمز سازنده را وارد کنید:');
-        if(p===null) return false;
-        if(String(p).trim()===_op){
-            try{ sessionStorage.setItem('alvand_owner','1'); }catch(e){ window._isOwner=true; }
-            showToast('👑 خوش آمدی سازنده','success');
-            try{ renderLicenseSection(); }catch(e){}
-            return true;
-        }
-        showToast('رمز اشتباه است','error');
+        if(isOwner()){ try{ renderLicenseSection(); }catch(e){} return true; }
+        let m=document.getElementById('ownerPinModal');
+        let inp=document.getElementById('ownerPinInput');
+        let err=document.getElementById('ownerPinError');
+        if(err) err.style.display='none';
+        if(inp) inp.value='';
+        if(m){ m.classList.add('show'); setTimeout(()=>{ try{ inp.focus(); }catch(e){} }, 300); }
         return false;
+    }
+    function submitOwnerPin(){
+        let inp=document.getElementById('ownerPinInput');
+        let err=document.getElementById('ownerPinError');
+        let v=inp? String(inp.value).trim() : '';
+        if(v===_op){
+            try{ sessionStorage.setItem('alvand_owner','1'); }catch(e){ window._isOwner=true; }
+            closeModal('ownerPinModal');
+            showToast('👑 خوش آمدی سازنده - حالا دوباره دکمه ساخت را بزن','success');
+            try{ renderLicenseSection(); }catch(e){}
+        } else {
+            if(err){ err.textContent='رمز اشتباه است'; err.style.display='block'; }
+        }
     }
     function licCapacityError(){
         let err=document.getElementById('licenseError');
