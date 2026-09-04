@@ -1,0 +1,67 @@
+﻿{
+  "name": "gamenet-manager-alvand",
+  "version": "1.7.0",
+  "description": "Gamenet Manager Alvand - Desktop v1.2.0 with Reservation, Timer Alarm, PDF, Share",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.alvand.gamenet.manager",
+    "productName": "Gamenet Manager Alvand",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "main.js",
+      "index.html",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "publisherName": "Alvand Gamenet"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Gamenet Manager",
+      "uninstallDisplayName": "Gamenet Manager Alvand",
+      "license": "LICENSE.txt"
+    },
+    "portable": {
+      "artifactName": "GamenetManager-Portable-${version}.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.0"
+  }
+}
+
+
+
+
+
+
+
