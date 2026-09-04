@@ -599,6 +599,16 @@
         .slot-bar { height:10px; background:rgba(255,255,255,0.08); border-radius:50px; overflow:hidden; margin-top:8px; }
         .slot-fill { height:100%; background:linear-gradient(90deg, #22c55e, #6366f1); border-radius:50px; transition:width 0.6s; }
 
+
+        /* ========== FIX v1.8: dropdown options + settings submenu ========== */
+        input, select { color-scheme: dark; }
+        select option, select optgroup { background-color: #1e1b4b !important; color: #ffffff !important; }
+        .glass-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+        .settings-submenu { display: none; flex-direction: column; gap: 6px; margin: 0 10px 10px 0; padding-right: 12px; border-right: 2px solid rgba(99,102,241,0.3); }
+        .settings-submenu.open { display: flex; }
+        .settings-sub-item { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 10px 14px; color: #e2e8f0; font-size: 0.85rem; text-align: right; cursor: pointer; transition: all 0.25s; font-family: inherit; }
+        .settings-sub-item:hover { background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.3); }
+
 </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -671,17 +681,17 @@
                 <div class="nav-item" onclick="showSection('tariffSchedule', this)">
                     <span style="font-size: 1.3rem;">&#920�;</span> تعرفه ساعتی
                 </div>
-                <div class="nav-item" onclick="showSection('backup', this)">
-                    <span style="font-size: 1.3rem;">&#128190;</span> بکاپ
+                <div class="nav-item" onclick="toggleSettingsMenu(this)" id="navSettings">
+                    <span style="font-size: 1.3rem;">⚙️</span> تنظیمات <span id="settingsArrow" style="margin-right:auto; font-size:0.75rem;">◀</span>
+                </div>
+                <div class="settings-submenu" id="settingsSubmenu">
+                    <button class="settings-sub-item" onclick="showSection('settings', document.getElementById('navSettings'))">🎨 تم و صدا</button>
+                    <button class="settings-sub-item" onclick="showSection('stationHours', document.getElementById('navSettings'))">🖥️ کارکرد ایستگاه</button>
+                    <button class="settings-sub-item" onclick="showSection('backup', document.getElementById('navSettings'))">💾 بکاپ‌گیری</button>
+                    <button class="settings-sub-item" id="settingsSubLicense" onclick="showSection('license', document.getElementById('navSettings'))">🔑 لایسنس</button>
                 </div>
                 <div class="nav-item" onclick="showSection('operators', this)" id="navOperators">
                     <span style="font-size: 1.3rem;">&#128272;</span> اپراتورها
-                </div>
-                <div class="nav-item" onclick="showSection('stationHours', this)">
-                    <span style="font-size: 1.3rem;">&#128336;</span> کارکرد ایستگاه
-                </div>
-                <div class="nav-item" onclick="showSection('license', this)" id="navLicense">
-                    <span style="font-size: 1.3rem;">&#128274;</span> لایسنس
                 </div>
             </nav>
 
@@ -976,6 +986,22 @@
                         <input type="file" id="restoreFile" accept=".json" style="display:none;" onchange="restoreBackup(this)">
                     </div>
                 </div>
+                <div class="glass" style="padding:20px;">
+                    <h3 style="margin-bottom:12px;">تنظیمات رند کردن</h3>
+                    <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:12px;">مبلغ نهایی چطور رند شود؟</p>
+                    <select id="roundingMode" onchange="setRoundingMode(this.value)" style="max-width:300px;">
+                        <option value="none">بدون رند</option>
+                        <option value="up">رو به بالا (مثلا 12,300 -> 13,000)</option>
+                        <option value="down">رو به پایین (12,800 -> 12,000)</option>
+                        <option value="nearest">نزدیک‌ترین هزار (12,400 -> 12,000)</option>
+                    </select>
+                </div>
+
+            </section>
+
+            <!-- Settings Section -->
+            <section id="settings-section" class="section" style="display: none;">
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:24px;">⚙️ تنظیمات</h1>
                 <div class="glass" style="padding:20px; margin-bottom:16px;">
                     <h3 style="margin-bottom:12px;">🎨 انتخاب تم (20 تم گرافیکی)</h3>
                     <p style="color:rgba(255,255,255,0.5); font-size:0.8rem; margin-bottom:12px;">تم مطابق محیط کلوپ انتخاب کن - روی هر رنگ کلیک کن</p>
@@ -1013,17 +1039,40 @@
                     </div>
                     <p style="font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:8px;">چراغ هشدار + لرزش + صدا با هم فعال میشود</p>
                 </div>
-                <div class="glass" style="padding:20px;">
-                    <h3 style="margin-bottom:12px;">تنظیمات رند کردن</h3>
-                    <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:12px;">مبلغ نهایی چطور رند شود؟</p>
-                    <select id="roundingMode" onchange="setRoundingMode(this.value)" style="max-width:300px;">
-                        <option value="none">بدون رند</option>
-                        <option value="up">رو به بالا (مثلا 12,300 -> 13,000)</option>
-                        <option value="down">رو به پایین (12,800 -> 12,000)</option>
-                        <option value="nearest">نزدیک‌ترین هزار (12,400 -> 12,000)</option>
-                    </select>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">🔄 آپدیت برنامه</h3>
+                    <p style="font-size:0.85rem; color:rgba(255,255,255,0.6);">نسخه فعلی: <b id="currentVersionText">1.8.0</b></p>
+                    <p id="updateStatusText" style="font-size:0.85rem; margin:8px 0; color:rgba(255,255,255,0.5);">هنوز بررسی نشده - برای بررسی به اینترنت وصل شو</p>
+                    <div id="updateNotes" style="display:none; background:rgba(255,255,255,0.04); border-radius:12px; padding:12px; margin-bottom:12px; font-size:0.8rem; line-height:1.8; white-space:pre-line; max-height:150px; overflow-y:auto;"></div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="glass-btn" onclick="checkForUpdate(true)">🔍 بررسی آپدیت</button>
+                        <button class="glass-btn glass-btn-success" id="updateBtn" onclick="doInAppUpdate()" disabled>⬇️ دانلود و نصب آپدیت</button>
+                    </div>
+                    <p style="font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:8px;">⚠️ قبل از آپدیت حتما بکاپ بگیر - برنامه قبل از دانلود خودش اتومات بکاپ میگیرد</p>
                 </div>
-
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">⏰ بکاپ خودکار زمان‌بندی‌شده</h3>
+                    <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:12px;">هر روز سر ساعت مشخص خودکار بکاپ میگیرد</p>
+                    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="autoBackupToggle2" onchange="toggleAutoBackup2(this.checked)" style="width:20px; height:20px;">
+                            <span>فعال</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:0.85rem; color:rgba(255,255,255,0.7);">ساعت بکاپ روزانه:</span>
+                            <input type="time" id="backupTimeInput" value="23:59" onchange="setBackupTime(this.value)" style="width:auto;">
+                        </label>
+                    </div>
+                    <p style="font-size:0.8rem; margin-top:8px;">آخرین بکاپ: <span id="lastBackupTimeSettings" style="color:#22c55e; font-weight:700;">هرگز</span></p>
+                </div>
+                <div class="glass" style="padding:20px;">
+                    <h3 style="margin-bottom:12px;">🚀 دسترسی سریع</h3>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="glass-btn" onclick="showSection('stationHours', document.getElementById('navSettings'))">🖥️ کارکرد ایستگاه</button>
+                        <button class="glass-btn" onclick="showSection('backup', document.getElementById('navSettings'))">💾 بکاپ‌گیری</button>
+                        <button class="glass-btn" onclick="showSection('license', document.getElementById('navSettings'))">🔑 لایسنس</button>
+                    </div>
+                </div>
             </section>
 
             <!-- Operators Section -->
@@ -1591,8 +1640,8 @@
     <div id="licenseOverlay" class="license-overlay">
         <div class="license-box">
             <div style="font-size:3rem; margin-bottom:10px;">🔐</div>
-            <h2 style="font-weight:900; margin-bottom:6px;">فعال‌سازی گیم‌نت الوند</h2>
-            <p style="color:rgba(255,255,255,0.55); font-size:0.85rem; margin-bottom:16px;">نسخه حرفه‌ای - بدون لایسنس وارد نمیشی<br>⚠️ برای فعال‌سازی حتما به اینترنت وصل شو</p>
+            <h2 style="font-weight:900; margin-bottom:6px;">مدیریت گیم نت و گیم سنتر الوند</h2>
+            <p style="color:rgba(255,255,255,0.55); font-size:0.85rem; margin-bottom:16px;">⚠️ برای فعال‌سازی حتما به اینترنت وصل شو</p>
             <div style="background:rgba(255,255,255,0.04); border-radius:14px; padding:12px; margin-bottom:14px; font-size:0.8rem; line-height:2;">
                 <div>🖥️ شناسه دستگاه: <span id="licDeviceId" class="device-pill" style="font-family:monospace; direction:ltr;">...</span></div>
                 <div>🌐 آی‌پی: <span id="licIP" class="device-pill" style="font-family:monospace; direction:ltr;">در حال تشخیص...</span> <span id="licNetStatus" style="font-size:0.75rem;"></span></div>
@@ -2034,12 +2083,17 @@
     function loadRoundingMode(){
         let el=document.getElementById('roundingMode'); if(el) el.value=roundingMode;
         let tog=document.getElementById('autoBackupToggle'); if(tog) tog.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
+        let bt=document.getElementById('backupTimeInput'); if(bt) bt.value=localStorage.getItem('alvand_backupTime')||'23:59';
+        let tog2=document.getElementById('autoBackupToggle2'); if(tog2) tog2.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
     }
     function setRoundingMode(v){ roundingMode=v; localStorage.setItem('alvand_rounding',v); showToast('رند: '+v,'success'); }
     function updateBackupDisplay(){
         let last=localStorage.getItem('alvand_lastBackup');
+        let txt = last ? new Date(parseInt(last)).toLocaleString('fa-IR') : 'هرگز';
         let el=document.getElementById('lastBackupTime');
-        if(el) el.textContent = last ? new Date(parseInt(last)).toLocaleString('fa-IR') : 'هرگز';
+        if(el) el.textContent = txt;
+        let el2=document.getElementById('lastBackupTimeSettings');
+        if(el2) el2.textContent = txt;
     }
     function createBackup(){
         let data={
@@ -2089,13 +2143,29 @@
         if(localStorage.getItem('alvand_backupEnabled')==='0') return;
         let last=parseInt(localStorage.getItem('alvand_lastBackup')||'0');
         let now=Date.now();
-        // backup every 24h or if never
         if(now - last > 24*3600*1000){
             createBackup();
-            // also try to download automatically once per day
-            // downloadBackupFile();
         }
+        try{
+            let t=localStorage.getItem('alvand_backupTime')||'23:59';
+            let parts=t.split(':'); let hh=parseInt(parts[0]); if(isNaN(hh)) hh=23; let mm=parseInt(parts[1]); if(isNaN(mm)) mm=59;
+            let d=new Date(); d.setHours(hh,mm,0,0);
+            let todayStr=new Date().toDateString();
+            if(Date.now()>=d.getTime() && localStorage.getItem('alvand_backupDay')!==todayStr){
+                createBackup();
+                localStorage.setItem('alvand_backupDay', todayStr);
+            }
+        }catch(e){}
         updateBackupDisplay();
+    }
+    function toggleAutoBackup2(v){
+        localStorage.setItem('alvand_backupEnabled', v?'1':'0');
+        let tog=document.getElementById('autoBackupToggle'); if(tog) tog.checked=v;
+        showToast(v?'بکاپ خودکار فعال شد':'بکاپ غیرفعال','success');
+    }
+    function setBackupTime(v){
+        localStorage.setItem('alvand_backupTime', v||'23:59');
+        showToast('ساعت بکاپ: '+(v||'23:59'),'success');
     }
 
 
@@ -2147,6 +2217,7 @@
         if(!currentOperator || currentOperator.role==='admin'){
             document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('operator-locked'));
             let navOp=document.getElementById('navOperators'); if(navOp) navOp.style.display='flex';
+            let subLic=document.getElementById('settingsSubLicense'); if(subLic) subLic.style.display='';
             return;
         }
         // lock nav
@@ -2160,6 +2231,7 @@
             }
         });
         let navOp=document.getElementById('navOperators'); if(navOp) navOp.style.display='none';
+        let subLic2=document.getElementById('settingsSubLicense'); if(subLic2) subLic2.style.display = hasPerm('license') ? '' : 'none';
     }
     function openOperatorModal(){
         if(currentOperator?.role!=='admin'){ showToast('فقط مدیر','error'); return; }
@@ -2911,6 +2983,92 @@
         }
     };
 
+    
+    // ========== Update System v1.8 ==========
+    const APP_VERSION = "1.8.0";
+    let latestRelease = null;
+    function toggleSettingsMenu(el){
+        let sub=document.getElementById('settingsSubmenu');
+        let arrow=document.getElementById('settingsArrow');
+        let isOpen=sub.classList.toggle('open');
+        if(arrow) arrow.textContent = isOpen ? '▼' : '◀';
+        showSection('settings', el||document.getElementById('navSettings'));
+    }
+    function parseVer(v){
+        v=String(v||'').replace(/^v/i,'').split('.').map(x=>parseInt(x)||0);
+        while(v.length<3) v.push(0);
+        return v.slice(0,3);
+    }
+    function isNewer(tag, cur){
+        let a=parseVer(tag), b=parseVer(cur);
+        for(let i=0;i<3;i++){ if(a[i]>b[i]) return true; if(a[i]<b[i]) return false; }
+        return false;
+    }
+    async function checkForUpdate(manual){
+        updateUpdateUI('checking');
+        let online=false;
+        try{ online = await checkInternet(); }catch(e){ online = navigator.onLine; }
+        if(!online){
+            updateUpdateUI('offline');
+            if(manual) showToast('برای بررسی آپدیت به اینترنت وصل شو','error');
+            return;
+        }
+        try{
+            let r=await fetch('https://api.github.com/repos/Alvandcode/gamenet-windows-pro/releases/latest');
+            if(!r.ok) throw new Error('http '+r.status);
+            let j=await r.json();
+            latestRelease=j;
+            if(isNewer(j.tag_name, APP_VERSION)){
+                updateUpdateUI('available');
+                if(manual) showToast('🎉 نسخه جدید اومده!','success');
+            } else {
+                updateUpdateUI('latest');
+                if(manual) showToast('به‌روزی ✅','success');
+            }
+        }catch(e){
+            updateUpdateUI('error');
+            if(manual) showToast('خطا در بررسی آپدیت','error');
+        }
+    }
+    function updateUpdateUI(state){
+        if(state) window._updState=state;
+        state=window._updState||'idle';
+        let cv=document.getElementById('currentVersionText'); if(cv) cv.textContent=APP_VERSION;
+        let st=document.getElementById('updateStatusText');
+        let btn=document.getElementById('updateBtn');
+        let notes=document.getElementById('updateNotes');
+        if(!st||!btn) return;
+        if(state==='checking'){ st.textContent='⏳ در حال بررسی...'; st.style.color='#f59e0b'; btn.disabled=true; }
+        else if(state==='offline'){ st.textContent='⛔ آفلاین - برای بررسی وصل شو'; st.style.color='#ef4444'; btn.disabled=true; }
+        else if(state==='error'){ st.textContent='⚠️ خطا در بررسی - بعدا دوباره امتحان کن'; st.style.color='#ef4444'; btn.disabled=true; }
+        else if(state==='latest'){ st.textContent='✅ به‌روزی - نسخه '+APP_VERSION; st.style.color='#22c55e'; btn.disabled=true; if(notes) notes.style.display='none'; }
+        else if(state==='available'){
+            let tag=latestRelease? latestRelease.tag_name : '';
+            st.innerHTML='🎉 نسخه جدید <b>'+tag+'</b> منتشر شده!'; st.style.color='#22c55e'; btn.disabled=false;
+            if(notes && latestRelease && latestRelease.body){ notes.textContent=latestRelease.body.substring(0,600); notes.style.display='block'; }
+        }
+        else { st.textContent='هنوز بررسی نشده - برای بررسی به اینترنت وصل شو'; st.style.color='rgba(255,255,255,0.5)'; btn.disabled=true; }
+    }
+    async function doInAppUpdate(){
+        if(!latestRelease){ showToast('اول بررسی آپدیت را بزن','error'); return; }
+        let ok=confirm('⚠️ قبل از آپدیت حتما از اطلاعاتت بکاپ بگیر!\n\nالان خود برنامه اتومات بکاپ میگیرد.\n(از بخش تنظیمات میتوانی بکاپ اتوماتیک را فعال کنی)\n\nادامه میدی؟');
+        if(!ok) return;
+        try{ createBackup(); }catch(e){}
+        showToast('💾 بکاپ گرفته شد، دانلود شروع میشود...','success');
+        let assets=latestRelease.assets||[];
+        let exe=assets.find(a=>/setup.*\.exe$/i.test(a.name)) || assets.find(a=>/\.exe$/i.test(a.name));
+        if(!exe){
+            showToast('فایل نصب پیدا نشد','error');
+            try{ window.open(latestRelease.html_url,'_blank'); }catch(e){}
+            return;
+        }
+        let a=document.createElement('a');
+        a.href=exe.browser_download_url; a.download=exe.name; a.target='_blank';
+        document.body.appendChild(a); a.click();
+        setTimeout(()=>a.remove(), 8000);
+        showToast('⏬ دانلود شروع شد - بعد از اتمام فایل را اجرا کن تا نصب شود','success');
+    }
+
     // Initialize
     function init() {
         createParticles();
@@ -2947,6 +3105,8 @@
         renderStationHours();
         setInterval(renderStationHours, 30000);
         initLicenseGate();
+        setTimeout(()=>{ try{ checkForUpdate(false); }catch(e){} }, 8000);
+        setInterval(()=>{ try{ checkForUpdate(false); }catch(e){} }, 6*3600*1000);
         setTimeout(updateFirebaseStatus, 1500);
         // migrate reservations clientName
         reservations.forEach(r=>{ if(!r.clientName){ let cl=clients.find(c=>c.id===r.clientId); if(cl) r.clientName=cl.name; }});
@@ -2989,7 +3149,7 @@
         if(!currentOperator) return true;
         if(currentOperator.role==='admin') return true;
         let p=currentOperator.perms||{};
-        let map={dashboard:true, clients:'clients', buffet:'buffet', reservations:'reservations', reports:'reports', income:'income', expenses:'expenses', customers:'customers', backup:'backup', operators:'operators', tariffSchedule:'tariffs', tariffs:'tariffs', license:'operators', stationHours:true};
+        let map={dashboard:true, clients:'clients', buffet:'buffet', reservations:'reservations', reports:'reports', income:'income', expenses:'expenses', customers:'customers', backup:'backup', operators:'operators', tariffSchedule:'tariffs', tariffs:'tariffs', license:'operators', stationHours:true, settings:true};
         let key=map[section];
         if(key===true) return true;
         if(!key) return true;
@@ -3017,6 +3177,7 @@
         if (section === 'tariffSchedule') { renderTariffSchedules(); updateActiveTariffDisplay(); }
         if (section === 'backup') { updateBackupDisplay(); }
         if (section === 'license') { renderLicenseSection(); }
+        if (section === 'settings') { try{renderThemeGrid();}catch(e){} try{loadAlarmSettings();}catch(e){} try{updateUpdateUI();}catch(e){} }
         if (section === 'reports') {}
     }
 
@@ -4725,12 +4886,17 @@
     function loadRoundingMode(){
         let el=document.getElementById('roundingMode'); if(el) el.value=roundingMode;
         let tog=document.getElementById('autoBackupToggle'); if(tog) tog.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
+        let bt=document.getElementById('backupTimeInput'); if(bt) bt.value=localStorage.getItem('alvand_backupTime')||'23:59';
+        let tog2=document.getElementById('autoBackupToggle2'); if(tog2) tog2.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
     }
     function setRoundingMode(v){ roundingMode=v; localStorage.setItem('alvand_rounding',v); showToast('رند: '+v,'success'); }
     function updateBackupDisplay(){
         let last=localStorage.getItem('alvand_lastBackup');
+        let txt = last ? new Date(parseInt(last)).toLocaleString('fa-IR') : 'هرگز';
         let el=document.getElementById('lastBackupTime');
-        if(el) el.textContent = last ? new Date(parseInt(last)).toLocaleString('fa-IR') : 'هرگز';
+        if(el) el.textContent = txt;
+        let el2=document.getElementById('lastBackupTimeSettings');
+        if(el2) el2.textContent = txt;
     }
     function createBackup(){
         let data={
@@ -4780,13 +4946,29 @@
         if(localStorage.getItem('alvand_backupEnabled')==='0') return;
         let last=parseInt(localStorage.getItem('alvand_lastBackup')||'0');
         let now=Date.now();
-        // backup every 24h or if never
         if(now - last > 24*3600*1000){
             createBackup();
-            // also try to download automatically once per day
-            // downloadBackupFile();
         }
+        try{
+            let t=localStorage.getItem('alvand_backupTime')||'23:59';
+            let parts=t.split(':'); let hh=parseInt(parts[0]); if(isNaN(hh)) hh=23; let mm=parseInt(parts[1]); if(isNaN(mm)) mm=59;
+            let d=new Date(); d.setHours(hh,mm,0,0);
+            let todayStr=new Date().toDateString();
+            if(Date.now()>=d.getTime() && localStorage.getItem('alvand_backupDay')!==todayStr){
+                createBackup();
+                localStorage.setItem('alvand_backupDay', todayStr);
+            }
+        }catch(e){}
         updateBackupDisplay();
+    }
+    function toggleAutoBackup2(v){
+        localStorage.setItem('alvand_backupEnabled', v?'1':'0');
+        let tog=document.getElementById('autoBackupToggle'); if(tog) tog.checked=v;
+        showToast(v?'بکاپ خودکار فعال شد':'بکاپ غیرفعال','success');
+    }
+    function setBackupTime(v){
+        localStorage.setItem('alvand_backupTime', v||'23:59');
+        showToast('ساعت بکاپ: '+(v||'23:59'),'success');
     }
 
 
