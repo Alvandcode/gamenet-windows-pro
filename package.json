@@ -1,7 +1,7 @@
 {
   "name": "gamenet-manager-alvand",
   "version": "1.8.0",
-  "description": "Gamenet Manager Alvand - Desktop",
+  "description": "Gamenet Manager Pro - Desktop by Alvandcode",
   "author": "Alvand",
   "main": "main.js",
   "scripts": {
@@ -11,7 +11,7 @@
   },
   "build": {
     "appId": "com.alvand.gamenet.manager",
-    "productName": "Gamenet Manager Alvand",
+    "productName": "Gamenet Manager Pro",
     "directories": {
       "output": "dist"
     },
@@ -40,8 +40,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Gamenet Manager",
-      "uninstallDisplayName": "Gamenet Manager Alvand"
+      "shortcutName": "Gamenet Manager Pro",
+      "uninstallDisplayName": "Gamenet Manager Pro"
     },
     "portable": {
       "artifactName": "GamenetManager-Portable-${version}.exe"
