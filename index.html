@@ -11,7 +11,7 @@
             --glass-border: rgba(255, 255, 255, 0.18);
             --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
             --primary: #6366f1;
-           --primary-glow: rgba(99, 102, 241, 0.4);
+            --primary-glow: rgba(99, 102, 241, 0.4);
             --success: #22c55e;
             --danger: #ef4444;
             --warning: #f59e0b;
@@ -609,6 +609,25 @@
         .settings-sub-item { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 10px 14px; color: #e2e8f0; font-size: 0.85rem; text-align: right; cursor: pointer; transition: all 0.25s; font-family: inherit; }
         .settings-sub-item:hover { background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.3); }
 
+
+        /* ========== v1.8.1 visual polish ========== */
+        .bg-orbs { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+        .bg-orbs .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.32; animation: orbFloat 14s ease-in-out infinite; }
+        .bg-orbs .orb-a { width: 480px; height: 480px; background: radial-gradient(circle, #6366f1, transparent 70%); top: -140px; left: -140px; }
+        .bg-orbs .orb-b { width: 420px; height: 420px; background: radial-gradient(circle, #a855f7, transparent 70%); bottom: -120px; right: -100px; animation-delay: -7s; }
+        @keyframes orbFloat { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,30px) scale(1.08); } }
+        .section { animation: secIn 0.45s ease; }
+        @keyframes secIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        .client-card { animation: secIn 0.4s ease; }
+        .nav-item:hover { box-shadow: 0 0 18px rgba(99,102,241,0.25); }
+        h1 { background: linear-gradient(135deg, #ffffff, #c4b5fd); -webkit-background-clip: text; background-clip: text; }
+        .modal-overlay.show .glass { animation: popIn 0.3s ease; }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.94) translateY(10px); } to { opacity: 1; transform: none; } }
+        .glass-btn { transition: all 0.25s ease; }
+        .glass-btn:hover { filter: brightness(1.15); }
+        .tariff-badge, .reservation-badge, .profit-badge { transition: all 0.3s ease; }
+        .lang-btn.active { background: rgba(34,197,94,0.25) !important; border-color: rgba(34,197,94,0.5) !important; }
+
 </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -618,6 +637,7 @@
 </head>
 <body>
     <div class="bg-particles" id="particles"></div>
+    <div class="bg-orbs"><div class="orb orb-a"></div><div class="orb orb-b"></div></div>
     <div class="warning-bar" id="warningBar"></div>
     <div class="warning-full" id="warningFull"></div>
 
@@ -638,7 +658,7 @@
         </div>
     </div>
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
-    <div style="display: flex; min-height: 100vh; position: relative; direction: rtl;">
+    <div id="appLayout" style="display: flex; min-height: 100vh; position: relative; direction: rtl;">
         <!-- Sidebar -->
         <aside class="glass" style="width: 280px; margin: 20px; padding: 24px; display: flex; flex-direction: column; position: sticky; top: 20px; height: calc(100vh - 40px);">
             <div class="mobile-close-btn" onclick="toggleSidebar()" style="display: none;">&#10005;</div>
@@ -679,7 +699,7 @@
                     <span style="font-size: 1.3rem;">&#128176;</span> هزینه‌ها
                 </div>
                 <div class="nav-item" onclick="showSection('tariffSchedule', this)">
-                    <span style="font-size: 1.3rem;">&#920�;</span> تعرفه ساعتی
+                    <span style="font-size: 1.3rem;">⏰</span> تعرفه ساعتی
                 </div>
                 <div class="nav-item" onclick="toggleSettingsMenu(this)" id="navSettings">
                     <span style="font-size: 1.3rem;">⚙️</span> تنظیمات <span id="settingsArrow" style="margin-right:auto; font-size:0.75rem;">◀</span>
@@ -950,7 +970,7 @@
 
             <!-- Tariff Schedule Section -->
             <section id="tariffSchedule-section" class="section" style="display: none;">
-                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">&#920�; تعرفه ساعتی (ساعات خاص)</h1>
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">⏰ تعرفه ساعتی (ساعات خاص)</h1>
                 <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">مثلا شب‌ها گرون‌تر یا ظهر تخفیف - سیستم خودکار تعرفه درست را انتخاب میکند</p>
                 <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
                     <button class="glass-btn glass-btn-success" onclick="openTariffScheduleModal()">&#10133; افزودن بازه ساعتی</button>
@@ -1002,6 +1022,14 @@
             <!-- Settings Section -->
             <section id="settings-section" class="section" style="display: none;">
                 <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:24px;">⚙️ تنظیمات</h1>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">🌐 زبان / Language / اللغة</h3>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="glass-btn lang-btn" id="langFA" onclick="setLang('fa')">🇮🇷 فارسی</button>
+                        <button class="glass-btn lang-btn" id="langEN" onclick="setLang('en')">🇬🇧 English</button>
+                        <button class="glass-btn lang-btn" id="langAR" onclick="setLang('ar')">🇸🇦 العربية</button>
+                    </div>
+                </div>
                 <div class="glass" style="padding:20px; margin-bottom:16px;">
                     <h3 style="margin-bottom:12px;">🎨 انتخاب تم (20 تم گرافیکی)</h3>
                     <p style="color:rgba(255,255,255,0.5); font-size:0.8rem; margin-bottom:12px;">تم مطابق محیط کلوپ انتخاب کن - روی هر رنگ کلیک کن</p>
@@ -1118,13 +1146,15 @@
                     <p style="font-size:0.75rem; margin-top:6px;">وضعیت سرور: <span id="firebaseStatus" style="font-weight:800; color:#f59e0b;">در حال بررسی...</span></p>
                     <div id="activeDevicesList" style="margin-top:10px;"></div>
                     <button class="glass-btn glass-btn-danger" style="margin-top:12px;" onclick="deactivateLicense()">🗑️ غیرفعال کردن لایسنس این دستگاه</button>
+                    <button id="ownerLoginBtn" class="glass-btn" style="margin-top:12px; margin-right:8px;" onclick="askOwnerPin()">👑 ورود سازنده</button>
                 </div>
-                <div class="glass" style="padding:20px; margin-bottom:16px;">
-                    <h3 style="margin-bottom:12px;">🏭 لایسنس‌ساز (فقط مدیر)</h3>
-                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div class="glass" style="padding:20px; margin-bottom:16px;" id="licenseGenCard">
+                    <h3 style="margin-bottom:12px;">🏭 لایسنس‌ساز (فقط سازنده)</h3>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
                         <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">ظرفیت (تعداد دستگاه)</label><input type="number" id="genCapacity" value="3" min="1" max="99" oninput="updateGenPrice()"></div>
                         <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">مدت (ماه، 0=مادام‌العمر)</label><input type="number" id="genMonths" value="0" min="0" max="60"></div>
-                        <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام مشتری</label><input type="text" id="genCustomer" placeholder="کلوپ ..."></div>
+                        <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام مشتری *</label><input type="text" id="genCustomer" placeholder="مثال: گیم‌نت پارس"></div>
+                        <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">شماره تماس مشتری *</label><input type="tel" id="genPhone" placeholder="09123456789"></div>
                     </div>
                     <div style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); border-radius:12px; padding:12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                         <span>💰 قیمت: <b id="genPrice" style="color:#22c55e; font-size:1.2rem;">1,000,000 تومان</b></span>
@@ -1136,7 +1166,7 @@
                     </div>
                     <div id="genResult" style="margin-top:12px; display:none; background:rgba(0,0,0,0.3); border-radius:12px; padding:14px; font-family:monospace; letter-spacing:1px; text-align:center; font-size:1.05rem; font-weight:800; direction:ltr;"></div>
                 </div>
-                <div class="glass" style="padding:20px;">
+                <div class="glass" style="padding:20px;" id="allLicensesCard">
                     <h3 style="margin-bottom:12px;">📋 همه لایسنس‌های ساخته‌شده</h3>
                     <div id="allLicensesList"></div>
                 </div>
@@ -2804,9 +2834,9 @@
             // check capacity: unique devices + unique IPs
             let uniqDev=new Set(devices.map(d=>d.id));
             let uniqIP=new Set(devices.map(d=>d.ip).filter(x=>x&&x!=='unknown'));
-            if(uniqDev.size>=p.capacity){ err.textContent=`⛔ ظرفیت پره! این لایسنس فقط ${p.capacity} دستگاه. برای دستگاه بیشتر لایسنس بزرگتر بخر.`; err.style.display='block'; return; }
+            if(uniqDev.size>=p.capacity){ licCapacityError(); return; }
             // IP check: if new IP and IPs already at capacity
-            if(ip!=='unknown' && !uniqIP.has(ip) && uniqIP.size>=p.capacity){ err.textContent=`⛔ ظرفیت آی‌پی پره (${p.capacity})`; err.style.display='block'; return; }
+            if(ip!=='unknown' && !uniqIP.has(ip) && uniqIP.size>=p.capacity){ licCapacityError(); return; }
             devices.push({id:devId, ip, date:new Date().toISOString()});
         } else {
             found.ip=ip; found.date=new Date().toISOString();
@@ -2833,8 +2863,7 @@
             if(rec.devices.length>=rec.capacity){
                 // over capacity -> lock out
                 showLicenseGate();
-                document.getElementById('licenseError').textContent='⛔ ظرفیت پر شده - با مدیر تماس بگیر';
-                document.getElementById('licenseError').style.display='block';
+                licCapacityError();
                 return;
             }
             rec.devices.push({id:devId, ip, date:new Date().toISOString()});
@@ -2855,14 +2884,17 @@
         showToast('غیرفعال شد','warning');
     }
     function generateLicenseUI(){
-        if(currentOperator?.role!=='admin'){ showToast('فقط مدیر','error'); return; }
+        if(!isOwner()){ if(!askOwnerPin()) return; }
         let cap=parseInt(document.getElementById('genCapacity').value)||3;
         let mon=parseInt(document.getElementById('genMonths').value)||0;
         let cust=document.getElementById('genCustomer').value.trim();
+        let phone=document.getElementById('genPhone').value.trim();
+        if(!cust){ showToast('نام مشتری الزامی است','error'); return; }
+        if(!phone){ showToast('شماره تماس مشتری الزامی است','error'); return; }
         let key=makeLicenseKey(cap, mon);
         lastGeneratedLicense=key;
         let price=licPrice(cap);
-        allLicenses.push({key, capacity:cap, months:mon, expiry: mon>0? Date.now()+mon*30*24*3600*1000 : null, price, customer:cust, createdAt:new Date().toISOString(), devices:[]});
+        allLicenses.push({key, capacity:cap, months:mon, expiry: mon>0? Date.now()+mon*30*24*3600*1000 : null, price, customer:cust, phone, createdAt:new Date().toISOString(), devices:[]});
         localStorage.setItem('alvand_allLicenses', JSON.stringify(allLicenses));
         let res=document.getElementById('genResult');
         res.style.display='block';
@@ -2882,7 +2914,9 @@
             let rec=allLicenses.find(l=>l.key===activeLicense.key);
             let used=rec? rec.devices.length : 1;
             let cap=activeLicense.capacity;
-            info.innerHTML=`🔑 <span style="font-family:monospace; direction:ltr;">${activeLicense.key}</span><br>👥 ظرفیت: <b>${cap} دستگاه</b> | 📅 ${activeLicense.months>0? activeLicense.months+' ماهه' : 'مادام‌العمر'}`;
+            let buyDate=rec&&rec.createdAt? new Date(rec.createdAt).toLocaleDateString('fa-IR') : '-';
+            let actDate=activeLicense.activatedAt? new Date(activeLicense.activatedAt).toLocaleDateString('fa-IR') : '-';
+            info.innerHTML=`🔑 <span style="font-family:monospace; direction:ltr;">${activeLicense.key}</span> <button class="glass-btn" style="padding:4px 10px; font-size:0.7rem;" onclick="navigator.clipboard.writeText('${activeLicense.key}').then(()=>showToast('کپی شد','success'))">📋 کپی</button><br>👥 ظرفیت: <b>${used} از ${cap} دستگاه فعال</b> | 📅 ${activeLicense.months>0? activeLicense.months+' ماهه' : 'مادام‌العمر'}<br>🛒 تاریخ خرید: <b>${buyDate}</b> | 🚀 تاریخ فعال‌سازی: <b>${actDate}</b>`;
             document.getElementById('licenseSlotFill').style.width=Math.min(100,(used/cap)*100)+'%';
             document.getElementById('licenseSlotText').textContent=`استفاده شده: ${used} از ${cap}`;
             document.getElementById('activeDevicesList').innerHTML=(rec?.devices||[]).map(d=>`<span class="device-pill">🖥️ ${d.id} | ${d.ip}</span>`).join('');
@@ -2896,13 +2930,19 @@
             let realIdx=allLicenses.indexOf(l);
             return `<div class="glass" style="padding:14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                 <div><p style="font-family:monospace; direction:ltr; font-weight:800;">${l.key}</p>
-                <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">${l.customer||'بدون نام'} | ${l.capacity} کاربره | ${l.price?.toLocaleString()||licPrice(l.capacity).toLocaleString()} تومان | ${l.devices.length}/${l.capacity} فعال</p></div>
+                <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">${l.customer||'-'} | 📞 ${l.phone||'-'} | ${l.capacity} کاربره | ${l.price?.toLocaleString()||licPrice(l.capacity).toLocaleString()} تومان | ${l.devices.length}/${l.capacity} فعال</p></div>
                 <div style="display:flex; gap:6px;">
                     <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="copyLicense(${realIdx})">📋</button>
                     <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteLicense(${realIdx})">🗑️</button>
                 </div>
             </div>`;
         }).join('');
+        try{
+            let own=isOwner();
+            let gc=document.getElementById('licenseGenCard'); if(gc) gc.style.display=own?'':'none';
+            let ac=document.getElementById('allLicensesCard'); if(ac) ac.style.display=own?'':'none';
+            let ob=document.getElementById('ownerLoginBtn'); if(ob) ob.style.display=own?'none':'';
+        }catch(e){}
         updateGenPrice();
     }
     function copyLicense(i){ navigator.clipboard.writeText(allLicenses[i].key).then(()=>showToast('کپی شد','success')); }
@@ -2920,7 +2960,7 @@
         try{
             await firebase.database().ref('licenses/'+firebaseKey(rec.key)).set({
                 capacity: rec.capacity, months: rec.months, expiry: rec.expiry||null,
-                price: rec.price||licPrice(rec.capacity), customer: rec.customer||'',
+                price: rec.price||licPrice(rec.capacity), customer: rec.customer||'', phone: rec.phone||'',
                 createdAt: rec.createdAt, devices: arrayToObj(rec.devices)
             });
         }catch(e){ console.log('fb save fail', e); }
@@ -2939,7 +2979,7 @@
             let snap=await firebase.database().ref('licenses/'+firebaseKey(key)).once('value');
             let v=snap.val();
             if(!v) return null;
-            return {key, capacity:v.capacity, months:v.months, expiry:v.expiry, price:v.price, customer:v.customer, createdAt:v.createdAt, devices:objToArray(v.devices)};
+            return {key, capacity:v.capacity, months:v.months, expiry:v.expiry, price:v.price, customer:v.customer, phone:v.phone||'', createdAt:v.createdAt, devices:objToArray(v.devices)};
         }catch(e){ console.log('fb load fail', e); return null; }
     }
     // Wrap activateLicense to check server first
@@ -2958,9 +2998,7 @@
                 // check capacity from server
                 let devId=getDeviceId();
                 if(!srv.devices.find(d=>d.id===devId) && srv.devices.length>=srv.capacity){
-                    let err=document.getElementById('licenseError');
-                    err.textContent=`⛔ سرور میگه ظرفیت پره! (${srv.devices.length}/${srv.capacity})`;
-                    err.style.display='block';
+                    licCapacityError();
                     return;
                 }
             }
@@ -3098,6 +3136,156 @@
         showToast('⏬ دانلود شروع شد - بعد از اتمام فایل را اجرا کن تا نصب شود','success');
     }
 
+    
+    // ========== i18n: FA / EN / AR ==========
+    let appLang = localStorage.getItem('alvand_lang') || 'fa';
+    const I18N = {
+        "داشبورد": {en:"Dashboard", ar:"لوحة القيادة"},
+        "مدیریت کلاینت‌ها": {en:"Client Management", ar:"إدارة العملاء"},
+        "تعرفه‌ها": {en:"Tariffs", ar:"التعريفات"},
+        "گزارش‌ها": {en:"Reports", ar:"التقارير"},
+        "درآمد": {en:"Income", ar:"الدخل"},
+        "رزروها": {en:"Reservations", ar:"الحجوزات"},
+        "مشتریان": {en:"Customers", ar:"العملاء"},
+        "بوفه و خدمات": {en:"Buffet & Services", ar:"البوفيه والخدمات"},
+        "هزینه‌ها": {en:"Expenses", ar:"المصاريف"},
+        "تعرفه ساعتی": {en:"Hourly Tariffs", ar:"تعرفة الساعات"},
+        "تنظیمات": {en:"Settings", ar:"الإعدادات"},
+        "اپراتورها": {en:"Operators", ar:"المشغلون"},
+        "تم و صدا": {en:"Theme & Sound", ar:"السمة والصوت"},
+        "کارکرد ایستگاه": {en:"Station Usage", ar:"عمل المحطات"},
+        "بکاپ‌گیری": {en:"Backup", ar:"النسخ الاحتياطي"},
+        "بکاپ": {en:"Backup", ar:"نسخ احتياطي"},
+        "لایسنس": {en:"License", ar:"الترخيص"},
+        "تاریخ امروز": {en:"Today", ar:"اليوم"},
+        "کلاینت‌های فعال": {en:"Active Clients", ar:"العملاء النشطون"},
+        "متوقف شده": {en:"Paused", ar:"متوقف"},
+        "درآمد امروز": {en:"Today's Income", ar:"دخل اليوم"},
+        "کل کلاینت‌ها": {en:"Total Clients", ar:"إجمالي العملاء"},
+        "نمودار درآمد هفتگی": {en:"Weekly Income Chart", ar:"مخطط الدخل الأسبوعي"},
+        "کلاینت‌های فعال فعلی": {en:"Currently Active Clients", ar:"العملاء النشطون حاليا"},
+        "هیچ کلاینت فعالی وجود ندارد": {en:"No active clients", ar:"لا يوجد عملاء نشطون"},
+        "افزودن کلاینت جدید": {en:"Add New Client", ar:"إضافة عميل جديد"},
+        "مدیریت تعرفه‌ها": {en:"Manage Tariffs", ar:"إدارة التعريفات"},
+        "تک نفره": {en:"Single", ar:"فردي"},
+        "دو نفره": {en:"Double", ar:"زوجي"},
+        "نفرات اضافه": {en:"Extra Persons", ar:"أشخاص إضافيون"},
+        "گزارش‌گیری": {en:"Reports", ar:"التقارير"},
+        "محاسبه درآمد": {en:"Income", ar:"الدخل"},
+        "مدیریت رزروها": {en:"Manage Reservations", ar:"إدارة الحجوزات"},
+        "مدیریت زمان": {en:"Time Management", ar:"إدارة الوقت"},
+        "زمان سپری شده": {en:"Elapsed Time", ar:"الوقت المنقضي"},
+        "هزینه فعلی": {en:"Current Cost", ar:"التكلفة الحالية"},
+        "تومان": {en:"Toman", ar:"تومان"},
+        "شروع": {en:"Start", ar:"بدء"},
+        "توقف": {en:"Pause", ar:"إيقاف مؤقت"},
+        "قطع": {en:"Stop", ar:"إيقاف"},
+        "ریست": {en:"Reset", ar:"إعادة تعيين"},
+        "ثبت": {en:"Save", ar:"حفظ"},
+        "انصراف": {en:"Cancel", ar:"إلغاء"},
+        "حذف": {en:"Delete", ar:"حذف"},
+        "ویرایش": {en:"Edit", ar:"تعديل"},
+        "بستن": {en:"Close", ar:"إغلاق"},
+        "ذخیره": {en:"Save", ar:"حفظ"},
+        "روزانه": {en:"Daily", ar:"يومي"},
+        "هفتگی": {en:"Weekly", ar:"أسبوعي"},
+        "ماهانه": {en:"Monthly", ar:"شهري"},
+        "سالانه": {en:"Yearly", ar:"سنوي"},
+        "کیف پول": {en:"Wallet", ar:"المحفظة"},
+        "بوفه": {en:"Buffet", ar:"بوفيه"},
+        "خدمات": {en:"Services", ar:"خدمات"},
+        "موجودی": {en:"Stock", ar:"المخزون"},
+        "سود": {en:"Profit", ar:"الربح"},
+        "نقد": {en:"Cash", ar:"نقدي"},
+        "خروج": {en:"Logout", ar:"تسجيل الخروج"},
+        "مدیر": {en:"Admin", ar:"مدير"},
+        "اپراتور": {en:"Operator", ar:"مشغل"},
+        "تخفیف": {en:"Discount", ar:"خصم"},
+        "زبان": {en:"Language", ar:"اللغة"},
+        "شارژ": {en:"Charge", ar:"شحن"},
+        "بدهی": {en:"Debt", ar:"دين"}
+    };
+    const I18N_KEYS = Object.keys(I18N).sort((a,b)=>b.length-a.length);
+    const _i18nOrig = new WeakMap();
+    function translateNodeText(node){
+        let orig = _i18nOrig.get(node);
+        if(orig === undefined){ orig = node.nodeValue; _i18nOrig.set(node, orig); }
+        if(appLang==='fa'){ if(node.nodeValue!==orig) node.nodeValue=orig; return; }
+        let txt = orig;
+        for(let k of I18N_KEYS){ if(txt.includes(k)){ txt = txt.split(k).join(I18N[k][appLang]||k); } }
+        if(txt!==node.nodeValue) node.nodeValue=txt;
+    }
+    function translateRoot(root){
+        try{
+            let walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+            let nodes=[];
+            while(walker.nextNode()){
+                let n=walker.currentNode;
+                let p=n.parentNode;
+                if(!p) continue;
+                let tag=p.nodeName;
+                if(tag==='SCRIPT'||tag==='STYLE') continue;
+                if(!n.nodeValue || !n.nodeValue.trim()) continue;
+                nodes.push(n);
+            }
+            nodes.forEach(translateNodeText);
+            root.querySelectorAll && root.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(el=>{
+                if(el._phOrig===undefined) el._phOrig=el.getAttribute('placeholder')||'';
+                let ph=el._phOrig;
+                if(appLang!=='fa'){ for(let k of I18N_KEYS){ if(ph.includes(k)){ ph=ph.split(k).join(I18N[k][appLang]||k); } } }
+                if(el.getAttribute('placeholder')!==ph) el.setAttribute('placeholder', ph);
+            });
+        }catch(e){}
+    }
+    let _i18nTimer=null;
+    function applyAppLang(){
+        document.documentElement.lang = appLang==='en'?'en':(appLang==='ar'?'ar':'fa');
+        document.documentElement.dir = appLang==='en'?'ltr':'rtl';
+        let layout=document.getElementById('appLayout');
+        if(layout) layout.style.direction = appLang==='en'?'ltr':'rtl';
+        translateRoot(document.body);
+        document.querySelectorAll('.lang-btn').forEach(b=>b.classList.remove('active'));
+        let cur=document.getElementById('lang'+appLang.toUpperCase());
+        if(cur) cur.classList.add('active');
+        if(!window._i18nObs){
+            try{
+                window._i18nObs=new MutationObserver(()=>{
+                    clearTimeout(_i18nTimer);
+                    _i18nTimer=setTimeout(()=>translateRoot(document.body), 250);
+                });
+                window._i18nObs.observe(document.body, {childList:true, subtree:true});
+            }catch(e){}
+        }
+    }
+    function setLang(l){
+        appLang=l;
+        localStorage.setItem('alvand_lang', l);
+        applyAppLang();
+        showToast(l==='fa'?'زبان: فارسی':(l==='ar'?'اللغة: العربية':'Language: English'),'success');
+    }
+
+    
+    // ========== Owner-only license generator ==========
+    const _op=[49,52,48,53].map(c=>String.fromCharCode(c)).join('');
+    function isOwner(){ try{ return sessionStorage.getItem('alvand_owner')==='1'; }catch(e){ return window._isOwner===true; } }
+    function askOwnerPin(){
+        let p=prompt('🔑 رمز سازنده را وارد کنید:');
+        if(p===null) return false;
+        if(String(p).trim()===_op){
+            try{ sessionStorage.setItem('alvand_owner','1'); }catch(e){ window._isOwner=true; }
+            showToast('👑 خوش آمدی سازنده','success');
+            try{ renderLicenseSection(); }catch(e){}
+            return true;
+        }
+        showToast('رمز اشتباه است','error');
+        return false;
+    }
+    function licCapacityError(){
+        let err=document.getElementById('licenseError');
+        let msg='⛔ این لایسنس به حد نصاب فعال‌سازی رسیده است.<br>برای خرید لایسنس جدید با سازنده تماس بگیرید.<br><a href="https://github.com/Alvandcode/gamenet-windows-pro" target="_blank" style="color:#818cf8; text-decoration:underline;">🔗 تماس با سازنده در گیت‌هاب</a>';
+        if(err){ err.innerHTML=msg; err.style.display='block'; }
+    }
+
     // Initialize
     function init() {
         createParticles();
@@ -3136,6 +3324,7 @@
         initLicenseGate();
         setTimeout(()=>{ try{ checkForUpdate(false); }catch(e){} }, 8000);
         setInterval(()=>{ try{ checkForUpdate(false); }catch(e){} }, 6*3600*1000);
+        try{ applyAppLang(); }catch(e){}
         setTimeout(updateFirebaseStatus, 1500);
         // migrate reservations clientName
         reservations.forEach(r=>{ if(!r.clientName){ let cl=clients.find(c=>c.id===r.clientId); if(cl) r.clientName=cl.name; }});
@@ -3690,41 +3879,57 @@
         stopTimer();
     }
     function playAlarmSound(){
+        try{ stopAlarmSound(); }catch(e){}
         try{
+            let reps = (parseInt(alarmRepeat)===0) ? 99999 : Math.max(1, parseInt(alarmRepeat)||3);
             if(customAlarmData && alarmSound==='custom'){
                 let audio=new Audio(customAlarmData);
                 audio.volume=0.8;
-                let count=0; let max=alarmRepeat===0? 999 : alarmRepeat;
-                audio.onended=()=>{ count++; if(count<max) audio.play(); };
-                audio.play();
+                let count=0;
+                audio.onended=()=>{ count++; if(count<reps){ try{audio.currentTime=0; audio.play();}catch(e){} } };
+                audio.play().catch(()=>{});
                 window._customAudio=audio;
                 return;
             }
             let AudioCtx=window.AudioContext||window.webkitAudioContext;
             if(!AudioCtx) return;
             let ctx=new AudioCtx();
-            let osc=ctx.createOscillator();
-            let gain=ctx.createGain();
-            let freqMap={beep:880, bell:600, alarm:1200, chime:523, game:440};
-            let baseFreq=freqMap[alarmSound]||880;
-            osc.type = alarmSound==='bell' ? 'sine' : alarmSound==='alarm' ? 'square' : 'sine';
-            osc.frequency.value=baseFreq;
-            osc.connect(gain); gain.connect(ctx.destination);
-            gain.gain.value=0.35;
-            osc.start();
-            let interval=setInterval(()=>{
-                if(alarmSound==='beep' || alarmSound==='alarm') osc.frequency.value = osc.frequency.value===baseFreq? baseFreq*1.4:baseFreq;
-                else if(alarmSound==='game') osc.frequency.value = 400 + Math.random()*600;
-            }, alarmSound==='chime'?800:300);
-            // handle repeat: stop after repeat * 2s, or infinite
-            let duration = alarmRepeat===0 ? 30000 : alarmRepeat*2200;
-            setTimeout(()=>{ try{osc.stop();}catch(e){} }, duration);
-            window._alarmCtx=ctx; window._alarmOsc=osc; window._alarmInt=interval;
-            setTimeout(()=>stopAlarmSound(), duration+500);
+            window._alarmCtx=ctx;
+            if(ctx.state==='suspended'){ ctx.resume().catch(()=>{}); }
+            let freqMap={beep:880, bell:660, alarm:990, chime:523, game:440};
+            let base=freqMap[alarmSound]||880;
+            let type = alarmSound==='alarm' ? 'square' : alarmSound==='bell' ? 'triangle' : 'sine';
+            let done=0;
+            window._alarmStopped=false;
+            function burst(){
+                if(window._alarmStopped) return;
+                if(done>=reps){ stopAlarmSound(); return; }
+                done++;
+                try{
+                    let t=ctx.currentTime+0.02;
+                    for(let i=0;i<3;i++){
+                        let o=ctx.createOscillator(), g=ctx.createGain();
+                        o.type=type;
+                        let f=base;
+                        if(alarmSound==='game') f=400+Math.random()*600;
+                        else if(alarmSound==='chime') f=base*Math.pow(1.25,i);
+                        else if(i===2) f=base*1.4;
+                        o.frequency.value=f;
+                        g.gain.setValueAtTime(0.0001,t+i*0.3);
+                        g.gain.exponentialRampToValueAtTime(0.4,t+i*0.3+0.03);
+                        g.gain.exponentialRampToValueAtTime(0.0001,t+i*0.3+0.26);
+                        o.connect(g); g.connect(ctx.destination);
+                        o.start(t+i*0.3); o.stop(t+i*0.3+0.32);
+                    }
+                }catch(e){}
+            }
+            burst();
+            window._alarmInt=setInterval(burst, 1500);
+            if(reps<99999){ window._alarmEndTimer=setTimeout(()=>stopAlarmSound(), reps*1500+1200); }
         }catch(e){ console.log('audio err',e); }
     }
     function setAlarmSound(v){ alarmSound=v; localStorage.setItem('alvand_alarmSound',v); showToast('صدا: '+v,'success'); }
-    function setAlarmRepeat(v){ alarmRepeat=parseInt(v); localStorage.setItem('alvand_alarmRepeat',v); showToast('تکرار: '+v,'success'); }
+    function setAlarmRepeat(v){ alarmRepeat=parseInt(v); localStorage.setItem('alvand_alarmRepeat',v); showToast('تکرار: '+(parseInt(v)===0?'نامحدود':v),'success'); }
     function loadCustomAlarm(input){
         let file=input.files[0];
         if(!file) return;
@@ -3735,12 +3940,14 @@
     function testAlarm(){ playAlarmSound(); showToast('تست صدا','success'); setTimeout(stopAlarmSound,3000); }
     function stopAlarmSound(){
         try{
-            if(window._alarmOsc){ try{window._alarmOsc.stop();}catch(e){} window._alarmOsc.disconnect(); }
-            if(window._alarmCtx){ try{window._alarmCtx.close();}catch(e){} }
-            if(window._alarmInt) clearInterval(window._alarmInt);
-            if(window._customAudio){ window._customAudio.pause(); window._customAudio=null; }
+            window._alarmStopped=true;
+            if(window._alarmInt){ clearInterval(window._alarmInt); window._alarmInt=null; }
+            if(window._alarmEndTimer){ clearTimeout(window._alarmEndTimer); window._alarmEndTimer=null; }
+            if(window._customAudio){ try{window._customAudio.pause();}catch(e){} window._customAudio=null; }
+            if(window._alarmCtx){ try{window._alarmCtx.close();}catch(e){} window._alarmCtx=null; }
+            window._alarmOsc=null;
         }catch(e){}
-        if(navigator.vibrate) navigator.vibrate(0);
+        try{ if(navigator.vibrate) navigator.vibrate(0); }catch(e){}
     }
 
     // ========== Reservation System ==========
