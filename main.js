@@ -9,7 +9,7 @@ function createWindow() {
         height: 800,
         minWidth: 900,
         minHeight: 600,
-        title: 'Gamenet Manager Alvand',
+        title: 'Gamenet Manager Pro',
         icon: path.join(__dirname, 'assets', 'icon.ico'),
         webPreferences: {
             nodeIntegration: false,
