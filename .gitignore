@@ -1,0 +1,31 @@
+# node
+node_modules/
+dist/
+out/
+*.log
+npm-debug.log*
+
+# electron builder cache
+.cache/
+
+# local secrets - NEVER commit real firebase keys
+config.local.json
+
+# SELLER FOLDER - never publish! (private.key mints licenses, licenses.json has customer phones)
+license-tools/
+# QUARANTINED second key system (Ed25519, incompatible with the app) - never publish either
+license-keys/
+tools/
+# (belt & suspenders, in case the folder rule is ever removed)
+license-tools/private.key
+license-tools/licenses.json
+*.alvand-license.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# runtime backups (userData handles the real ones)
+backups/
+*.backup.json

@@ -1,13 +1,20 @@
 {
   "name": "gamenet-manager-alvand",
-  "version": "1.8.0",
-  "description": "Gamenet Manager Pro - Desktop by Alvandcode",
+  "version": "1.8.1",
+  "description": "Gamenet Manager Pro - Desktop by Alvandcode (hardened modular build)",
   "author": "Alvand",
+  "license": "MIT",
   "main": "main.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "electron .",
+    "start:dev": "electron . --dev",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win",
+    "test": "node tests/smoke.test.js && node tests/boot.test.js && node tests/license.test.js && node --check main.js && node --check preload.js && node --check src/js/config.js && node --check src/js/security.js && node --check src/js/license-pubkey.js && node --check src/js/license.js && node --check src/js/storage.js && node --check src/js/app.js && node --check src/js/patches.js && echo OK",
+    "validate": "node tests/smoke.test.js && node tests/boot.test.js && node tests/license.test.js"
   },
   "build": {
     "appId": "com.alvand.gamenet.manager",
@@ -17,9 +24,15 @@
     },
     "files": [
       "main.js",
-      "index.html"
+      "preload.js",
+      "index.html",
+      "config.example.json",
+      "src/**/*",
+      "assets/**/*"
     ],
     "win": {
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",
@@ -52,10 +65,3 @@
     "electron-builder": "^24.13.0"
   }
 }
-
-
-
-
-
-
-

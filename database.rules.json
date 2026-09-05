@@ -1,0 +1,19 @@
+{
+  "rules": {
+    "licenses": {
+      "$keyId": {
+        ".read": true,
+        ".write": false
+      }
+    },
+    "activations": {
+      "$keyId": {
+        ".read": true,
+        "$fp": {
+          ".write": "!data.exists()",
+          ".validate": "newData.hasChildren(['fp', 'ip', 'date'])"
+        }
+      }
+    }
+  }
+}

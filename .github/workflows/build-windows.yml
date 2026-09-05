@@ -3,6 +3,7 @@ name: Build Windows EXE
 on:
   push:
     branches: [main, master]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -19,9 +20,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm install
+      - name: Validate project
+        run: npm run validate
+
+      - name: Install dependencies (reproducible)
+        run: npm ci
+
+      - name: Smoke-check JS syntax
+        run: npm test
 
       - name: Build Windows Installer
         run: npm run dist:win -- --publish never
@@ -32,26 +40,13 @@ jobs:
           name: gamenet-windows-exe
           path: |
             dist/*.exe
-            dist/*.msi
+          if-no-files-found: error
           retention-days: 30
 
-      - name: Create Release
+      - name: Create Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.8.${{ github.run_number }}
-          name: Gamenet Manager Windows v1.8.${{ github.run_number }}
-          body: |
-            ## Gamenet Manager Alvand - Windows v1.8.0
-
-            ### قابلیت‌های جدید
-            - رزرو کلاینت با هشدار تداخل
-            - تایمر معکوس با آلارم صوتی/لرزش/نوتیفیکیشن
-            - خروجی PDF کارکرد
-            - ارسال به تلگرام/واتساپ/روبیکا/ایمیل
-
-            ### فایل نصب
-            - `Gamenet Manager Alvand Setup.exe` = نصب کننده
-            - `GamenetManager-Portable-*.exe` = نسخه پرتابل بدون نصب
           files: |
             dist/*.exe
           generate_release_notes: true
