@@ -1126,6 +1126,20 @@
                 </div>
             </section>
 
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">🖥️ کنترل از راه دور (ایجنت)</h3>
+                    <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:12px;">فایل GamenetAgent را روی هر کامپیوتر مشتری اجرا کن (اولین بار Allow بده) و IP آن را در کارت دستگاه وارد کن. شروع = بازشدن خودکار، ۵ دقیقه مانده = هشدار خودکار، اتمام = قفل خودکار.</p>
+                    <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+                        <div>
+                            <label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">توکن ایجنت (باید با مشتری یکی باشد)</label>
+                            <input type="text" id="agentTokenInput" value="alvand123" onchange="setAgentToken(this.value)" style="text-align:left; direction:ltr;">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">پورت</label>
+                            <input type="text" value="48721" disabled style="width:110px; text-align:center;">
+                        </div>
+                    </div>
+                </div>
             <!-- Operators Section -->
             <section id="operators-section" class="section" style="display: none;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
@@ -1206,6 +1220,10 @@
                 <input type="text" id="newClientName" placeholder="مثال: سیستم 1">
             </div>
             <div style="margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.7);">🌐 IP کامپیوتر (خالی = بدون کنترل از راه دور)</label>
+                <input type="text" id="newClientIP" placeholder="مثال: 192.168.1.50" style="text-align:left; direction:ltr;">
+            </div>
+            <div style="margin-bottom: 16px;">
                 <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.7);">تعرفه</label>
                 <select id="newClientTariff">
                     <option value="single">تک نفره</option>
@@ -1264,6 +1282,10 @@
                 <button class="glass-btn glass-btn-warning" onclick="pauseTimer()">&#9208; توقف</button>
                 <button class="glass-btn glass-btn-danger" onclick="stopTimer()">&#9209; قطع</button>
                 <button class="glass-btn" onclick="resetTimer()">&#128260; ریست</button>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.7);">🌐 IP کامپیوتر مشتری (خالی = بدون کنترل)</label>
+                <input type="text" id="timeClientIP" placeholder="192.168.1.50" style="text-align:left; direction:ltr;">
             </div>
             <div style="margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.7);">افزودن/کاهش زمان (دقیقه)</label>
@@ -2189,6 +2211,7 @@
         let tog=document.getElementById('autoBackupToggle'); if(tog) tog.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
         let bt=document.getElementById('backupTimeInput'); if(bt) bt.value=localStorage.getItem('alvand_backupTime')||'23:59';
         let tog2=document.getElementById('autoBackupToggle2'); if(tog2) tog2.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
+        let atk=document.getElementById('agentTokenInput'); if(atk) atk.value=agentToken();
     }
     function setRoundingMode(v){ roundingMode=v; localStorage.setItem('alvand_rounding',v); showToast('رند: '+v,'success'); }
     function updateBackupDisplay(){
@@ -3476,6 +3499,47 @@
             </div>`).join('')+'</div>';
     }
 
+    
+    // ========== Remote Agent (LAN control) ==========
+    const AGENT_PORT = 48721;
+    function agentToken(){ try{ return localStorage.getItem('alvand_agentToken')||'alvand123'; }catch(e){ return 'alvand123'; } }
+    function setAgentToken(v){ try{ localStorage.setItem('alvand_agentToken', (v||'').trim()||'alvand123'); }catch(e){} showToast('توکن ایجنت ذخیره شد','success'); }
+    async function agentFetch(ip, path){
+        const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),5000);
+        try{
+            const r=await fetch(`http://${ip}:${AGENT_PORT}${path}${path.includes('?')?'&':'?'}token=${encodeURIComponent(agentToken())}`, {signal:ctl.signal});
+            clearTimeout(t);
+            return await r.json();
+        }catch(e){ clearTimeout(t); throw e; }
+    }
+    async function agentCmd(idx, action){
+        const c=clients[idx];
+        if(!c||!c.ip){ showToast('اول IP دستگاه را وارد کن (مدیریت زمان)','error'); return; }
+        try{
+            if(action==='warn') await agentFetch(c.ip, '/warn?msg='+encodeURIComponent('چند دقیقه تا پایان وقت باقی مانده است'));
+            else await agentFetch(c.ip, '/'+action);
+            c.online=true; saveData(); renderClients();
+            showToast(action==='lock'?'🔒 قفل شد':action==='unlock'?'🔓 باز شد':'⚠️ هشدار فرستاده شد','success');
+        }catch(e){ c.online=false; saveData(); renderClients(); showToast('ایجنت جواب نداد (خاموش یا قطع شبکه؟)','error'); }
+    }
+    async function agentShutdown(idx){
+        const c=clients[idx];
+        if(!c||!c.ip){ showToast('اول IP دستگاه را وارد کن','error'); return; }
+        if(!confirm(`سیستم ${c.name} خاموش شود؟`)) return;
+        try{ await agentFetch(c.ip, '/shutdown?sec=10'); showToast('⏻ دستور خاموش فرستاده شد','success'); }
+        catch(e){ c.online=false; saveData(); renderClients(); showToast('ایجنت جواب نداد','error'); }
+    }
+    async function agentPoll(){
+        let changed=false;
+        for(let c of clients){
+            if(!c.ip) continue;
+            try{ const s=await agentFetch(c.ip, '/status'); const on=!!(s&&s.ok); if(c.online!==on){ c.online=on; changed=true; } }
+            catch(e){ if(c.online!==false){ c.online=false; changed=true; } }
+        }
+        if(changed){ saveData(); renderClients(); }
+    }
+    setInterval(agentPoll, 30000);
+
     // Initialize
     function init() {
         createParticles();
@@ -3670,6 +3734,15 @@
                             ${!c.stationType?'<option value="" selected>—</option>':''}
                         </select>
                     </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; background:rgba(6,182,214,0.06); border-radius:12px; padding:8px 12px;">
+                        <span style="font-size:0.75rem; color:rgba(255,255,255,0.6);">🌐 ${c.ip||'بدون IP'} <span class="status-dot ${c.online===true?'status-online':(c.online===false?'status-offline':'status-paused')}" title="${c.online===true?'متصل':(c.online===false?'قطع':'نامشخص')}"></span></span>
+                        <span style="display:flex; gap:6px;">
+                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" title="باز کردن" onclick="agentCmd(${i},'unlock')">🔓</button>
+                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" title="قفل" onclick="agentCmd(${i},'lock')">🔒</button>
+                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" title="هشدار" onclick="agentCmd(${i},'warn')">⚠️</button>
+                            <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" title="خاموش" onclick="agentShutdown(${i})">⏻</button>
+                        </span>
+                    </div>
                     ${(() => {
                         let svc = clientServiceMap[c.id]||[];
                         let svcCost = svc.reduce((sum, it)=>{ let s=services.find(x=>x.id===it.serviceId); return sum + (s? s.price*it.qty:0); },0);
@@ -3705,6 +3778,7 @@
 
     function addClient() {
         const name = document.getElementById('newClientName').value.trim();
+        const ip = (document.getElementById('newClientIP') && document.getElementById('newClientIP').value.trim()) || '';
         const tariff = document.getElementById('newClientTariff').value;
         const extra = parseInt(document.getElementById('newClientExtra').value) || 0;
         const timerMin = parseInt(document.getElementById('newClientTimer')?.value) || 0;
@@ -3717,6 +3791,7 @@
             tariff,
             extra,
             stationType: (document.getElementById('newClientType') && document.getElementById('newClientType').value) || 'pc',
+            ip: (document.getElementById('newClientIP') && document.getElementById('newClientIP').value.trim()) || '',
             status: 'offline',
             elapsed: 0,
             startTime: null,
@@ -3731,6 +3806,7 @@
         renderClients();
         updateStats();
         document.getElementById('newClientName').value = '';
+        if(document.getElementById('newClientIP')) document.getElementById('newClientIP').value='';
         if(document.getElementById('newClientTimer')) document.getElementById('newClientTimer').value='0';
         showToast('کلاینت با موفقیت اضافه شد','success');
     }
@@ -3756,6 +3832,8 @@
         currentTimeClient = index;
         const c = clients[index];
         document.getElementById('timeClientName').textContent = c.name;
+        let _ipEl=document.getElementById('timeClientIP');
+        if(_ipEl){ _ipEl.value=c.ip||''; _ipEl.onchange=()=>{ c.ip=_ipEl.value.trim(); saveData(); renderClients(); }; }
         document.getElementById('timeModal').classList.add('show');
         // show reservation warning if any
         let res=getActiveReservationForClient(c.id);
@@ -3857,6 +3935,8 @@
         saveData();
         renderClients();
         updateStats();
+        c._warned5=false;
+        if(c.ip){ agentFetch(c.ip,'/unlock').then(()=>{ c.online=true; }).catch(()=>{ c.online=false; showToast('⚠️ ایجنت جواب نداد ولی تایمر شروع شد','warning'); }); }
         showToast(`تایمر ${c.name} شروع شد`,'success');
     }
 
@@ -4019,6 +4099,7 @@
                         triggerAlarm(idx);
                     } else if(remaining===300){ // 5 min warning
                         showToast(`⏰ ${c.name}: 5 دقیقه تا پایان`,'warning');
+                        if(c.ip && !c._warned5){ c._warned5=true; agentFetch(c.ip,'/warn?msg='+encodeURIComponent(c.name+': 5 دقیقه تا پایان وقت')).catch(()=>{}); }
                         if('Notification' in window && Notification.permission==='granted'){
                             new Notification('هشدار زمان', {body: `${c.name}: 5 دقیقه باقی مانده`});
                         }
@@ -4057,6 +4138,7 @@
         if('Notification' in window && Notification.permission==='granted'){
             try{ new Notification('⏰ زمان به پایان رسید', {body: `${c.name} - ${c.timerDuration} دقیقه تمام شد`, requireInteraction:true}); }catch(e){}
         }
+        if(c.ip){ agentFetch(c.ip,'/lock?msg='+encodeURIComponent(c.name+': وقت تمام شد! به صندوق مراجعه کنید')).catch(()=>{}); }
         showToast(`⏰ زمان ${c.name} تمام شد!`,'error');
         // auto hide lights after 20s
         setTimeout(()=>{ dismissLights(); }, 20000);
@@ -5354,6 +5436,7 @@
         let tog=document.getElementById('autoBackupToggle'); if(tog) tog.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
         let bt=document.getElementById('backupTimeInput'); if(bt) bt.value=localStorage.getItem('alvand_backupTime')||'23:59';
         let tog2=document.getElementById('autoBackupToggle2'); if(tog2) tog2.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
+        let atk=document.getElementById('agentTokenInput'); if(atk) atk.value=agentToken();
     }
     function setRoundingMode(v){ roundingMode=v; localStorage.setItem('alvand_rounding',v); showToast('رند: '+v,'success'); }
     function updateBackupDisplay(){
