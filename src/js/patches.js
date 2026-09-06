@@ -257,10 +257,39 @@
     } catch (_) {}
   }
 
+  /* ---------- never-fail-silently: surface JS errors to the user ---------- */
+  function reportError(msg) {
+    try {
+      var txt = 'خطا: ' + String(msg || 'نامشخص');
+      if (typeof showToast === 'function') { try { showToast(txt, 'error'); } catch (_) {} }
+      // if the license gate is visible, also write it under the key box
+      try {
+        var gate = document.getElementById('licenseOverlay');
+        var err = document.getElementById('licenseError');
+        if (gate && err && gate.classList.contains('show')) { err.textContent = txt; err.style.display = 'block'; }
+      } catch (_) {}
+    } catch (_) {}
+  }
+  try {
+    window.addEventListener('error', function (ev) {
+      try { reportError((ev && ev.message) || 'خطای برنامه'); } catch (_) {}
+    });
+    window.addEventListener('unhandledrejection', function (ev) {
+      try {
+        var r = ev && ev.reason;
+        reportError((r && r.message) || r || 'خطای ناهمگام');
+      } catch (_) {}
+    });
+  } catch (_) {}
+
   /* ---------- boot ---------- */
   function boot() {
     try { migrateOperatorPasswords(); } catch (_) {}
     try { setupLicenseGateUX(); } catch (_) {}
+    try {
+      var gv = document.getElementById('gateVersion');
+      if (gv && window.APP_VERSION) gv.textContent = 'نسخه ' + window.APP_VERSION;
+    } catch (_) {}
     try {
       if (window.__pdfFailed && typeof showToast === 'function') {
         setTimeout(function () { showToast('کتابخانه PDF لود نشد (آفلاین؟) - خروجی PDF غیرفعال است', 'warning'); }, 2500);

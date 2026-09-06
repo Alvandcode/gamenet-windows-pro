@@ -32,10 +32,17 @@ for (const f of [
   ok(fs.existsSync(path.join(ROOT, f)), 'exists: ' + f);
 }
 
-// 1b. icon is a real ICO file (not a renamed png/txt)
+// 1b. icon is a real ICO file (not a renamed png/txt) with a 256px entry (electron-builder requires it)
 try {
   const ico = fs.readFileSync(path.join(ROOT, 'assets/icon.ico'));
+  const count = ico.readUInt16LE(4);
+  let maxSize = 0;
+  for (let i = 0; i < count; i++) {
+    const w = ico[6 + i * 16] || 256;
+    if (w > maxSize) maxSize = w;
+  }
   ok(ico.length > 1000 && ico[0] === 0 && ico[1] === 0 && ico[2] === 1 && ico[3] === 0, 'assets/icon.ico is a valid ICO (' + ico.length + ' bytes)');
+  ok(maxSize >= 256, 'assets/icon.ico has 256px entry (max ' + maxSize + 'px)');
 } catch (e) {
   ok(false, 'assets/icon.ico readable: ' + e.message);
 }
@@ -83,6 +90,10 @@ try {
 try {
   const h = read('index.html');
   ok(h.includes('Content-Security-Policy'), 'index.html has CSP meta');
+  // NOTE: script-src MUST keep 'unsafe-inline': the app uses ~160 inline onclick
+  // handlers; without it every button silently dies (no error in UI, only console).
+  // XSS is still covered by escapeHtml on all user content (see app.js checks).
+  ok(/script-src[^;]*'unsafe-inline'/.test(h), 'CSP allows the app inline handlers');
   ok(h.includes('src/js/app.js'), 'index.html loads src/js/app.js');
   ok(h.includes('src/styles/main.css'), 'index.html loads main.css');
   ok(h.includes('src/js/security.js'), 'index.html loads security.js');
@@ -114,11 +125,28 @@ try {
 try {
   const css = read('src/styles/main.css');
   ok(css.length > 5000, 'main.css non-empty (' + css.length + ' chars)');
+  ok(css.includes('--active-accent'), 'main.css defines --active-accent var');
+  ok(css.includes('.client-card-active'), 'main.css styles active client cards');
+  ok(css.includes('.active-pill') && css.includes('.active-row'), 'main.css styles active pill + dashboard rows');
   const ex = read('config.example.json');
   ok(ex.includes('PUT_YOUR'), 'config.example.json uses placeholders');
   ok(!fs.existsSync(path.join(ROOT, 'config.local.json')), 'config.local.json NOT committed (gitignored secret)');
 } catch (e) {
   ok(false, 'css/config readable: ' + e.message);
+}
+
+// 7b. admin credentials + theme accents
+try {
+  const h2 = read('index.html');
+  ok(h2.includes('adminCredCard') && h2.includes('changeAdminCredentials'), 'settings has admin credential card');
+  const a3 = read('src/js/app.js');
+  ok(a3.includes('function changeAdminCredentials') && a3.includes('function syncAdminCredCard') && a3.includes('function getAdminOp'), 'admin credential functions exist');
+  ok(a3.includes('sha256hex') && a3.includes('gamenet::'), 'admin password is hashed (not plaintext)');
+  const accents = (a3.match(/accent:'#[0-9a-fA-F]{6}'/g) || []).length;
+  ok(accents >= 20, 'all 20 themes have accent colors (found ' + accents + ')');
+  ok(a3.includes('client-card-active') && a3.includes('active-row') && a3.includes('getThemeAccent'), 'active-card accent wiring exists');
+} catch (e) {
+  ok(false, 'features readable: ' + e.message);
 }
 
 // 8b. signed-license system

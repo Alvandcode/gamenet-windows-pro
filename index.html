@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' https://cdnjs.cloudflare.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://api.github.com https://api.ipify.org https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://api.github.com https://api.ipify.org https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
     <link rel="stylesheet" href="src/styles/main.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -426,6 +426,27 @@
                         <button class="glass-btn lang-btn" id="langEN" onclick="setLang('en')">🇬🇧 English</button>
                         <button class="glass-btn lang-btn" id="langAR" onclick="setLang('ar')">🇸🇦 العربية</button>
                     </div>
+                </div>
+                <div class="glass" id="adminCredCard" style="padding:20px; margin-bottom:16px; display:none;">
+                    <h3 style="margin-bottom:12px;">👑 تغییر نام کاربری و رمز مدیر</h3>
+                    <p style="font-size:0.85rem; color:rgba(255,255,255,0.6); margin-bottom:12px;">نام کاربری فعلی: <b id="adminCredCurrent">-</b></p>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                        <div>
+                            <label style="display:block; margin-bottom:6px; color:rgba(255,255,255,0.7); font-size:0.85rem;">نام کاربری جدید</label>
+                            <input type="text" id="adminCredUser" autocomplete="off">
+                        </div>
+                        <div></div>
+                        <div>
+                            <label style="display:block; margin-bottom:6px; color:rgba(255,255,255,0.7); font-size:0.85rem;">رمز جدید</label>
+                            <input type="password" id="adminCredPass1" autocomplete="new-password">
+                        </div>
+                        <div>
+                            <label style="display:block; margin-bottom:6px; color:rgba(255,255,255,0.7); font-size:0.85rem;">تکرار رمز جدید</label>
+                            <input type="password" id="adminCredPass2" autocomplete="new-password">
+                        </div>
+                    </div>
+                    <button class="glass-btn glass-btn-success" style="width:100%;" onclick="changeAdminCredentials()">💾 ذخیره نام کاربری و رمز</button>
+                    <p style="font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:8px;">اگر رمزها را خالی بگذاری فقط نام کاربری عوض می‌شود — رمز حداقل ۴ کاراکتر</p>
                 </div>
                 <div class="glass" style="padding:20px; margin-bottom:16px;">
                     <h3 style="margin-bottom:12px;">🎨 انتخاب تم (20 تم گرافیکی)</h3>
@@ -1133,6 +1154,7 @@
             <input type="text" id="licenseKeyInput" class="license-key-input" placeholder="ALV-003-12-XXXX-XXXX" style="margin-bottom:12px;">
             <button class="glass-btn glass-btn-success" style="width:100%; padding:14px; font-size:1rem;" onclick="activateLicense()">🚀 فعال‌سازی</button>
             <p id="licenseError" style="color:#ef4444; font-size:0.85rem; margin-top:10px; display:none;"></p>
+            <p id="gateVersion" style="color:rgba(255,255,255,0.35); font-size:0.7rem; margin-top:8px;"></p>
             <div style="margin-top:16px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.1); font-size:0.8rem; color:rgba(255,255,255,0.5); line-height:2;">
                 لایسنس نداری؟<br>
                 💰 3 کاربره: <b style="color:#22c55e;">1,000,000 تومان</b> | هر کاربر اضافه: <b style="color:#22c55e;">200,000 تومان</b><br>

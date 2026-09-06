@@ -27,7 +27,7 @@
     let customAlarmData = localStorage.getItem('alvand_customAlarm') || null;
     // License system
     let activeLicense = safeParse(localStorage.getItem('alvand_license')||'null');
-    let allLicenses = safeParse(localStorage.getItem('alvand_allLicenses')||'[]');
+    let allLicenses = safeParse(localStorage.getItem('alvand_allLicenses')||'[]') || [];
     let lastGeneratedLicense = '';
     // ===== Firebase Config (FIXED: no hardcoded secrets; see config.example.json) =====
     const firebaseConfig = (window.APP_CONFIG && window.APP_CONFIG.firebase && window.APP_CONFIG.firebase.apiKey)
@@ -572,6 +572,7 @@
         if(!el) return;
         if(currentOperator) el.textContent=(currentOperator.role==='admin'?'👑 ':'👤 ')+currentOperator.username + (currentOperator.role==='admin'?' (مدیر)':' (اپراتور)');
         else el.textContent='👤 مهمان';
+        try{ syncAdminCredCard(); }catch(e){}
     }
     function applyPerms(){
         if(!currentOperator || currentOperator.role==='admin'){
@@ -654,6 +655,52 @@
         operators=operators.filter(x=>x.id!==id);
         localStorage.setItem('alvand_operators', JSON.stringify(operators));
         renderOperators();
+    }
+    function getAdminOp(){
+        return operators.find(x=>x.role==='admin') || operators.find(x=>x.id===1) || operators[0] || null;
+    }
+    function syncAdminCredCard(){
+        // Only admins may see/use the credential card in Settings
+        const card=document.getElementById('adminCredCard');
+        if(!card) return;
+        const isAdmin = !!(currentOperator && currentOperator.role==='admin');
+        card.style.display = isAdmin ? '' : 'none';
+        if(!isAdmin) return;
+        const adm=getAdminOp();
+        const cur=document.getElementById('adminCredCurrent');
+        if(cur) cur.textContent = adm? adm.username : '-';
+        const nu=document.getElementById('adminCredUser');
+        if(nu && document.activeElement!==nu) nu.value = adm? adm.username : '';
+    }
+    async function changeAdminCredentials(){
+        if(!currentOperator || currentOperator.role!=='admin'){ showToast('فقط مدیر','error'); return; }
+        const adm=getAdminOp();
+        if(!adm){ showToast('حساب مدیر پیدا نشد','error'); return; }
+        const nuEl=document.getElementById('adminCredUser');
+        const p1El=document.getElementById('adminCredPass1');
+        const p2El=document.getElementById('adminCredPass2');
+        const nu=(nuEl?nuEl.value:'').trim();
+        const p1=p1El?p1El.value:'';
+        const p2=p2El?p2El.value:'';
+        if(!nu){ showToast('نام کاربری را وارد کن','error'); return; }
+        if(operators.some(x=>x!==adm && x.username===nu)){ showToast('این نام کاربری تکراری است','error'); return; }
+        if(p1||p2){
+            if(p1!==p2){ showToast('تکرار رمز یکی نیست','error'); return; }
+            if(p1.length<4){ showToast('رمز حداقل ۴ کاراکتر','error'); return; }
+            try { adm.password = await window.sha256hex('gamenet::'+p1); }
+            catch(e){ showToast('خطا در ذخیره رمز','error'); return; }
+        }
+        adm.username=nu;
+        try{ localStorage.setItem('alvand_operators', JSON.stringify(operators)); }catch(e){ showToast('خطا در ذخیره','error'); return; }
+        if(currentOperator && currentOperator.id===adm.id){
+            try{ localStorage.setItem('alvand_currentOperator', JSON.stringify(currentOperator)); }catch(e){}
+            updateOperatorBar();
+        }
+        if(p1El) p1El.value='';
+        if(p2El) p2El.value='';
+        try{ renderOperators(); }catch(e){}
+        syncAdminCredCard();
+        showToast('مشخصات مدیر ذخیره شد ✅','success');
     }
     function renderOperators(){
         let list=document.getElementById('operatorsList');
@@ -879,31 +926,39 @@
     
     // ========== PHASE 3: Themes, Lights, Station Hours, Yearly Charts ==========
     const themes = [
-        {id:'club', name:'کلوپ', bg:'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)'},
-        {id:'ocean', name:'اقیانوس', bg:'linear-gradient(135deg, #001f3f 0%, #003366 50%, #00509d 100%)'},
-        {id:'forest', name:'جنگل', bg:'linear-gradient(135deg, #0d1b0d 0%, #1a3a1a 50%, #2d5a2d 100%)'},
-        {id:'sunset', name:'غروب', bg:'linear-gradient(135deg, #4a0e0e 0%, #8b2500 50%, #ff6b35 100%)'},
-        {id:'neon', name:'نئون', bg:'linear-gradient(135deg, #0f0c29 0%, #ff00cc 50%, #333399 100%)'},
-        {id:'gold', name:'طلایی', bg:'linear-gradient(135deg, #1a1a0d 0%, #3d3d0d 50%, #b8860b 100%)'},
-        {id:'cyber', name:'سایبر', bg:'linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #0f3460 100%)'},
-        {id:'candy', name:'آبنباتی', bg:'linear-gradient(135deg, #ff6b9d 0%, #c44dff 50%, #6a82fb 100%)'},
-        {id:'arctic', name:'قطبی', bg:'linear-gradient(135deg, #e0f7fa 0%, #80deea 50%, #00838f 100%)'},
-        {id:'volcano', name:'آتشفشان', bg:'linear-gradient(135deg, #1a0000 0%, #4a0000 50%, #8b0000 100%)'},
-        {id:'midnight', name:'نیمه‌شب', bg:'linear-gradient(135deg, #000000 0%, #0f0f0f 50%, #1a1a1a 100%)'},
-        {id:'emerald', name:'زمرد', bg:'linear-gradient(135deg, #004d40 0%, #00796b 50%, #00bfa5 100%)'},
-        {id:'royal', name:'سلطنتی', bg:'linear-gradient(135deg, #1a0033 0%, #4a148c 50%, #7c4dff 100%)'},
-        {id:'fire', name:'آتش', bg:'linear-gradient(135deg, #ff3d00 0%, #ff6d00 50%, #ff9e00 100%)'},
-        {id:'ice', name:'یخی', bg:'linear-gradient(135deg, #0d47a1 0%, #1976d2 50%, #64b5f6 100%)'},
-        {id:'matrix', name:'ماتریکس', bg:'linear-gradient(135deg, #001100 0%, #003300 50%, #00ff00 100%)'},
-        {id:'luxury', name:'لوکس', bg:'linear-gradient(135deg, #212121 0%, #424242 50%, #bdbdbd 100%)'},
-        {id:'retro', name:'رترو', bg:'linear-gradient(135deg, #3e2723 0%, #5d4037 50%, #8d6e63 100%)'},
-        {id:'galaxy', name:'کهکشان', bg:'linear-gradient(135deg, #0b0c2a 0%, #1a1a40 50%, #4a148c 100%)'},
-        {id:'desert', name:'کویر', bg:'linear-gradient(135deg, #3e2723 0%, #bf360c 50%, #ffab40 100%)'}
+        {id:'club', name:'کلوپ', bg:'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)', accent:'#d4f542'},
+        {id:'ocean', name:'اقیانوس', bg:'linear-gradient(135deg, #001f3f 0%, #003366 50%, #00509d 100%)', accent:'#ffb020'},
+        {id:'forest', name:'جنگل', bg:'linear-gradient(135deg, #0d1b0d 0%, #1a3a1a 50%, #2d5a2d 100%)', accent:'#ffcf40'},
+        {id:'sunset', name:'غروب', bg:'linear-gradient(135deg, #4a0e0e 0%, #8b2500 50%, #ff6b35 100%)', accent:'#35c8ff'},
+        {id:'neon', name:'نئون', bg:'linear-gradient(135deg, #0f0c29 0%, #ff00cc 50%, #333399 100%)', accent:'#00ffa3'},
+        {id:'gold', name:'طلایی', bg:'linear-gradient(135deg, #1a1a0d 0%, #3d3d0d 50%, #b8860b 100%)', accent:'#4fa8ff'},
+        {id:'cyber', name:'سایبر', bg:'linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #0f3460 100%)', accent:'#ff9e2c'},
+        {id:'candy', name:'آبنباتی', bg:'linear-gradient(135deg, #ff6b9d 0%, #c44dff 50%, #6a82fb 100%)', accent:'#00c98a'},
+        {id:'arctic', name:'قطبی', bg:'linear-gradient(135deg, #e0f7fa 0%, #80deea 50%, #00838f 100%)', accent:'#e85d1f'},
+        {id:'volcano', name:'آتشفشان', bg:'linear-gradient(135deg, #1a0000 0%, #4a0000 50%, #8b0000 100%)', accent:'#ffd23f'},
+        {id:'midnight', name:'نیمه‌شب', bg:'linear-gradient(135deg, #000000 0%, #0f0f0f 50%, #1a1a1a 100%)', accent:'#22d3ee'},
+        {id:'emerald', name:'زمرد', bg:'linear-gradient(135deg, #004d40 0%, #00796b 50%, #00bfa5 100%)', accent:'#ff5d5d'},
+        {id:'royal', name:'سلطنتی', bg:'linear-gradient(135deg, #1a0033 0%, #4a148c 50%, #7c4dff 100%)', accent:'#d8ff3e'},
+        {id:'fire', name:'آتش', bg:'linear-gradient(135deg, #ff3d00 0%, #ff6d00 50%, #ff9e00 100%)', accent:'#2ea8ff'},
+        {id:'ice', name:'یخی', bg:'linear-gradient(135deg, #0d47a1 0%, #1976d2 50%, #64b5f6 100%)', accent:'#ff6b4a'},
+        {id:'matrix', name:'ماتریکس', bg:'linear-gradient(135deg, #001100 0%, #003300 50%, #00ff00 100%)', accent:'#ff4fd8'},
+        {id:'luxury', name:'لوکس', bg:'linear-gradient(135deg, #212121 0%, #424242 50%, #bdbdbd 100%)', accent:'#7c3aed'},
+        {id:'retro', name:'رترو', bg:'linear-gradient(135deg, #3e2723 0%, #5d4037 50%, #8d6e63 100%)', accent:'#41c8ff'},
+        {id:'galaxy', name:'کهکشان', bg:'linear-gradient(135deg, #0b0c2a 0%, #1a1a40 50%, #4a148c 100%)', accent:'#c6ff4d'},
+        {id:'desert', name:'کویر', bg:'linear-gradient(135deg, #3e2723 0%, #bf360c 50%, #ffab40 100%)', accent:'#3fa9ff'}
     ];
+    function getThemeAccent(id){
+        try{
+            const t=themes.find(x=>x.id===(id||currentTheme));
+            if(t && t.accent) return t.accent;
+        }catch(e){}
+        return '#d4f542';
+    }
     function applyTheme(id){
         currentTheme=id;
         document.body.className = document.body.className.replace(/theme-\w+/g,'').trim();
         document.body.classList.add('theme-'+id);
+        try{ document.documentElement.style.setProperty('--active-accent', getThemeAccent(id)); }catch(e){}
         localStorage.setItem('alvand_theme', id);
         renderThemeGrid();
     }
@@ -1189,11 +1244,15 @@
         try { if(window.gamenet && window.gamenet.device){ const r=await window.gamenet.device.fingerprint(); if(r&&r.ok) fp=r.fp; } } catch(_e){}
         if(!fp){ try{ fp='local-'+getDeviceId(); }catch(_e){ fp='local-unknown'; } }
         // capacity: distinct known devices (server + local) vs maxDev
+        // (wrapped: ANY unexpected error here must surface in red, never die silent)
+        let ip='unknown';
+        try {
         let serverDevs=[];
         try { const s=await fbLoadActivations(p.id); if(s&&Array.isArray(s.devices)) serverDevs=s.devices; } catch(_e){}
         const devKey=(d)=>String((d&&(d.fp||d.id))||'');
         const known=new Set();
         serverDevs.forEach(d=>{ if(devKey(d)) known.add(devKey(d)); });
+        if(!Array.isArray(allLicenses)) allLicenses=[];
         let rec=allLicenses.find(l=>l.keyId===p.id);
         const localDevs=(rec&&Array.isArray(rec.devices))?rec.devices:[];
         localDevs.forEach(d=>{ if(devKey(d)) known.add(devKey(d)); });
@@ -1202,7 +1261,6 @@
         if(!already && known.size>p.maxDev){ licCapacityError(); return; }
         // revoked on server?
         try { const meta=await fbLoadLicenseMeta(p.id); if(meta&&meta.revoked){ if(err){ err.textContent='این لایسنس توسط فروشنده باطل شده.'; err.style.display='block'; } return; } } catch(_e){}
-        let ip='unknown';
         try{ ip=await getIP(); }catch(_e){}
         activeLicense={token, id:p.id, customer:p.customer, phone:p.phone, capacity:p.cap, months:p.months, exp:p.exp, maxDev:p.maxDev, fp, activatedAt:new Date().toISOString()};
         try{ localStorage.setItem('alvand_license', JSON.stringify(activeLicense)); }catch(_e){}
@@ -1211,6 +1269,11 @@
         if(rec){ rec.devices=merged.slice(-100); rec.customer=p.customer; rec.phone=p.phone; }
         else { allLicenses.push({key:token, keyId:p.id, capacity:p.cap, months:p.months, exp:p.exp, maxDev:p.maxDev, price:licPrice(p.cap), customer:p.customer, phone:p.phone, createdAt:new Date().toISOString(), devices:merged.slice(-100)}); }
         try{ localStorage.setItem('alvand_allLicenses', JSON.stringify(allLicenses)); }catch(_e){}
+        } catch(e) {
+            console.warn('activate failed', e);
+            if(err){ err.textContent='خطای غیرمنتظره در فعال‌سازی. متن خطا را برای پشتیبانی بفرست: '+String((e&&e.message)||e); err.style.display='block'; }
+            return;
+        }
         try{ await fbPingActivation(p.id, fp); }catch(_e){}
         try{ window.__licState={status:'valid', token, payload:p, fp}; }catch(_e){}
         hideLicenseGate();
@@ -1917,7 +1980,7 @@
         if (section === 'tariffSchedule') { renderTariffSchedules(); updateActiveTariffDisplay(); }
         if (section === 'backup') { updateBackupDisplay(); }
         if (section === 'license') { renderLicenseSection(); }
-        if (section === 'settings') { try{renderThemeGrid();}catch(e){} try{loadAlarmSettings();}catch(e){} try{updateUpdateUI();}catch(e){} }
+        if (section === 'settings') { try{renderThemeGrid();}catch(e){} try{loadAlarmSettings();}catch(e){} try{updateUpdateUI();}catch(e){} try{syncAdminCredCard();}catch(e){} }
         if (section === 'reports') {}
     }
 
@@ -1961,7 +2024,7 @@
             }
 
             return `
-                <div class="glass client-card ${isReserved?'reserved-card':''} ${timerEnabled && remainingSec<=300 && c.status==='online' ? 'shake':''}" style="padding: 24px; position: relative; overflow: hidden;">
+                <div class="glass client-card ${isReserved?'reserved-card':''} ${c.status==='online'?'client-card-active':''} ${timerEnabled && remainingSec<=300 && c.status==='online' ? 'shake':''}" style="padding: 24px; position: relative; overflow: hidden;">
                     <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: ${c.status === 'online' ? '#22c55e' : c.status === 'paused' ? '#f59e0b' : '#ef4444'};"></div>
                     ${isReserved? `<div style="position:absolute; top:10px; left:12px;" class="reservation-badge">🔒 رزرو: ${escapeHtml(reserved.customerName)} - ${reserved.startTime} (${reserved.duration}د)</div>`:''}
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px; margin-top:${isReserved?'22px':'0'};">
@@ -1972,7 +2035,7 @@
                             ${(()=>{ let st=getStationType(c.stationType); return st? `<span class="tariff-badge" style="margin-right:6px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">${st.icon} ${escapeHtml(st.name)}</span>` : ''; })()}
                             ${timerEnabled? `<span class="tariff-badge" style="margin-right:6px; background:rgba(239,68,68,0.18); color:#fca5a5; border:1px solid rgba(239,68,68,0.3);">⏱️ ${c.timerDuration}د</span>`:''}
                         </div>
-                        <span class="status-dot ${statusClass}" title="${c.status}"></span>
+                        <span style="display:flex; align-items:center; gap:8px;">${c.status==='online'?'<span class="active-pill">● فعال</span>':''}<span class="status-dot ${statusClass}" title="${c.status}"></span></span>
                     </div>
 
                     <div style="text-align: center; margin: 16px 0;">
@@ -3151,7 +3214,7 @@
                 remaining=`<p style="color:${rem<=300?'#fca5a5':'#fbbf24'}; font-size:0.8rem;">⏳ باقی‌مانده: ${formatTime(rem)}</p>`;
             }
             return `
-            <div class="glass" style="padding: 20px; display: flex; align-items: center; justify-content: space-between;">
+            <div class="glass active-row" style="padding: 20px; display: flex; align-items: center; justify-content: space-between;">
                 <div>
                     <h4 style="font-weight: 700; margin-bottom: 4px;">${escapeHtml(c.name)}</h4>
                     <span class="tariff-badge ${c.tariff === 'single' ? 'tariff-single' : 'tariff-double'}">${c.tariff === 'single' ? 'تک نفره' : 'دو نفره'}</span>
