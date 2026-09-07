@@ -931,7 +931,7 @@
         {id:'forest', name:'جنگل', bg:'linear-gradient(135deg, #0d1b0d 0%, #1a3a1a 50%, #2d5a2d 100%)', accent:'#ffcf40'},
         {id:'sunset', name:'غروب', bg:'linear-gradient(135deg, #4a0e0e 0%, #8b2500 50%, #ff6b35 100%)', accent:'#35c8ff'},
         {id:'neon', name:'نئون', bg:'linear-gradient(135deg, #0f0c29 0%, #ff00cc 50%, #333399 100%)', accent:'#00ffa3'},
-        {id:'gold', name:'طلایی', bg:'linear-gradient(135deg, #1a1a0d 0%, #3d3d0d 50%, #b8860b 100%)', accent:'#4fa8ff'},
+        {id:'gold', name:'طلایی', bg:'linear-gradient(135deg, #3a2a00 0%, #b8860b 45%, #ffd700 70%, #ffec9e 100%)', accent:'#4fa8ff'},
         {id:'cyber', name:'سایبر', bg:'linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #0f3460 100%)', accent:'#ff9e2c'},
         {id:'candy', name:'آبنباتی', bg:'linear-gradient(135deg, #ff6b9d 0%, #c44dff 50%, #6a82fb 100%)', accent:'#00c98a'},
         {id:'arctic', name:'قطبی', bg:'linear-gradient(135deg, #e0f7fa 0%, #80deea 50%, #00838f 100%)', accent:'#e85d1f'},
@@ -945,7 +945,8 @@
         {id:'luxury', name:'لوکس', bg:'linear-gradient(135deg, #212121 0%, #424242 50%, #bdbdbd 100%)', accent:'#7c3aed'},
         {id:'retro', name:'رترو', bg:'linear-gradient(135deg, #3e2723 0%, #5d4037 50%, #8d6e63 100%)', accent:'#41c8ff'},
         {id:'galaxy', name:'کهکشان', bg:'linear-gradient(135deg, #0b0c2a 0%, #1a1a40 50%, #4a148c 100%)', accent:'#c6ff4d'},
-        {id:'desert', name:'کویر', bg:'linear-gradient(135deg, #3e2723 0%, #bf360c 50%, #ffab40 100%)', accent:'#3fa9ff'}
+        {id:'desert', name:'کویر', bg:'linear-gradient(135deg, #3e2723 0%, #bf360c 50%, #ffab40 100%)', accent:'#3fa9ff'},
+        {id:'roshan', name:'روشن', bg:'linear-gradient(135deg, #fffdf5 0%, #f9edd2 45%, #ecd9ac 100%)', accent:'#4f46e5'}
     ];
     function getThemeAccent(id){
         try{
@@ -961,6 +962,46 @@
         try{ document.documentElement.style.setProperty('--active-accent', getThemeAccent(id)); }catch(e){}
         localStorage.setItem('alvand_theme', id);
         renderThemeGrid();
+    }
+    function loadLiteMode(){ try{ if(localStorage.getItem('alvand_lite')==='1') document.body.classList.add('lite'); }catch(e){} }
+    function setLiteMode(v){ try{ localStorage.setItem('alvand_lite', v?'1':'0'); }catch(e){} try{ document.body.classList.toggle('lite', !!v); }catch(e){} try{ syncLiteUI(); }catch(e){} }
+    function syncLiteUI(){ try{ const t=document.getElementById('liteModeToggle'); if(t) t.checked = localStorage.getItem('alvand_lite')==='1'; }catch(e){} }
+    function getDbSizeText(){
+        try{
+            let bytes=0;
+            for(let i=0;i<localStorage.length;i++){
+                const k=localStorage.key(i);
+                if(k && k.indexOf('alvand_')===0) bytes+=((localStorage.getItem(k))||'').length;
+            }
+            if(bytes>=1048576) return (bytes/1048576).toFixed(2)+' مگابایت';
+            return Math.max(1,Math.round(bytes/1024))+' کیلوبایت';
+        }catch(e){ return '-'; }
+    }
+    function updateDbSizeText(){ try{ const el=document.getElementById('dbSizeText'); if(el) el.textContent=getDbSizeText(); }catch(e){} }
+    function pruneOldSessions(){
+        const daysEl=document.getElementById('pruneDays');
+        const days=Math.max(30, (typeof parseFaNumber==='function')? parseFaNumber(daysEl&&daysEl.value,365) : (parseInt(daysEl&&daysEl.value)||365));
+        const cutoff=Date.now()-days*86400000;
+        const isOld=(d)=>{ const t=new Date(d).getTime(); return !isNaN(t) && t<cutoff; };
+        const oldS=sessions.filter(s=>isOld(s.date));
+        const oldSales=sales.filter(s=>isOld(s.date));
+        let pays=[]; try{ pays=safeParse(localStorage.getItem('alvand_payments')||'[]')||[]; }catch(e){ pays=[]; }
+        const oldP=pays.filter(p=>isOld(p.date));
+        if(!oldS.length && !oldSales.length && !oldP.length){ showToast('چیز قدیمی برای حذف نیست','success'); return; }
+        if(!confirm(`🧹 ${oldS.length} سشن + ${oldSales.length} فروش بوفه + ${oldP.length} پرداخت قدیمی‌تر از ${days} روز حذف شود؟\nاول بکاپ خودکار گرفته می‌شود.`)) return;
+        try{
+            try{ createBackup(); }catch(e){}
+            sessions=sessions.filter(s=>!isOld(s.date));
+            sales=sales.filter(s=>!isOld(s.date));
+            pays=pays.filter(p=>!isOld(p.date));
+            try{ localStorage.setItem('alvand_payments', JSON.stringify(pays)); }catch(e){}
+            saveData();
+            try{ updateIncome(); }catch(e){}
+            try{ updateStats(); }catch(e){}
+            try{ renderWeeklyChart(); }catch(e){}
+            updateDbSizeText(); updateBackupDisplay();
+            showToast('پاکسازی شد (بکاپ قبلی ذخیره است)','success');
+        }catch(e){ showToast('خطا در پاکسازی','error'); }
     }
     function renderThemeGrid(){
         let grid=document.getElementById('themeGrid');
@@ -1168,6 +1209,9 @@
         }
     }
     async function initLicenseGate(){
+        // Belt & suspenders: the gate is already visible by default in HTML;
+        // keep it up until (and unless) a valid signed license is proven.
+        try{ showLicenseGate(); }catch(_e){}
         let devEl=document.getElementById('licDeviceId'); if(devEl) devEl.textContent=getDeviceId();
         // check existing SIGNED license: verify RSA signature + expiry + hardware bind
         try {
@@ -1754,14 +1798,14 @@
     }
     function saveStationTypePrice(id, val){
         let t=stationTypes.find(x=>x.id===id); if(!t) return;
-        t.price=parseInt(val)||0;
+        t.price=(typeof parseFaNumber==='function')? parseFaNumber(val,0) : (parseInt(val)||0);
         localStorage.setItem('alvand_stationTypes', JSON.stringify(stationTypes));
         renderClients(); updateStats();
         showToast('تعرفه '+t.name+' ذخیره شد','success');
     }
     function addStationType(){
         let name=document.getElementById('newTypeName').value.trim();
-        let price=parseInt(document.getElementById('newTypePrice').value)||0;
+        let price=(typeof parseFaNumber==='function')? parseFaNumber(document.getElementById('newTypePrice').value,0) : (parseInt(document.getElementById('newTypePrice').value)||0);
         if(!name){ showToast('نام نوع را وارد کن','error'); return; }
         stationTypes.push({id:'t'+Date.now(), name, icon:'🎮', price});
         localStorage.setItem('alvand_stationTypes', JSON.stringify(stationTypes));
@@ -1770,20 +1814,44 @@
         renderStationTypes();
         showToast('نوع جدید اضافه شد','success');
     }
+    let __confirmCb=null;
+    function askConfirm(msg, cb){
+        try{
+            document.getElementById('confirmText').textContent=msg||'مطمئنی؟';
+            __confirmCb=(typeof cb==='function')?cb:null;
+            document.getElementById('confirmModal').classList.add('show');
+        }catch(e){ if(cb){ try{cb();}catch(_){} } }
+    }
+    function resolveConfirm(ok){
+        try{ document.getElementById('confirmModal').classList.remove('show'); }catch(e){}
+        const cb=__confirmCb; __confirmCb=null;
+        if(ok && cb){ try{cb();}catch(e){ showToast('خطا در انجام عملیات','error'); } }
+    }
     function deleteStationType(id){
         let used=clients.filter(c=>c.stationType===id).length;
         if(used>0){ showToast('این نوع '+used+' دستگاه دارد، اول نوع آنها را عوض کن','error'); return; }
-        if(!confirm('حذف شود؟')) return;
-        stationTypes=stationTypes.filter(t=>t.id!==id);
-        localStorage.setItem('alvand_stationTypes', JSON.stringify(stationTypes));
-        renderStationTypes();
-        showToast('حذف شد','success');
+        askConfirm('حذف شود؟', function(){
+            stationTypes=stationTypes.filter(t=>t.id!==id);
+            localStorage.setItem('alvand_stationTypes', JSON.stringify(stationTypes));
+            renderStationTypes();
+            showToast('حذف شد','success');
+        });
     }
     function changeClientType(idx, val){
         clients[idx].stationType = val||null;
         saveData();
         renderClients();
         showToast('نوع دستگاه تغییر کرد','success');
+    }
+    function changeClientExtra(idx, delta){
+        const c=clients[idx]; if(!c) return;
+        const ne=Math.max(0,(c.extra||0)+delta);
+        if(ne===(c.extra||0)) return;
+        c.extra=ne;
+        saveData();
+        renderClients();
+        updateStats();
+        showToast(ne>0? `نفر اضافه: ${ne} نفر — از این لحظه حساب می‌شود` : 'نفر اضافه صفر شد','success');
     }
     function fillClientTypeSelect(){
         let sel=document.getElementById('newClientType');
@@ -1872,50 +1940,57 @@
 
     // Initialize
     function init() {
+        // Fail-closed: lock FIRST, render later. Gates are also visible by
+        // default in HTML, so even a slow/failed boot never exposes the app.
+        try{ checkLogin(); }catch(e){}
+        try{ initLicenseGate(); }catch(e){ try{ showLicenseGate(); }catch(_){} }
         createParticles();
         updateDateTime();
         setInterval(updateDateTime, 1000);
         setInterval(updateTimers, 1000);
         requestNotificationPermission();
-        renderClients();
+        // Fast path: only what the first paint (dashboard + gates) needs.
         updateStats();
         renderWeeklyChart();
-        updateIncome(); try{renderTypeBreakdown();}catch(e){}
         loadTariffs();
-        renderReservations();
-        renderCustomers();
-        updateReservationBadge();
-        renderServices();
-        renderExpenses();
-        renderTariffSchedules();
-        updateBuffetStats();
-        updateExpenseStats();
-        updateCashCardStats();
         loadRoundingMode();
-        checkAutoBackup();
-        setInterval(checkAutoBackup, 60000);
-        updateActiveTariffDisplay();
-        setInterval(updateActiveTariffDisplay, 60000);
-        checkLogin();
-        renderCustomersEnhanced();
-        checkBirthdays();
-        setInterval(checkBirthdays, 3600000);
+        try{ loadLiteMode(); }catch(e){}
         applyTheme(currentTheme);
-        renderThemeGrid();
-        loadAlarmSettings();
-        renderStationHours();
+        updateReservationBadge();
+        setInterval(checkAutoBackup, 60000);
+        setInterval(updateActiveTariffDisplay, 60000);
+        setInterval(checkBirthdays, 3600000);
         setInterval(renderStationHours, 30000);
-        initLicenseGate();
         setTimeout(()=>{ try{ checkForUpdate(false); }catch(e){} }, 8000);
         setInterval(()=>{ try{ checkForUpdate(false); }catch(e){} }, 6*3600*1000);
         try{ applyAppLang(); }catch(e){}
         setTimeout(updateFirebaseStatus, 1500);
         // migrate reservations clientName
+        try{
         reservations.forEach(r=>{ if(!r.clientName){ let cl=clients.find(c=>c.id===r.clientId); if(cl) r.clientName=cl.name; }});
         saveReservations();
+        }catch(e){}
         // setup date default
         let d=document.getElementById('resDate'); if(d && !d.value) d.valueAsDate=new Date();
         let t=document.getElementById('resStartTime'); if(t && !t.value) t.value = new Date().toTimeString().slice(0,5);
+        updateActiveTariffDisplay();
+        // Deferred: heavy renders for hidden sections run after first paint,
+        // one at a time. Opening any section also renders it (see showSection).
+        setTimeout(function(){
+            const jobs=[
+                renderClients, renderReservations, renderCustomers, renderServices,
+                updateBuffetStats, renderExpenses, updateExpenseStats, updateCashCardStats,
+                renderTariffSchedules, updateIncome, renderTypeBreakdown, renderStationHours,
+                renderThemeGrid, loadAlarmSettings, updateUpdateUI, checkBirthdays,
+                renderCustomersEnhanced, updateBackupDisplay, checkAutoBackup, syncLiteUI,
+                updateDbSizeText
+            ];
+            (function next(i){
+                if(i>=jobs.length) return;
+                try{ jobs[i](); }catch(e){}
+                setTimeout(function(){ next(i+1); }, 30);
+            })(0);
+        }, 120);
     }
 
     function requestNotificationPermission(){
@@ -1971,7 +2046,8 @@
 
         if (section === 'dashboard') { updateStats(); renderActiveClients(); renderWeeklyChart(); }
         if (section === 'clients') renderClients();
-        if (section === 'tariffs') { try{renderStationTypes();}catch(e){} }
+        if (section === 'tariffs') { try{loadTariffs();}catch(e){} try{renderStationTypes();}catch(e){} }
+        if (section === 'stationHours') { try{renderStationHours();}catch(e){} }
         if (section === 'income') updateIncome(); try{renderTypeBreakdown();}catch(e){}
         if (section === 'reservations') renderReservations();
         if (section === 'customers') renderCustomers();
@@ -1980,7 +2056,7 @@
         if (section === 'tariffSchedule') { renderTariffSchedules(); updateActiveTariffDisplay(); }
         if (section === 'backup') { updateBackupDisplay(); }
         if (section === 'license') { renderLicenseSection(); }
-        if (section === 'settings') { try{renderThemeGrid();}catch(e){} try{loadAlarmSettings();}catch(e){} try{updateUpdateUI();}catch(e){} try{syncAdminCredCard();}catch(e){} }
+        if (section === 'settings') { try{renderThemeGrid();}catch(e){} try{loadAlarmSettings();}catch(e){} try{updateUpdateUI();}catch(e){} try{syncAdminCredCard();}catch(e){} try{syncLiteUI();}catch(e){} }
         if (section === 'reports') {}
     }
 
@@ -2032,6 +2108,11 @@
                             <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 4px;">${escapeHtml(c.name)}</h3>
                             <span class="tariff-badge ${tariffClass}">${tariffLabel}</span>
                             ${c.extra > 0 ? `<span class="tariff-badge tariff-extra" style="margin-right: 6px;">+${c.extra} نفر</span>` : ''}
+                            <span style="display:inline-flex; align-items:center; gap:4px; margin-right:6px; vertical-align:middle;" title="نفر اضافه — از لحظه تغییر حساب می‌شود">
+                                <button class="glass-btn" style="padding:2px 9px; font-size:0.8rem; font-weight:900;" title="کم کردن نفر اضافه" onclick="changeClientExtra(${i},-1)">−</button>
+                                <span class="tariff-badge tariff-extra">+${c.extra||0} نفر</span>
+                                <button class="glass-btn" style="padding:2px 9px; font-size:0.8rem; font-weight:900;" title="اضافه کردن نفر (از این لحظه حساب می‌شود)" onclick="changeClientExtra(${i},1)">+</button>
+                            </span>
                             ${(()=>{ let st=getStationType(c.stationType); return st? `<span class="tariff-badge" style="margin-right:6px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">${st.icon} ${escapeHtml(st.name)}</span>` : ''; })()}
                             ${timerEnabled? `<span class="tariff-badge" style="margin-right:6px; background:rgba(239,68,68,0.18); color:#fca5a5; border:1px solid rgba(239,68,68,0.3);">⏱️ ${c.timerDuration}د</span>`:''}
                         </div>
@@ -2109,8 +2190,9 @@
     function addClient() {
         const name = document.getElementById('newClientName').value.trim();
         const ip = (document.getElementById('newClientIP') && document.getElementById('newClientIP').value.trim()) || '';
-        const tariff = document.getElementById('newClientTariff').value;
-        const extra = parseInt(document.getElementById('newClientExtra').value) || 0;
+        const tariffEl = document.getElementById('newClientTariff');
+        const tariff = (tariffEl && tariffEl.value) || 'single';
+        const extra = (typeof parseFaNumber==='function')? parseFaNumber(document.getElementById('newClientExtra').value,0) : (parseInt(document.getElementById('newClientExtra').value) || 0);
         const timerMin = parseInt(document.getElementById('newClientTimer')?.value) || 0;
 
         if (!name) { showToast('لطفاً نام کلاینت را وارد کنید','error'); return; }
@@ -2124,6 +2206,7 @@
             ip: (document.getElementById('newClientIP') && document.getElementById('newClientIP').value.trim()) || '',
             status: 'offline',
             elapsed: 0,
+            extraSeconds: 0,
             startTime: null,
             totalCost: 0,
             createdAt: new Date().toISOString(),
@@ -2332,6 +2415,7 @@
             buffetCost: pendingPayment.buffetCost,
             tariff: pendingPayment.tariff,
             extra: pendingPayment.extra,
+            extraSeconds: c.extraSeconds||0,
             stationType: pendingPayment.stationType||null,
             stationTypeName: (function(){ let st=getStationType(pendingPayment.stationType); return st? st.icon+' '+st.name : ''; })(),
             date: new Date().toISOString(),
@@ -2361,6 +2445,8 @@
         c.status = 'offline';
         c.startTime = null;
         c.elapsed=0;
+        c.extraSeconds=0;
+        c._lastElapsed=null;
         c.notified=false;
         c.totalCost = (c.totalCost || 0) + total;
         // clear client services
@@ -2385,6 +2471,8 @@
         if (currentTimeClient === null) return;
         const c = clients[currentTimeClient];
         c.elapsed = 0;
+        c.extraSeconds=0;
+        c._lastElapsed=null;
         c.startTime = null;
         c.status = 'offline';
         c.notified=false;
@@ -2419,6 +2507,16 @@
         clients.forEach((c, idx) => {
             if (c.status === 'online' && c.startTime) {
                 c.elapsed = Math.floor((now - c.startTime) / 1000);
+                // pro-rata extra billing: accumulate extra-person-seconds as time passes,
+                // so extras added mid-game are charged only from the moment they join
+                if (c._lastElapsed == null) {
+                    c._lastElapsed = c.elapsed;
+                    if (!(c.extraSeconds > 0) && (c.extra || 0) > 0) c.extraSeconds = (c.extra || 0) * (c.elapsed || 0);
+                } else {
+                    const dSec = c.elapsed - c._lastElapsed;
+                    if (dSec > 0 && (c.extra || 0) > 0) c.extraSeconds = (c.extraSeconds || 0) + (c.extra || 0) * dSec;
+                    if (dSec !== 0) c._lastElapsed = c.elapsed;
+                }
                 changed = true;
                 // check timer end
                 if(c.timerDuration && c.timerDuration>0 && !c.notified){
@@ -3108,7 +3206,7 @@
     }
 
     function updateTariff(type, value) {
-        tariffs[type] = parseInt(value) || 0;
+        tariffs[type] = (typeof parseFaNumber==='function')? parseFaNumber(value,0) : (parseInt(value) || 0);
         localStorage.setItem('alvand_tariffs', JSON.stringify(tariffs));
         showToast('تعرفه بروز شد','success');
     }
@@ -3149,8 +3247,10 @@
     function calculateCost(client) {
         const hours = (client.elapsed || 0) / 3600;
         let rate = getTariffForClient(client);
-        rate += (client.extra || 0) * getExtraRate();
         let cost = Math.round(hours * rate);
+        // extras are billed pro-rata from the moment each one joined (see updateTimers)
+        const xs = client.extraSeconds || 0;
+        if (xs > 0) cost += Math.round((xs / 3600) * getExtraRate());
         return applyRounding(cost);
     }
     function calculateDurationFromAmountRaw(amount, tariffType='single', extra=0, stationType=null){
@@ -3342,7 +3442,7 @@
         sessions.forEach(s => {
             if (s.tariff === 'single') byTariff.single += s.cost;
             else byTariff.double += s.cost;
-            byTariff.extra += (s.extra || 0) * tariffs.extra * (s.duration / 3600);
+            byTariff.extra += (s.extraSeconds != null ? (s.extraSeconds / 3600) : (s.extra || 0) * (s.duration / 3600)) * tariffs.extra;
         });
 
         let br=document.getElementById('incomeBreakdown');

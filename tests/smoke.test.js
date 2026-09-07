@@ -90,6 +90,18 @@ try {
 try {
   const h = read('index.html');
   ok(h.includes('Content-Security-Policy'), 'index.html has CSP meta');
+  // Fail-closed boot: gates visible on first paint, gating runs before any render.
+  ok(/id="licenseOverlay"[^>]*\bshow\b/.test(h), 'license gate visible by default');
+  ok(!/id="loginOverlay"[^>]*display\s*:\s*none/.test(h), 'login gate visible by default');
+  const initBody = (function () {
+    const src = read('src/js/app.js');
+    const i = src.indexOf('function init() {');
+    return i >= 0 ? src.slice(i, i + 2600) : '';
+  })();
+  // gates first, heavy renders deferred (lazy boot) — both orders are fail-closed
+  ok(initBody.indexOf('checkLogin();') !== -1 && initBody.indexOf('checkLogin();') < initBody.indexOf('updateStats();'), 'init locks (login) before rendering');
+  ok(initBody.indexOf('initLicenseGate();') !== -1 && initBody.indexOf('initLicenseGate();') < initBody.indexOf('updateStats();'), 'init locks (license) before rendering');
+  ok(initBody.includes('renderClients, renderReservations'), 'heavy renders deferred past first paint');
   // NOTE: script-src MUST keep 'unsafe-inline': the app uses ~160 inline onclick
   // handlers; without it every button silently dies (no error in UI, only console).
   // XSS is still covered by escapeHtml on all user content (see app.js checks).
@@ -110,6 +122,8 @@ try {
 // 6. app.js patches applied
 try {
   const a = read('src/js/app.js');
+  const s = read('src/js/security.js');
+  ok(s.includes('hardenNativeDialogs') && s.includes('__focusSafe'), 'native dialogs focus-safe (typing survives confirm/prompt)');
   ok(a.includes('safeParse('), 'app.js uses safeParse (corrupt-JSON safe)');
   ok(a.includes('escapeHtml('), 'app.js uses escapeHtml (XSS)');
   ok(!a.includes('رمز: ${op.password}'), 'app.js no longer renders operator passwords');
@@ -143,10 +157,46 @@ try {
   ok(a3.includes('function changeAdminCredentials') && a3.includes('function syncAdminCredCard') && a3.includes('function getAdminOp'), 'admin credential functions exist');
   ok(a3.includes('sha256hex') && a3.includes('gamenet::'), 'admin password is hashed (not plaintext)');
   const accents = (a3.match(/accent:'#[0-9a-fA-F]{6}'/g) || []).length;
-  ok(accents >= 20, 'all 20 themes have accent colors (found ' + accents + ')');
+  ok(accents >= 21, 'all 21 themes have accent colors (found ' + accents + ')');
+  ok(a3.includes("id:'roshan'"), 'light theme exists');
+  const css2 = read('src/styles/main.css');
+  ok(css2.includes('body.theme-roshan'), 'light theme styles exist');
+  ok(css2.includes('#ffd700'), 'gold theme is really gold');
   ok(a3.includes('client-card-active') && a3.includes('active-row') && a3.includes('getThemeAccent'), 'active-card accent wiring exists');
 } catch (e) {
   ok(false, 'features readable: ' + e.message);
+}
+
+// 7c. tariff simplification + pro-rata extras
+try {
+  const h3 = read('index.html');
+  ok(!h3.includes('id="newClientTariff"'), 'tariff select removed from add-client modal');
+  ok(!h3.includes('>دو نفره</h3>'), 'double tariff card removed from tariffs page');
+  ok(h3.includes('id="tariffSingle"') && h3.includes('id="tariffDouble"'), 'base prices kept (collapsed details)');
+  const a4 = read('src/js/app.js');
+  ok(a4.includes('function changeClientExtra'), 'mid-game extra stepper exists');
+  ok(a4.includes('extraSeconds'), 'pro-rata extra accounting exists');
+  ok(!/rate \+= \(client\.extra \|\| 0\) \* getExtraRate\(\)/.test(a4), 'old full-duration extra billing gone');
+} catch (e) {
+  ok(false, 'tariff features readable: ' + e.message);
+}
+
+// 7d. fast boot + lite mode + db tools
+try {
+  const h4 = read('index.html');
+  ok(h4.includes('media="print"'), 'fonts stylesheet non-blocking');
+  ok(h4.includes('liteModeToggle') && h4.includes('setLiteMode'), 'lite mode toggle exists');
+  ok(h4.includes('dbSizeText') && h4.includes('pruneOldSessions'), 'db tools UI exists');
+  const a5 = read('src/js/app.js');
+  const initSrc = a5.slice(a5.indexOf('function init() {'), a5.indexOf('function init() {') + 2600);
+  ok(initSrc.indexOf('checkLogin();') < initSrc.indexOf('renderWeeklyChart();'), 'boot still locks first');
+  ok(initSrc.includes('renderClients, renderReservations'), 'heavy renders deferred');
+  ok(!/^\s*renderClients\(\);/m.test(initSrc.split('setTimeout(function(){')[0]), 'no eager heavy render before defer');
+  ok(a5.includes('function setLiteMode') && a5.includes('function pruneOldSessions') && a5.includes('function getDbSizeText'), 'lite + prune functions exist');
+  const css3 = read('src/styles/main.css');
+  ok(css3.includes('body.lite'), 'lite mode styles exist');
+} catch (e) {
+  ok(false, 'perf features readable: ' + e.message);
 }
 
 // 8b. signed-license system

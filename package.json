@@ -14,6 +14,7 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "test": "node tests/smoke.test.js && node tests/boot.test.js && node tests/license.test.js && node --check main.js && node --check preload.js && node --check src/js/config.js && node --check src/js/security.js && node --check src/js/license-pubkey.js && node --check src/js/license.js && node --check src/js/storage.js && node --check src/js/app.js && node --check src/js/patches.js && echo OK",
+    "test:e2e": "node tests/e2e.test.js",
     "validate": "node tests/smoke.test.js && node tests/boot.test.js && node tests/license.test.js"
   },
   "build": {
@@ -62,6 +63,7 @@
   },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.0"
+    "electron-builder": "^24.13.0",
+    "jsdom": "^30.0.1"
   }
 }
