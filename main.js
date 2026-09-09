@@ -51,6 +51,11 @@ if (!gotLock) {
   app.quit();
 }
 
+// Stable taskbar identity: the installer shortcut and the running app must
+// share one AppUserModelId (same as electron-builder appId), otherwise Windows
+// shows a second/default icon once the app is pinned to the taskbar.
+try { app.setAppUserModelId('com.alvand.gamenet.manager'); } catch { /* ignore */ }
+
 let mainWindow = null;
 
 function resolveIcon() {

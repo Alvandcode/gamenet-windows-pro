@@ -3,7 +3,6 @@ name: Build Windows EXE
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -31,6 +30,11 @@ jobs:
       - name: Smoke-check JS syntax
         run: npm test
 
+      - name: Read app version
+        id: pkgver
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Build Windows Installer
         run: npm run dist:win -- --publish never
 
@@ -43,10 +47,11 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Create Release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create Release (automatic)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.pkgver.outputs.version }}-b${{ github.run_number }}
+          name: Gamenet Manager Pro v${{ steps.pkgver.outputs.version }} (build ${{ github.run_number }})
           files: |
             dist/*.exe
           generate_release_notes: true

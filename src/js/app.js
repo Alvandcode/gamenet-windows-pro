@@ -1744,32 +1744,8 @@
     }
 
     
-    // ========== Owner-only license generator ==========
-    const _op=[49,52,48,53].map(c=>String.fromCharCode(c)).join('');
-    function isOwner(){ try{ return sessionStorage.getItem('alvand_owner')==='1'; }catch(e){ return window._isOwner===true; } }
-    function askOwnerPin(){
-        if(isOwner()){ try{ renderLicenseSection(); }catch(e){} return true; }
-        let m=document.getElementById('ownerPinModal');
-        let inp=document.getElementById('ownerPinInput');
-        let err=document.getElementById('ownerPinError');
-        if(err) err.style.display='none';
-        if(inp) inp.value='';
-        if(m){ m.classList.add('show'); setTimeout(()=>{ try{ inp.focus(); }catch(e){} }, 300); }
-        return false;
-    }
-    function submitOwnerPin(){
-        let inp=document.getElementById('ownerPinInput');
-        let err=document.getElementById('ownerPinError');
-        let v=inp? String(inp.value).trim() : '';
-        if(v===_op){
-            try{ sessionStorage.setItem('alvand_owner','1'); }catch(e){ window._isOwner=true; }
-            closeModal('ownerPinModal');
-            showToast('👑 خوش آمدی سازنده - حالا دوباره دکمه ساخت را بزن','success');
-            try{ renderLicenseSection(); }catch(e){}
-        } else {
-            if(err){ err.textContent='رمز اشتباه است'; err.style.display='block'; }
-        }
-    }
+    // NOTE: license issuance lives ONLY in license-tools/ (seller side).
+    // There is intentionally no owner PIN / in-app minting in the customer app.
     function licCapacityError(){
         let err=document.getElementById('licenseError');
         let msg='⛔ این لایسنس به حد نصاب فعال‌سازی رسیده است.<br>برای خرید لایسنس جدید با سازنده تماس بگیرید.<br><a href="https://github.com/Alvandcode/gamenet-windows-pro" target="_blank" style="color:#818cf8; text-decoration:underline;">🔗 تماس با سازنده در گیت‌هاب</a>';
@@ -2106,15 +2082,16 @@
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px; margin-top:${isReserved?'22px':'0'};">
                         <div>
                             <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 4px;">${escapeHtml(c.name)}</h3>
+                            <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
                             <span class="tariff-badge ${tariffClass}">${tariffLabel}</span>
-                            ${c.extra > 0 ? `<span class="tariff-badge tariff-extra" style="margin-right: 6px;">+${c.extra} نفر</span>` : ''}
-                            <span style="display:inline-flex; align-items:center; gap:4px; margin-right:6px; vertical-align:middle;" title="نفر اضافه — از لحظه تغییر حساب می‌شود">
+                            <span style="display:inline-flex; align-items:center; gap:4px; vertical-align:middle;" title="نفر اضافه — از لحظه تغییر حساب می‌شود">
                                 <button class="glass-btn" style="padding:2px 9px; font-size:0.8rem; font-weight:900;" title="کم کردن نفر اضافه" onclick="changeClientExtra(${i},-1)">−</button>
                                 <span class="tariff-badge tariff-extra">+${c.extra||0} نفر</span>
                                 <button class="glass-btn" style="padding:2px 9px; font-size:0.8rem; font-weight:900;" title="اضافه کردن نفر (از این لحظه حساب می‌شود)" onclick="changeClientExtra(${i},1)">+</button>
                             </span>
-                            ${(()=>{ let st=getStationType(c.stationType); return st? `<span class="tariff-badge" style="margin-right:6px; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">${st.icon} ${escapeHtml(st.name)}</span>` : ''; })()}
-                            ${timerEnabled? `<span class="tariff-badge" style="margin-right:6px; background:rgba(239,68,68,0.18); color:#fca5a5; border:1px solid rgba(239,68,68,0.3);">⏱️ ${c.timerDuration}د</span>`:''}
+                            ${(()=>{ let st=getStationType(c.stationType); return st? `<span class="tariff-badge" style="background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">${st.icon} ${escapeHtml(st.name)}</span>` : ''; })()}
+                            ${timerEnabled? `<span class="tariff-badge" style="background:rgba(239,68,68,0.18); color:#fca5a5; border:1px solid rgba(239,68,68,0.3);">⏱️ ${c.timerDuration}د</span>`:''}
+                            </div>
                         </div>
                         <span style="display:flex; align-items:center; gap:8px;">${c.status==='online'?'<span class="active-pill">● فعال</span>':''}<span class="status-dot ${statusClass}" title="${c.status}"></span></span>
                     </div>

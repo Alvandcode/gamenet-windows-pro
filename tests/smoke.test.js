@@ -225,13 +225,28 @@ try {
   ok(false, 'license system files: ' + e.message);
 }
 
-// 9. workflow hygiene
+// 8c. seller GUI ships everything its main process requires (missing file = startup crash in packaged app)
+try {
+  const gpkg = JSON.parse(read('license-tools/gui/package.json'));
+  const gfiles = gpkg.build && gpkg.build.files ? gpkg.build.files : [];
+  const gmain = read('license-tools/gui/main.js');
+  const needed = Array.from(new Set(
+    (gmain.match(/require\(['"]\.\/([^'"]+)['"]\)/g) || []).map((s) => s.replace(/require\(['"]\.\//, '').replace(/['"]\)$/, ''))
+  )).map((f) => (f.endsWith('.js') ? f : f + '.js'));
+  const notListed = needed.filter((f) => !gfiles.includes(f));
+  ok(notListed.length === 0, 'gui packaged files cover local requires' + (notListed.length ? ' (missing: ' + notListed.join(', ') + ')' : ''));
+  const notOnDisk = needed.filter((f) => !fs.existsSync(path.join(ROOT, 'license-tools/gui', f)));
+  ok(notOnDisk.length === 0, 'gui local requires exist on disk');
+} catch (e) {
+  ok(false, 'gui packaging check: ' + e.message);
+}
 try {
   const w = read('.github/workflows/build-windows.yml');
   ok(w.includes('npm ci'), 'workflow uses npm ci');
   ok(w.includes("cache: 'npm'") || w.includes('cache: "npm"'), 'workflow caches npm');
   ok(!w.includes('v1.8.${{'), 'workflow no longer hardcodes v1.8 tag mismatch');
-  ok(w.includes("refs/tags/v"), 'workflow releases on tags only');
+  ok(!w.includes("startsWith(github.ref"), 'workflow releases automatically without manual tag');
+  ok(w.includes('steps.pkgver.outputs.version'), 'workflow tags release from package.json version');
 } catch (e) {
   ok(false, 'workflow readable: ' + e.message);
 }

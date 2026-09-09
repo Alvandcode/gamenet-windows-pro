@@ -32,9 +32,8 @@
       "assets/**/*"
     ],
     "win": {
-      "icon": "assets/icon.ico",
-      "signAndEditExecutable": false,
-      "target": [
+    "icon": "assets/icon.ico",
+    "target": [
         {
           "target": "nsis",
           "arch": [
