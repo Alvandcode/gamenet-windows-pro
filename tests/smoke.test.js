@@ -203,8 +203,15 @@ try {
 try {
   ok(fs.existsSync(path.join(ROOT, 'src/js/license-pubkey.js')), 'exists: src/js/license-pubkey.js');
   ok(fs.existsSync(path.join(ROOT, 'src/js/license.js')), 'exists: src/js/license.js');
-  ok(fs.existsSync(path.join(ROOT, 'license-tools/gen-license.js')), 'exists: license-tools/gen-license.js');
-  ok(fs.existsSync(path.join(ROOT, 'license-tools/gen-license.bat')), 'exists: license-tools/gen-license.bat');
+  // Seller tools must NEVER be required: customer builds (CI/GitHub) ship without
+  // license-tools/ on purpose (it holds private.key). Check them only when present.
+  if (fs.existsSync(path.join(ROOT, 'license-tools'))) {
+    ok(fs.existsSync(path.join(ROOT, 'license-tools/gen-license.js')), 'exists: license-tools/gen-license.js');
+    ok(fs.existsSync(path.join(ROOT, 'license-tools/gen-license.bat')), 'exists: license-tools/gen-license.bat');
+  } else {
+    ok(true, 'seller tools absent (customer build, expected)');
+    ok(true, 'seller .bat absent (customer build, expected)');
+  }
   ok(fs.existsSync(path.join(ROOT, 'database.rules.json')), 'exists: database.rules.json');
   const h = read('index.html');
   ok(h.includes('src/js/license.js'), 'index.html loads license.js before app.js');
@@ -227,6 +234,8 @@ try {
 
 // 8c. seller GUI ships everything its main process requires (missing file = startup crash in packaged app)
 try {
+  if (!fs.existsSync(path.join(ROOT, 'license-tools'))) { ok(true, 'gui check skipped (customer build, no seller folder)'); }
+  else {
   const gpkg = JSON.parse(read('license-tools/gui/package.json'));
   const gfiles = gpkg.build && gpkg.build.files ? gpkg.build.files : [];
   const gmain = read('license-tools/gui/main.js');
@@ -237,6 +246,7 @@ try {
   ok(notListed.length === 0, 'gui packaged files cover local requires' + (notListed.length ? ' (missing: ' + notListed.join(', ') + ')' : ''));
   const notOnDisk = needed.filter((f) => !fs.existsSync(path.join(ROOT, 'license-tools/gui', f)));
   ok(notOnDisk.length === 0, 'gui local requires exist on disk');
+  }
 } catch (e) {
   ok(false, 'gui packaging check: ' + e.message);
 }
