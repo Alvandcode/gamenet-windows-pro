@@ -97,6 +97,21 @@ try {
     vm.runInContext('currentTimeClient=999; updateTimeDisplay(); startTimer(); pauseTimer(); stopTimer(); resetTimer(); addTime(); subTime(); toggleClientTimer(999); pauseClient(999); triggerAlarm(999); extendTimerEnd(); currentTimeClient=null;', sandbox);
     console.log('  PASS guards: stale indexes never throw');
   } catch (e) { failures++; console.error('  FAIL stale-index guard: ' + e.message); }
+  // settlement resets timer/extras/buffet for the next customer
+  try {
+    vm.runInContext(`clients.push({id:101, name:'tset', tariff:'single', extra:2, extraSeconds:100, status:'online', elapsed:3600, timerDuration:60, timerDurationSec:3600, notified:true, startTime:Date.now(), _lastElapsed:3500, _warned5:true});
+      clientServiceMap[101]=[{serviceId:1, qty:2}];
+      pendingPayment={clientIdx:0, clientId:101, clientName:'tset', duration:3600, gameCost:15000, buffetCost:5000, total:20000, tariff:'single', extra:2, stationType:'pc', services:[{serviceId:1, qty:2}]};
+      confirmPayment();`, sandbox);
+    const st = vm.runInContext('({status:clients[0].status, elapsed:clients[0].elapsed, extra:clients[0].extra, dur:clients[0].timerDuration, svc:clientServiceMap[101], sess:sessions.length, pp:pendingPayment})', sandbox);
+    check(st.status === 'offline', 'settle: status offline');
+    check(st.elapsed === 0, 'settle: elapsed reset');
+    check(st.extra === 0, 'settle: extras reset');
+    check(st.dur === 0, 'settle: timer reset');
+    check(st.svc === undefined, 'settle: buffet cleared');
+    check(st.sess === 1, 'settle: session recorded');
+    check(st.pp === null, 'settle: pendingPayment cleared');
+  } catch (e) { failures++; console.error('  FAIL settlement reset: ' + e.stack.split('\n').slice(0,3).join(' | ')); }
   check(typeof sandbox.applyZoom === 'function', 'zoom: applyZoom exists');
   check(typeof sandbox.zoomBy === 'function', 'zoom: zoomBy exists');
   const z0 = vm.runInContext('applyZoom(100)', sandbox);
@@ -126,6 +141,16 @@ try {
   check(typeof sandbox.saveJoinEvent === 'function', 'event: saveJoinEvent exists');
   const noPrompt = vm.runInContext('[copyTextToClipboard,openCopyTextModal,copyFromCopyModal,shareVia,setShopInfo,saveShopInfo,joinEvent,saveJoinEvent].every(f=>!/\\bprompt\\s*\\(/.test(f.toString()))', sandbox);
   check(noPrompt === true, 'share: no prompt() in share/shop/join flows');
+  // rubika fully removed from share flow
+  const noRubikaFn = vm.runInContext('!/rubika/i.test(shareVia.toString())', sandbox);
+  check(noRubikaFn === true, 'share: rubika removed from shareVia');
+  const htmlStatic = load('index.html');
+  check(!htmlStatic.includes("shareVia('rubika')"), 'share: no rubika button in HTML');
+  check(!htmlStatic.includes('rubika://share'), 'share: no rubika intent link in HTML');
+  // native print fallback for blank PDFs
+  check(typeof sandbox.nativePrintPdf === 'function', 'pdf: nativePrintPdf exists');
+  const cssStatic = load('src/styles/main.css');
+  check(cssStatic.includes('@media print') && cssStatic.includes('#pdfPrintWrap'), 'pdf: print stylesheet present');
   // surgical refresh must not throw and must not rebuild when nothing changed
   try {
     vm.runInContext('renderClients(); refreshClientCards();', sandbox);
@@ -168,7 +193,7 @@ try {
     catch (e) { failures++; console.error('  FAIL render crash: ' + fn + ' :: ' + e.message); }
   }
   // i18n coverage: every new Persian UI string must have en+ar entries
-  const requiredKeys = ['عضویت','لیست انتظار','رویدادها','شعبه‌ها','شیفت‌ها','تحلیل و پیش‌بینی','ابزارها','بیشتر','پایان','ادامه','توقف موقت','طرح‌های عضویت و اشتراک','طرح جدید','نام طرح','توضیحات','مدیریت کارمندان','کارمند جدید','گزارش حضور و غیاب','نام کامل','تلفن','حقوق (تومان)','سمت','کارمند','تاریخچه بازی','لاگ فعالیت','پاکسازی','جستجوی پیشرفته','رد کردن','افزودن به لیست','نام مشتری','لیست انتظار خالی است','انجام شد','رویدادها و تورنمنت','رویداد جدید','عنوان','تاریخ','ورودی (تومان)','جایزه','رویدادی نیست','بازیکنان:','شرکت در رویداد','مدیریت شعبه‌ها','شعبه جدید','نام شعبه','آدرس','شعبه اصلی','تغییر','برنامه شیفت کارمندان','شیفت جدید','مقایسه این ماه با ماه قبل','پیش‌بینی درآمد','رضایت مشتریان','هشدار موجودی بوفه','آستانه هشدار','این ماه','ماه قبل','سشن','تغییر:','میانگین روزانه','داده‌ای نیست','نظر','تمام شده','کم موجودی','تمام موجودی‌ها کافی است','خروجی CSV (اکسل)','سشن‌های امروز','چاپ رسید حرارتی','دستگاه کارتخوان','بروزرسانی','امنیت و رمزنگاری','امتیاز وفاداری مشتری','انتخاب مشتری...','فعال‌سازی کارتخوان','رمزنگاری بکاپ مشتریان','رمزنگاری','بررسی رمزگشایی','مشتری','دستگاه آزاد','در انتظار','مشغول','آزاد','امتیاز فعلی:','بازخرید','نام الزامی است','دقیقه','بدون IP','نظرت چی بود؟','بیخیال','لغو','نفر','رزرو:','ساعت','متصل','نامشخص','اول ایمیل گیرنده را وارد کن','متن کپی شد','کپی نشد - دستی انتخاب و کپی کن','کپی متن','کپی خودکار ممکن نشد - متن زیر را دستی کپی کن','کپی','مشخصات مغازه','نام مغازه','تلفن مغازه','ثبت‌نام','نام بازیکن'];
+  const requiredKeys = ['عضویت','لیست انتظار','رویدادها','شعبه‌ها','شیفت‌ها','تحلیل و پیش‌بینی','ابزارها','بیشتر','پایان','ادامه','توقف موقت','طرح‌های عضویت و اشتراک','طرح جدید','نام طرح','توضیحات','مدیریت کارمندان','کارمند جدید','گزارش حضور و غیاب','نام کامل','تلفن','حقوق (تومان)','سمت','کارمند','تاریخچه بازی','لاگ فعالیت','پاکسازی','جستجوی پیشرفته','رد کردن','افزودن به لیست','نام مشتری','لیست انتظار خالی است','انجام شد','رویدادها و تورنمنت','رویداد جدید','عنوان','تاریخ','ورودی (تومان)','جایزه','رویدادی نیست','بازیکنان:','شرکت در رویداد','مدیریت شعبه‌ها','شعبه جدید','نام شعبه','آدرس','شعبه اصلی','تغییر','برنامه شیفت کارمندان','شیفت جدید','مقایسه این ماه با ماه قبل','پیش‌بینی درآمد','رضایت مشتریان','هشدار موجودی بوفه','آستانه هشدار','این ماه','ماه قبل','سشن','تغییر:','میانگین روزانه','داده‌ای نیست','نظر','تمام شده','کم موجودی','تمام موجودی‌ها کافی است','خروجی CSV (اکسل)','سشن‌های امروز','چاپ رسید حرارتی','دستگاه کارتخوان','بروزرسانی','امنیت و رمزنگاری','امتیاز وفاداری مشتری','انتخاب مشتری...','فعال‌سازی کارتخوان','رمزنگاری بکاپ مشتریان','رمزنگاری','بررسی رمزگشایی','مشتری','دستگاه آزاد','در انتظار','مشغول','آزاد','امتیاز فعلی:','بازخرید','نام الزامی است','دقیقه','بدون IP','نظرت چی بود؟','بیخیال','لغو','نفر','رزرو:','ساعت','متصل','نامشخص','اول ایمیل گیرنده را وارد کن','متن کپی شد','کپی نشد - دستی انتخاب و کپی کن','کپی متن','کپی خودکار ممکن نشد - متن زیر را دستی کپی کن','کپی','مشخصات مغازه','نام مغازه','تلفن مغازه','ثبت‌نام','نام بازیکن','کتابخانه PDF آفلاین در دسترس نیست - چاپ سیستمی','پنجره چاپ باز می‌شود - «ذخیره PDF» را بزن','متن گزارش برای تلگرام و واتساپ باز می‌شود؛ برای ایمیل اول آدرس را وارد کن.'];
   const dictKeys = vm.runInContext('Object.keys(I18N)', sandbox);
   let missing = [];
   for (const k of requiredKeys) {

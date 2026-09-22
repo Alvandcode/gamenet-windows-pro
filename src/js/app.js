@@ -1907,7 +1907,10 @@
         "نام مغازه": {en:"Shop Name", ar:"اسم المتجر"},
         "تلفن مغازه": {en:"Shop Phone", ar:"هاتف المتجر"},
         "ثبت‌نام": {en:"Register", ar:"تسجيل"},
-        "نام بازیکن": {en:"Player Name", ar:"اسم اللاعب"}
+        "نام بازیکن": {en:"Player Name", ar:"اسم اللاعب"},
+        "کتابخانه PDF آفلاین در دسترس نیست - چاپ سیستمی": {en:"PDF library offline - using system print", ar:"مكتبة PDF غير متصلة - استخدام الطباعة"},
+        "پنجره چاپ باز می‌شود - «ذخیره PDF» را بزن": {en:"Print dialog opens - choose Save as PDF", ar:"نافذة الطباعة ستفتح - اختر حفظ كـ PDF"},
+        "متن گزارش برای تلگرام و واتساپ باز می‌شود؛ برای ایمیل اول آدرس را وارد کن.": {en:"Report text opens for Telegram and WhatsApp; enter the address first for email.", ar:"يفتح نص التقرير لتليغرام وواتساب؛ أدخل العنوان أولا للبريد."}
     };
     const I18N_KEYS = Object.keys(I18N).sort((a,b)=>b.length-a.length);
     const _i18nOrig = new WeakMap();
@@ -2673,7 +2676,13 @@
         if(!m) return;
         let open = m.style.display !== 'none';
         document.querySelectorAll('[id^="clientMenu-"]').forEach(x => x.style.display = 'none');
+        document.querySelectorAll('#clientsGrid .client-card.menu-open').forEach(x => x.classList.remove('menu-open'));
         m.style.display = open ? 'none' : 'block';
+        if(!open){
+            // selected card (menu open) is exempt from spotlight blur
+            let card = m.closest ? m.closest('.client-card') : null;
+            if(card) card.classList.add('menu-open');
+        }
     }
 
     function stopTimer() {
@@ -2713,6 +2722,7 @@
     function confirmPayment(){
         if(!pendingPayment) return;
         let c = clients[pendingPayment.clientIdx];
+        if(!c){ pendingPayment=null; try{closeModal('paymentModal');}catch(e){} return; }
         let method = document.getElementById('payMethod').value;
         let total = pendingPayment.total;
         // record session
@@ -2758,6 +2768,13 @@
         c.extraSeconds=0;
         c._lastElapsed=null;
         c.notified=false;
+        // full reset for the next customer: extras, timer/amount, internal flags
+        c.extra=0;
+        c.timerDuration=0;
+        c.timerDurationSec=0;
+        c._warned5=false;
+        c._timeNotifSent=false;
+        try{ window._calcDur=null; }catch(e){}
         c.totalCost = (c.totalCost || 0) + total;
         // clear client services
         delete clientServiceMap[c.id];
@@ -3432,14 +3449,18 @@
         `;
         setPdfContent(html, `reservation-${escapeHtml(r.customerName)}-${Date.now()}.pdf`);
     }
+    // Minimum sane size for a non-empty A4 PDF. Blank renders are ~1-3KB.
+    const MIN_PDF_BLOB_SIZE = 4096;
     async function generatePdfBlob(){
         try{
+            if(!window.html2pdf || window.__pdfFailed){ currentPdfBlob=null; return; }
             let element=document.getElementById('pdfTemplate');
             let opt={ margin:10, filename:currentPdfFilename, image:{type:'jpeg', quality:0.98}, html2canvas:{scale:2, useCORS:true}, jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}};
             // html2pdf returns promise when using .output
-            let worker=(window.html2pdf?html2pdf():{set:()=>({from:()=>({save:()=>{showToast('کتابخانه PDF آفلاین در دسترس نیست','error')}})})}).set(opt).from(element);
+            let worker=html2pdf().set(opt).from(element);
             let pdfBlob=await worker.outputPdf('blob');
-            currentPdfBlob=pdfBlob;
+            currentPdfBlob=(pdfBlob && pdfBlob.size>MIN_PDF_BLOB_SIZE)? pdfBlob : null;
+            if(!currentPdfBlob) console.log('pdf blob blank (size '+(pdfBlob&&pdfBlob.size)+'), will use native print');
         }catch(e){
             console.log('pdf blob err',e);
             currentPdfBlob=null;
@@ -3447,14 +3468,36 @@
     }
     async function downloadCurrentPdf(){
         try{
-            let element=document.getElementById('pdfTemplate');
-            let opt={ margin:10, filename:currentPdfFilename||'report.pdf', image:{type:'jpeg', quality:0.98}, html2canvas:{scale:2}, jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}};
-            await (window.html2pdf?html2pdf():{set:()=>({from:()=>({save:()=>{showToast('کتابخانه PDF آفلاین در دسترس نیست','error')}})})}).set(opt).from(element).save();
-            showToast('PDF دانلود شد','success');
+            if(window.html2pdf && !window.__pdfFailed){
+                let element=document.getElementById('pdfTemplate');
+                let opt={ margin:10, filename:currentPdfFilename||'report.pdf', image:{type:'jpeg', quality:0.98}, html2canvas:{scale:2}, jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}};
+                let worker=html2pdf().set(opt).from(element);
+                let blob=await worker.outputPdf('blob');
+                if(blob && blob.size>MIN_PDF_BLOB_SIZE){
+                    let url=URL.createObjectURL(blob);
+                    let a=document.createElement('a');
+                    a.href=url; a.download=currentPdfFilename||'report.pdf';
+                    document.body.appendChild(a); a.click();
+                    setTimeout(()=>{ try{URL.revokeObjectURL(url); a.remove();}catch(e){} },4000);
+                    currentPdfBlob=blob;
+                    showToast('PDF دانلود شد','success');
+                    return;
+                }
+                console.log('pdf render blank (size '+(blob&&blob.size)+'), falling back to native print');
+            } else {
+                showToast('کتابخانه PDF آفلاین در دسترس نیست - چاپ سیستمی','warning');
+            }
         }catch(e){
-            showToast('خطا در تولید PDF','error');
             console.error(e);
         }
+        // Fallback: native print dialog (offline-safe, never blank) -> Save as PDF
+        showToast('پنجره چاپ باز می‌شود - «ذخیره PDF» را بزن','warning');
+        nativePrintPdf();
+    }
+    // Native system print showing ONLY the receipt template (offline-safe).
+    function nativePrintPdf(){
+        try{ window.print(); }
+        catch(e){ showToast('چاپ ممکن نشد','error'); }
     }
     async function sharePdfFile(){
         if(!currentPdfBlob){
@@ -3487,14 +3530,6 @@
             // also try api
             window.open(url,'_blank');
             showToast('در واتساپ باز شد','success');
-        } else if(platform==='rubika'){
-            // Rubika has no web share: copy to clipboard, or show manual-copy modal
-            copyTextToClipboard(text).then(ok=>{
-                if(ok) showToast('متن کپی شد - در روبیکا پیست کنید','success');
-                else openCopyTextModal(text);
-            });
-            // try rubika intent if installed
-            try{ window.location.href=`rubika://share?text=${encoded}`; }catch(e){}
         } else if(platform==='email'){
             if(!email){
                 showToast('اول ایمیل گیرنده را وارد کن','error');

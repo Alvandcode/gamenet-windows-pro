@@ -1164,7 +1164,6 @@
             <div class="share-grid" style="margin-bottom:16px;">
                 <button class="glass-btn" style="background: rgba(0,136,204,0.25);" onclick="shareVia('telegram')">✈️ تلگرام</button>
                 <button class="glass-btn" style="background: rgba(37,211,102,0.25);" onclick="shareVia('whatsapp')">💚 واتساپ</button>
-                <button class="glass-btn" style="background: rgba(200,30,70,0.25);" onclick="shareVia('rubika')">🔴 روبیکا</button>
                 <button class="glass-btn" style="background: rgba(234,67,53,0.25);" onclick="shareVia('email')">📧 ایمیل</button>
             </div>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
@@ -1174,7 +1173,7 @@
             <div style="text-align:center; margin-top:16px;">
                 <button class="glass-btn glass-btn-danger" onclick="closeModal('shareModal')">بستن</button>
             </div>
-            <p style="font-size:0.75rem; color: rgba(255,255,255,0.4); text-align:center; margin-top:10px;">نکته: روبیکا لینک مستقیم وب ندارد، متن کپی میشود تا در روبیکا پیست کنید.</p>
+            <p style="font-size:0.75rem; color: rgba(255,255,255,0.4); text-align:center; margin-top:10px;">متن گزارش برای تلگرام و واتساپ باز می‌شود؛ برای ایمیل اول آدرس را وارد کن.</p>
         </div>
     </div>
 
@@ -1233,7 +1232,8 @@
         </div>
     </div>
 
-    <!-- Hidden PDF Template -->
+    <!-- Hidden PDF Template (print wrapper keeps it printable for native print fallback) -->
+    <div id="pdfPrintWrap" style="height:0; overflow:hidden;">
     <div id="pdfTemplate" style="position: absolute; left:-9999px; top:-9999px; width:800px; background:white; color:#1e293b; padding:40px; font-family: 'Vazirmatn', Tahoma, sans-serif; direction:rtl;">
         <div style="text-align:center; border-bottom:3px solid #6366f1; padding-bottom:16px; margin-bottom:20px;">
             <h1 style="color:#4f46e5; margin:0; font-size:28px;">🎮 Gamenet Manager Pro</h1>
@@ -1244,6 +1244,7 @@
             <span id="pdfDate"></span>
             <span>Gamenet Manager Pro v1.8.0</span>
         </div>
+    </div>
     </div>
 
     <div id="toast" class="toast"></div>

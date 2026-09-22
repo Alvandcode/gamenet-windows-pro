@@ -114,7 +114,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
         .client-card:hover {
-            transform: translateY(-5px) scale(1.01);
+            transform: translateY(-5px);
             box-shadow: 0 20px 40px rgba(0,0,0,0.4);
             border-color: rgba(99,102,241,0.4);
         }
@@ -128,9 +128,13 @@
             border-color: var(--active-accent) !important;
             box-shadow: 0 0 32px -4px var(--active-accent), 0 20px 40px rgba(0,0,0,0.4) !important;
         }
-        /* Spotlight: hovered card stays sharp, siblings dim + blur */
-        #clientsGrid:has(.client-card:hover) .client-card:not(:hover) {
+        /* Spotlight: hovered card stays sharp, siblings dim + blur.
+           Cards with an open "more" menu never blur (selected client). */
+        #clientsGrid:has(.client-card:hover) .client-card:not(:hover):not(.menu-open) {
             filter: blur(2px) brightness(0.6) saturate(0.85);
+        }
+        #clientsGrid .client-card:hover {
+            filter: none;
         }
         body.lite #clientsGrid:has(.client-card:hover) .client-card:not(:hover) {
             filter: none;
@@ -688,3 +692,10 @@
         /* ========== Pro logo ========== */
         .logo-container.logo-img { padding: 0; overflow: hidden; background: none; box-shadow: none; }
         .logo-container.logo-img img { width: 100%; height: 100%; object-fit: contain; }
+
+        /* ========== Native print: receipt template only (offline-safe PDF fallback) ========== */
+        @media print {
+            body > *:not(#pdfPrintWrap) { display: none !important; }
+            #pdfPrintWrap { height: auto !important; overflow: visible !important; }
+            #pdfTemplate { position: static !important; left: auto !important; top: auto !important; width: 100% !important; }
+        }
