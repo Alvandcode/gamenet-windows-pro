@@ -73,6 +73,9 @@
                 <div class="nav-item" onclick="showSection('customers', this)">
                     <span style="font-size: 1.3rem;">&#128100;</span> مشتریان
                 </div>
+                <div class="nav-item" onclick="showSection('membership', this)">
+                    <span style="font-size: 1.3rem;">🎫</span> عضویت
+                </div>
                 <div class="nav-item" onclick="showSection('buffet', this)">
                     <span style="font-size: 1.3rem;">&#127829;</span> بوفه و خدمات
                 </div>
@@ -93,6 +96,39 @@
                 </div>
                 <div class="nav-item" onclick="showSection('operators', this)" id="navOperators">
                     <span style="font-size: 1.3rem;">&#128272;</span> اپراتورها
+                </div>
+                <div class="nav-item" onclick="showSection('employees', this)">
+                    <span style="font-size: 1.3rem;">👷</span> کارمندان
+                </div>
+                <div class="nav-item" onclick="showSection('busyHours', this)">
+                    <span style="font-size: 1.3rem;">🔥</span> ساعات شلوغ
+                </div>
+                <div class="nav-item" onclick="showSection('activityLog', this)">
+                    <span style="font-size: 1.3rem;">📋</span> لاگ فعالیت
+                </div>
+                <div class="nav-item" onclick="showSection('notifications', this)">
+                    <span style="font-size: 1.3rem;">🔔</span> اعلان‌ها <span id="notifBadge" style="background:#ef4444; color:white; border-radius:50%; padding:2px 7px; font-size:0.7rem; display:none;">0</span>
+                </div>
+                <div class="nav-item" onclick="showSection('advancedSearch', this)">
+                    <span style="font-size: 1.3rem;">🔍</span> جستجو
+                </div>
+                <div class="nav-item" onclick="showSection('waiting', this)">
+                    <span style="font-size: 1.3rem;">⏳</span> لیست انتظار <span id="waitingBadge" style="background:#f59e0b; color:white; border-radius:50%; padding:2px 7px; font-size:0.7rem; display:none;">0</span>
+                </div>
+                <div class="nav-item" onclick="showSection('events', this)">
+                    <span style="font-size: 1.3rem;">🏆</span> رویدادها
+                </div>
+                <div class="nav-item" onclick="showSection('branches', this)">
+                    <span style="font-size: 1.3rem;">🏪</span> شعبه‌ها
+                </div>
+                <div class="nav-item" onclick="showSection('shifts', this)">
+                    <span style="font-size: 1.3rem;">📅</span> شیفت‌ها
+                </div>
+                <div class="nav-item" onclick="showSection('insights', this)">
+                    <span style="font-size: 1.3rem;">📈</span> تحلیل و پیش‌بینی
+                </div>
+                <div class="nav-item" onclick="showSection('tools', this)">
+                    <span style="font-size: 1.3rem;">🧰</span> ابزارها
                 </div>
             </nav>
 
@@ -559,6 +595,325 @@
                         </div>
                     </div>
                 </div>
+            <!-- Membership Plans Section -->
+            <section id="membership-section" class="section" style="display: none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+                    <h1 style="font-size:1.8rem; font-weight:900;">🎫 طرح‌های عضویت و اشتراک</h1>
+                    <button class="glass-btn glass-btn-success" onclick="openMembershipPlanModal()">➕ طرح جدید</button>
+                </div>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">طرح‌های اشتراکی برای مشتریان دائمی با تخفیف ویژه</p>
+                <div id="membershipPlansGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px;"></div>
+                <!-- Membership Plan Modal -->
+                <div class="modal-overlay" id="membershipPlanModal">
+                    <div class="glass modal" style="padding:24px; max-width:500px; width:90%;">
+                        <h3 style="margin-bottom:16px;">طرح عضویت</h3>
+                        <input type="hidden" id="mpId">
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام طرح</label><input type="text" id="mpName"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نوع</label>
+                                <select id="mpType"><option value="monthly">ماهانه</option><option value="yearly">سالانه</option></select>
+                            </div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">قیمت (تومان)</label><input type="number" id="mpPrice"></div>
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">ساعت</label><input type="number" id="mpHours"></div>
+                            </div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">تخفیف (%)</label><input type="number" id="mpDiscount" value="5"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">توضیحات</label><input type="text" id="mpDesc"></div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveMembershipPlan()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('membershipPlanModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Employees Section -->
+            <section id="employees-section" class="section" style="display: none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+                    <h1 style="font-size:1.8rem; font-weight:900;">👷 مدیریت کارمندان</h1>
+                    <button class="glass-btn glass-btn-success" onclick="openEmployeeModal()">➕ کارمند جدید</button>
+                </div>
+                <div id="employeesList" style="display:grid; gap:12px; margin-bottom:20px;"></div>
+                <div class="glass" style="padding:20px;">
+                    <h3 style="margin-bottom:12px;">📊 گزارش حضور و غیاب</h3>
+                    <div id="employeeAttendanceList"></div>
+                </div>
+                <!-- Employee Modal -->
+                <div class="modal-overlay" id="employeeModal">
+                    <div class="glass modal" style="padding:24px; max-width:500px; width:90%;">
+                        <h3 style="margin-bottom:16px;">کارمند</h3>
+                        <input type="hidden" id="empId">
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام کامل</label><input type="text" id="empName"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">تلفن</label><input type="text" id="empPhone"></div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">حقوق (تومان)</label><input type="number" id="empSalary"></div>
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">سمت</label><input type="text" id="empRole" placeholder="مثلا: اپراتور"></div>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveEmployee()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('employeeModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Busy Hours Section -->
+            <section id="busyHours-section" class="section" style="display: none;">
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">🔥 ساعات شلوغ</h1>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">تحلیل ساعات پرترافیک مغازه بر اساس داده‌های واقعی</p>
+                <div id="busyHoursContent" class="glass" style="padding:24px;"></div>
+            </section>
+
+            <!-- Game History Section -->
+            <section id="gameHistory-section" class="section" style="display: none;">
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">📜 تاریخچه بازی</h1>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">سابقه تمام بازی‌ها و سشن‌ها</p>
+                <div id="gameHistoryList" class="glass" style="padding:20px;"></div>
+            </section>
+
+            <!-- Activity Log Section -->
+            <section id="activityLog-section" class="section" style="display: none;">
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">📋 لاگ فعالیت</h1>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">تاریخچه تمام عملیات انجام شده در سیستم</p>
+                <div id="activityLogList" class="glass" style="padding:20px;"></div>
+            </section>
+
+            <!-- Notifications Section -->
+            <section id="notifications-section" class="section" style="display: none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+                    <h1 style="font-size:1.8rem; font-weight:900;">🔔 اعلان‌ها</h1>
+                    <button class="glass-btn glass-btn-danger" onclick="clearNotifications()">🗑️ پاکسازی</button>
+                </div>
+                <div id="notificationsList" style="display:grid; gap:12px;"></div>
+            </section>
+
+            <!-- Advanced Search Section -->
+            <section id="advancedSearch-section" class="section" style="display: none;">
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">🔍 جستجوی پیشرفته</h1>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">جستجو در تمام بخش‌ها: دستگاه‌ها، مشتریان، سشن‌ها، رزروها</p>
+                <div class="glass" style="padding:20px; margin-bottom:20px;">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="text" id="searchInput" placeholder="نام مشتری، شماره، دستگاه..." oninput="renderSearchResults(this.value)" style="flex:1; font-size:1rem; padding:12px;">
+                    </div>
+                </div>
+                <div id="searchResults" class="glass" style="padding:20px;"></div>
+            </section>
+
+            <!-- Waiting List Section -->
+            <section id="waiting-section" class="section" style="display: none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+                    <h1 style="font-size:1.8rem; font-weight:900;">⏳ لیست انتظار</h1>
+                    <button class="glass-btn glass-btn-success" onclick="openWaitingListModal()">➕ افزودن به لیست</button>
+                </div>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">وقتی همه دستگاه‌ها پر هستند، مشتری را اینجا نگه دار</p>
+                <div id="waitingListContent"></div>
+                <div class="modal-overlay" id="waitingListModal">
+                    <div class="glass modal" style="padding:24px; max-width:450px; width:90%;">
+                        <h3 style="margin-bottom:16px;">افزودن به لیست انتظار</h3>
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام مشتری</label><input type="text" id="wlName"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">تلفن</label><input type="text" id="wlPhone"></div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveWaitingListItem()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('waitingListModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Events Section -->
+            <section id="events-section" class="section" style="display: none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+                    <h1 style="font-size:1.8rem; font-weight:900;">🏆 رویدادها و تورنمنت</h1>
+                    <button class="glass-btn glass-btn-success" onclick="openEventModal()">➕ رویداد جدید</button>
+                </div>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">مسابقه، تورنمنت و شب‌های ویژه برگزار کن</p>
+                <div id="eventsList" style="display:grid; gap:12px;"></div>
+                <div class="modal-overlay" id="eventModal">
+                    <div class="glass modal" style="padding:24px; max-width:500px; width:90%;">
+                        <h3 style="margin-bottom:16px;">رویداد جدید</h3>
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">عنوان</label><input type="text" id="evTitle"></div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">تاریخ</label><input type="text" id="evDate" readonly onclick="openDatePicker('evDate')" placeholder="انتخاب تاریخ..."></div>
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">ورودی (تومان)</label><input type="number" id="evFee"></div>
+                            </div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">جایزه</label><input type="text" id="evPrize"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">توضیحات</label><input type="text" id="evDesc"></div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveEventFromModal()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('eventModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Branches Section -->
+            <section id="branches-section" class="section" style="display: none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+                    <h1 style="font-size:1.8rem; font-weight:900;">🏪 مدیریت شعبه‌ها</h1>
+                    <button class="glass-btn glass-btn-success" onclick="openBranchModal()">➕ شعبه جدید</button>
+                </div>
+                <div id="branchesList" style="display:grid; gap:12px;"></div>
+                <div class="modal-overlay" id="branchModal">
+                    <div class="glass modal" style="padding:24px; max-width:450px; width:90%;">
+                        <h3 style="margin-bottom:16px;">شعبه جدید</h3>
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام شعبه</label><input type="text" id="branchName"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">آدرس</label><input type="text" id="branchAddress"></div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveBranchFromModal()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('branchModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Shifts Section -->
+            <section id="shifts-section" class="section" style="display: none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+                    <h1 style="font-size:1.8rem; font-weight:900;">📅 برنامه شیفت کارمندان</h1>
+                    <button class="glass-btn glass-btn-success" onclick="openShiftModal()">➕ شیفت جدید</button>
+                </div>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">تقویم هفتگی شیفت‌ها</p>
+                <div id="shiftsCalendar" class="glass" style="padding:20px;"></div>
+                <div class="modal-overlay" id="shiftModal">
+                    <div class="glass modal" style="padding:24px; max-width:450px; width:90%;">
+                        <h3 style="margin-bottom:16px;">شیفت جدید</h3>
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">کارمند</label><select id="shiftEmployee"></select></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">تاریخ</label><input type="text" id="shiftDate" readonly onclick="openDatePicker('shiftDate')" placeholder="انتخاب تاریخ..."></div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">شروع</label><input type="time" id="shiftStart" value="09:00"></div>
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">پایان</label><input type="time" id="shiftEnd" value="17:00"></div>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveShiftFromModal()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('shiftModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Insights Section -->
+            <section id="insights-section" class="section" style="display: none;">
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">📈 تحلیل و پیش‌بینی</h1>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">مقایسه ماهانه، پیش‌بینی درآمد، رضایت مشتری و هشدار موجودی</p>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">📊 مقایسه این ماه با ماه قبل</h3>
+                    <div id="monthlyComparisonContent"></div>
+                </div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">🔮 پیش‌بینی درآمد</h3>
+                    <div id="forecastContent"></div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                    <div class="glass" style="padding:20px;">
+                        <h3 style="margin-bottom:12px;">⭐ رضایت مشتریان</h3>
+                        <div id="surveyStatsContent"></div>
+                    </div>
+                    <div class="glass" style="padding:20px;">
+                        <h3 style="margin-bottom:12px;">⚠️ هشدار موجودی بوفه</h3>
+                        <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                            <span style="font-size:0.8rem; color:rgba(255,255,255,0.6);">آستانه هشدار:</span>
+                            <input type="number" id="stockThresholdInput" value="5" min="1" style="width:80px;" onchange="setLowStockThreshold(parseInt(this.value)||5)">
+                        </div>
+                        <div id="stockAlertsContent"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tools Section -->
+            <section id="tools-section" class="section" style="display: none;">
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">🧰 ابزارها</h1>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">خروجی اکسل، چاپ رسید، کارتخوان، پورتال مشتری و امنیت</p>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">📤 خروجی CSV (اکسل)</h3>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="glass-btn" onclick="exportSessionsCSV('daily')">سشن‌های امروز</button>
+                        <button class="glass-btn" onclick="exportSessionsCSV('weekly')">سشن‌های هفته</button>
+                        <button class="glass-btn" onclick="exportSessionsCSV('monthly')">سشن‌های ماه</button>
+                        <button class="glass-btn" onclick="exportExpensesCSV()">هزینه‌ها</button>
+                        <button class="glass-btn" onclick="exportCustomersCSV()">مشتریان</button>
+                    </div>
+                </div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">🧾 چاپ رسید حرارتی</h3>
+                    <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:12px;">رسید ۸۰ میلی‌متری برای پرینتر حرارتی</p>
+                    <button class="glass-btn" onclick="setShopInfo()">🏪 تنظیم نام و تلفن مغازه</button>
+                </div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">💳 دستگاه کارتخوان</h3>
+                    <div id="posConfigContent"></div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                    <div class="glass" style="padding:20px;">
+                        <h3 style="margin-bottom:12px;">📱 پورتال مشتری (نمای زنده)</h3>
+                        <div id="portalContent"></div>
+                        <button class="glass-btn" style="margin-top:12px;" onclick="renderCustomerPortal()">🔄 بروزرسانی</button>
+                    </div>
+                    <div class="glass" style="padding:20px;">
+                        <h3 style="margin-bottom:12px;">🔐 امنیت و رمزنگاری</h3>
+                        <div id="securityPanelContent"></div>
+                    </div>
+                </div>
+                <div class="glass" style="padding:20px; margin-top:16px;">
+                    <h3 style="margin-bottom:12px;">⭐ امتیاز وفاداری مشتری</h3>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                        <select id="loyaltyCustomerSelect" style="flex:1;" onchange="if(this.value)renderLoyaltyPoints(parseInt(this.value))">
+                            <option value="">انتخاب مشتری...</option>
+                        </select>
+                    </div>
+                    <div id="loyaltyPointsContent"></div>
+                </div>
+                <div class="glass" style="padding:20px; margin-top:16px;">
+                    <h3 style="margin-bottom:12px;">📷 QR مشتری</h3>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                        <select id="qrCustomerSelect" style="flex:1;" onchange="if(this.value)renderCustomerQR(parseInt(this.value), this.options[this.selectedIndex].text)">
+                            <option value="">انتخاب مشتری...</option>
+                        </select>
+                    </div>
+                    <div id="customerQRContent"></div>
+                </div>
+            </section>
+
+            <!-- Survey Modal (global) -->
+            <div class="modal-overlay" id="surveyModal">
+                <div class="glass modal" style="padding:24px; max-width:400px; width:90%; text-align:center;">
+                    <h3 style="margin-bottom:8px;">⭐ نظرت چی بود؟</h3>
+                    <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:16px;">از ۱ تا ۵ ستاره بده</p>
+                    <div id="surveyStars" style="display:flex; gap:8px; justify-content:center; margin-bottom:16px; font-size:2rem;">
+                        <span class="star" style="cursor:pointer;" onclick="setSurveyRating(1)">⭐</span>
+                        <span class="star" style="cursor:pointer;" onclick="setSurveyRating(2)">⭐</span>
+                        <span class="star" style="cursor:pointer;" onclick="setSurveyRating(3)">⭐</span>
+                        <span class="star" style="cursor:pointer;" onclick="setSurveyRating(4)">⭐</span>
+                        <span class="star" style="cursor:pointer;" onclick="setSurveyRating(5)">⭐</span>
+                    </div>
+                    <input type="text" id="surveyFeedback" placeholder="نظر (اختیاری)..." style="margin-bottom:16px;">
+                    <div style="display:flex; gap:8px;">
+                        <button class="glass-btn glass-btn-success" style="flex:1;" onclick="submitSurveyForm()">ثبت</button>
+                        <button class="glass-btn" style="flex:1;" onclick="closeModal('surveyModal')">بیخیال</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interactive Guide Overlay -->
+            <div id="guideOverlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:10000; justify-content:center; align-items:center;">
+                <div class="glass" style="padding:32px; max-width:450px; width:90%; border-radius:24px;">
+                    <div id="guideContent"></div>
+                    <div style="text-align:center; margin-top:16px;">
+                        <button class="glass-btn" onclick="closeGuide()" style="font-size:0.8rem;"> رد کردن</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Operators Section -->
             <section id="operators-section" class="section" style="display: none;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
@@ -1188,5 +1543,11 @@
     <script src="src/js/storage.js"></script>
     <script src="src/js/app.js"></script>
     <script src="src/js/patches.js"></script>
+    <script src="src/js/jalali.js"></script>
+    <script src="src/js/zoom.js"></script>
+    <script src="src/js/new-features.js"></script>
+    <script src="src/js/round2-a.js"></script>
+    <script src="src/js/round2-b.js"></script>
+    <script src="src/js/round2-c.js"></script>
 </body>
 </html>

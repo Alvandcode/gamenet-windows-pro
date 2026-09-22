@@ -77,6 +77,28 @@
     let alarmClientIndex = null;
     let alarmInterval = null;
 
+    // ===== NEW FEATURES: Phase 1-3 Data Stores =====
+    // Membership Plans
+    let membershipPlans = safeParse(localStorage.getItem('alvand_membershipPlans')) || [
+        {id:1, name:'پایه', type:'monthly', price:500000, hours:20, discount:5, description:'۲۰ ساعت بازی در ماه'},
+        {id:2, name:'نقره‌ای', type:'monthly', price:900000, hours:40, discount:10, description:'۴۰ ساعت بازی در ماه'},
+        {id:3, name:'طلایی', type:'monthly', price:1500000, hours:80, discount:15, description:'۸۰ ساعت بازی در ماه'},
+        {id:4, name:'پایه سالانه', type:'yearly', price:5000000, hours:240, discount:10, description:'۲۴۰ ساعت بازی در سال'},
+        {id:5, name:'طلایی سالانه', type:'yearly', price:12000000, hours:720, discount:20, description:'۷۲۰ ساعت بازی در سال'}
+    ];
+    let customerMemberships = safeParse(localStorage.getItem('alvand_customerMemberships')) || [];
+    // Game History per customer
+    let gameHistory = safeParse(localStorage.getItem('alvand_gameHistory')) || [];
+    // Hourly usage data (hour -> count) for busy hours report
+    let hourlyUsage = safeParse(localStorage.getItem('alvand_hourlyUsage')) || {};
+    // Notifications queue
+    let notifications = safeParse(localStorage.getItem('alvand_notifications')) || [];
+    // Activity Log
+    let activityLog = safeParse(localStorage.getItem('alvand_activityLog')) || [];
+    // Employee attendance
+    let employees = safeParse(localStorage.getItem('alvand_employees')) || [];
+    let attendance = safeParse(localStorage.getItem('alvand_attendance')) || [];
+
     // Migration for old clients
     clients.forEach(c=>{
         if(c.timerDuration===undefined) c.timerDuration = c.timerDuration||0;
@@ -1682,7 +1704,199 @@
         "تخفیف": {en:"Discount", ar:"خصم"},
         "زبان": {en:"Language", ar:"اللغة"},
         "شارژ": {en:"Charge", ar:"شحن"},
-        "بدهی": {en:"Debt", ar:"دين"}
+        "بدهی": {en:"Debt", ar:"دين"},
+        // ===== Round2+: new sections, cards, dynamics =====
+        "عضویت": {en:"Membership", ar:"العضوية"},
+        "لیست انتظار": {en:"Waiting List", ar:"قائمة الانتظار"},
+        "رویدادها": {en:"Events", ar:"الفعاليات"},
+        "شعبه‌ها": {en:"Branches", ar:"الفروع"},
+        "شیفت‌ها": {en:"Shifts", ar:"الورديات"},
+        "تحلیل و پیش‌بینی": {en:"Analytics & Forecast", ar:"التحليل والتنبؤ"},
+        "ابزارها": {en:"Tools", ar:"الأدوات"},
+        "بیشتر": {en:"More", ar:"المزيد"},
+        "پایان": {en:"End", ar:"إنهاء"},
+        "ادامه": {en:"Resume", ar:"استئناف"},
+        "توقف موقت": {en:"Pause", ar:"إيقاف مؤقت"},
+        "طرح‌های عضویت و اشتراک": {en:"Membership Plans", ar:"خطط العضوية"},
+        "طرح جدید": {en:"New Plan", ar:"خطة جديدة"},
+        "طرح‌های اشتراکی برای مشتریان دائمی با تخفیف ویژه": {en:"Subscription plans for regular customers with special discount", ar:"خطط اشتراك للعملاء الدائمين بخصم خاص"},
+        "نام طرح": {en:"Plan Name", ar:"اسم الخطة"},
+        "نوع": {en:"Type", ar:"النوع"},
+        "قیمت (تومان)": {en:"Price (Toman)", ar:"السعر (تومان)"},
+        "ساعت": {en:"hour", ar:"ساعة"},
+        "تخفیف (%)": {en:"Discount (%)", ar:"خصم (٪)"},
+        "توضیحات": {en:"Description", ar:"الوصف"},
+        "طرح عضویت": {en:"Membership Plan", ar:"خطة العضوية"},
+        "مدیریت کارمندان": {en:"Employee Management", ar:"إدارة الموظفين"},
+        "کارمند جدید": {en:"New Employee", ar:"موظف جديد"},
+        "گزارش حضور و غیاب": {en:"Attendance Report", ar:"تقرير الحضور والغياب"},
+        "نام کامل": {en:"Full Name", ar:"الاسم الكامل"},
+        "تلفن": {en:"Phone", ar:"الهاتف"},
+        "حقوق (تومان)": {en:"Salary (Toman)", ar:"الراتب (تومان)"},
+        "سمت": {en:"Position", ar:"المنصب"},
+        "کارمند": {en:"Employee", ar:"موظف"},
+        "تحلیل ساعات پرترافیک مغازه بر اساس داده‌های واقعی": {en:"Busy-hours analysis based on real data", ar:"تحليل الساعات المزدحمة بناء على بيانات حقيقية"},
+        "سابقه تمام بازی‌ها و سشن‌ها": {en:"Full history of games and sessions", ar:"سجل جميع الألعاب والجلسات"},
+        "تاریخچه بازی": {en:"Game History", ar:"سجل الألعاب"},
+        "تاریخچه تمام عملیات انجام شده در سیستم": {en:"Full log of all system operations", ar:"سجل جميع عمليات النظام"},
+        "لاگ فعالیت": {en:"Activity Log", ar:"سجل النشاط"},
+        "پاکسازی": {en:"Clear", ar:"مسح"},
+        "جستجوی پیشرفته": {en:"Advanced Search", ar:"بحث متقدم"},
+        "جستجو در تمام بخش‌ها: دستگاه‌ها، مشتریان، سشن‌ها، رزروها": {en:"Search everywhere: devices, customers, sessions, reservations", ar:"ابحث في كل الأقسام: الأجهزة، العملاء، الجلسات، الحجوزات"},
+        "نام مشتری، شماره، دستگاه...": {en:"Customer name, phone, device...", ar:"اسم العميل، الرقم، الجهاز..."},
+        "رد کردن": {en:"Skip", ar:"تخطي"},
+        "افزودن به لیست": {en:"Add to List", ar:"إضافة إلى القائمة"},
+        "وقتی همه دستگاه‌ها پر هستند، مشتری را اینجا نگه دار": {en:"When all stations are busy, keep customers here", ar:"عندما تكون جميع الأجهزة مشغولة، احتفظ بالعملاء هنا"},
+        "نام مشتری": {en:"Customer Name", ar:"اسم العميل"},
+        "لیست انتظار خالی است": {en:"Waiting list is empty", ar:"قائمة الانتظار فارغة"},
+        "انجام شد": {en:"Done", ar:"تم"},
+        "رویدادها و تورنمنت": {en:"Events & Tournaments", ar:"الفعاليات والبطولات"},
+        "مسابقه، تورنمنت و شب‌های ویژه برگزار کن": {en:"Run matches, tournaments and special nights", ar:"نظم المباريات والبطولات والليالي الخاصة"},
+        "رویداد جدید": {en:"New Event", ar:"فعالية جديدة"},
+        "عنوان": {en:"Title", ar:"العنوان"},
+        "تاریخ": {en:"Date", ar:"التاريخ"},
+        "ورودی (تومان)": {en:"Entry Fee (Toman)", ar:"رسم الدخول (تومان)"},
+        "جایزه": {en:"Prize", ar:"الجائزة"},
+        "رویدادی نیست": {en:"No events", ar:"لا توجد فعاليات"},
+        "ورودی:": {en:"Entry:", ar:"الدخول:"},
+        "جایزه:": {en:"Prize:", ar:"الجائزة:"},
+        "بازیکنان:": {en:"Players:", ar:"اللاعبون:"},
+        "شرکت در رویداد": {en:"Join Event", ar:"المشاركة في الفعالية"},
+        "نام بازیکن:": {en:"Player name:", ar:"اسم اللاعب:"},
+        "مدیریت شعبه‌ها": {en:"Branch Management", ar:"إدارة الفروع"},
+        "شعبه جدید": {en:"New Branch", ar:"فرع جديد"},
+        "نام شعبه": {en:"Branch Name", ar:"اسم الفرع"},
+        "آدرس": {en:"Address", ar:"العنوان"},
+        "شعبه اصلی": {en:"Main Branch", ar:"الفرع الرئيسي"},
+        "(فعال)": {en:"(Active)", ar:"(نشط)"},
+        "تغییر": {en:"Switch", ar:"تبديل"},
+        "برنامه شیفت کارمندان": {en:"Employee Shift Schedule", ar:"جدول ورديات الموظفين"},
+        "شیفت جدید": {en:"New Shift", ar:"وردية جديدة"},
+        "تقویم هفتگی شیفت‌ها": {en:"Weekly Shift Calendar", ar:"تقويم الورديات الأسبوعي"},
+        "تمام فیلدها الزامی است": {en:"All fields are required", ar:"جميع الحقول مطلوبة"},
+        "مقایسه این ماه با ماه قبل": {en:"This Month vs Last Month", ar:"هذا الشهر مقابل الشهر الماضي"},
+        "پیش‌بینی درآمد": {en:"Income Forecast", ar:"التنبؤ بالدخل"},
+        "رضایت مشتریان": {en:"Customer Satisfaction", ar:"رضا العملاء"},
+        "هشدار موجودی بوفه": {en:"Buffet Stock Alerts", ar:"تنبيهات مخزون البوفيه"},
+        "آستانه هشدار": {en:"Alert Threshold", ar:"حد التنبيه"},
+        "این ماه": {en:"This Month", ar:"هذا الشهر"},
+        "ماه قبل": {en:"Last Month", ar:"الشهر الماضي"},
+        "سشن": {en:"sessions", ar:"جلسات"},
+        "تغییر:": {en:"Change:", ar:"التغيير:"},
+        "میانگین روزانه": {en:"Daily Average", ar:"المتوسط اليومي"},
+        "میانگین ۷ روز اخیر": {en:"Last 7 Days Average", ar:"متوسط آخر ٧ أيام"},
+        "پیش‌بینی ۳۰ روز آینده": {en:"Next 30 Days Forecast", ar:"توقعات الثلاثين يوما القادمة"},
+        "داده‌ای نیست": {en:"No Data", ar:"لا توجد بيانات"},
+        "نظرسنجی ثبت نشده": {en:"No Surveys Yet", ar:"لا توجد استطلاعات"},
+        "میانگین": {en:"Average", ar:"المتوسط"},
+        "نظر": {en:"reviews", ar:"تقييمات"},
+        "تمام شده": {en:"Out of Stock", ar:"نفد المخزون"},
+        "کم موجودی": {en:"Low Stock", ar:"مخزون منخفض"},
+        "تمام شده:": {en:"Out of Stock:", ar:"نفد:"},
+        "کم موجودی:": {en:"Low Stock:", ar:"مخزون منخفض:"},
+        "موجودی:": {en:"Stock:", ar:"المخزون:"},
+        "تمام موجودی‌ها کافی است": {en:"All stock is sufficient", ar:"كل المخزون كافٍ"},
+        "خروجی اکسل، چاپ رسید، کارتخوان، پورتال مشتری و امنیت": {en:"Excel export, receipts, POS, customer portal and security", ar:"تصدير إكسل، الإيصالات، الدفع، بوابة العميل والأمان"},
+        "خروجی CSV (اکسل)": {en:"CSV Export (Excel)", ar:"تصدير CSV (إكسل)"},
+        "سشن‌های امروز": {en:"Today's Sessions", ar:"جلسات اليوم"},
+        "سشن‌های هفته": {en:"This Week's Sessions", ar:"جلسات الأسبوع"},
+        "سشن‌های ماه": {en:"This Month's Sessions", ar:"جلسات الشهر"},
+        "چاپ رسید حرارتی": {en:"Thermal Receipt Printing", ar:"طباعة الإيصالات الحرارية"},
+        "رسید ۸۰ میلی‌متری برای پرینتر حرارتی": {en:"80mm receipts for thermal printers", ar:"إيصالات ٨٠مم للطابعات الحرارية"},
+        "تنظیم نام و تلفن مغازه": {en:"Set Shop Name & Phone", ar:"تعيين اسم المتجر وهاتفه"},
+        "دستگاه کارتخوان": {en:"POS Terminal", ar:"جهاز الدفع"},
+        "پورتال مشتری (نمای زنده)": {en:"Customer Portal (Live)", ar:"بوابة العميل (مباشر)"},
+        "بروزرسانی": {en:"Refresh", ar:"تحديث"},
+        "امنیت و رمزنگاری": {en:"Security & Encryption", ar:"الأمان والتشفير"},
+        "امتیاز وفاداری مشتری": {en:"Customer Loyalty Points", ar:"نقاط ولاء العميل"},
+        "انتخاب مشتری...": {en:"Select Customer...", ar:"اختر العميل..."},
+        "QR مشتری": {en:"Customer QR", ar:"رمز العميل"},
+        "فعال‌سازی کارتخوان": {en:"Enable POS Terminal", ar:"تفعيل جهاز الدفع"},
+        "آی‌پی": {en:"IP", ar:"الآيبي"},
+        "پورت": {en:"Port", ar:"المنفذ"},
+        "تست": {en:"Test", ar:"اختبار"},
+        "آخرین وضعیت:": {en:"Last Status:", ar:"آخر حالة:"},
+        "رمزنگاری بکاپ مشتریان": {en:"Encrypt Customer Backup", ar:"تشفير نسخة العملاء الاحتياطية"},
+        "رمز (حداقل ۴ کاراکتر)": {en:"Password (min 4 chars)", ar:"كلمة المرور (٤ أحرف على الأقل)"},
+        "رمزنگاری": {en:"Encrypt", ar:"تشفير"},
+        "بررسی رمزگشایی": {en:"Verify Decryption", ar:"التحقق من فك التشفير"},
+        "رمزنگاری شد": {en:"Encrypted", ar:"تم التشفير"},
+        "رمزگشایی شد:": {en:"Decrypted:", ar:"تم فك التشفير:"},
+        "مشتری": {en:"Customer", ar:"عميل"},
+        "خطا": {en:"Error", ar:"خطأ"},
+        "دستگاه آزاد": {en:"Free Stations", ar:"أجهزة متاحة"},
+        "در انتظار": {en:"Waiting", ar:"في الانتظار"},
+        "دستگاه‌ها (زنده)": {en:"Stations (Live)", ar:"الأجهزة (مباشر)"},
+        "مشغول": {en:"Busy", ar:"مشغول"},
+        "آزاد": {en:"Free", ar:"متاح"},
+        "دستگاهی نیست": {en:"No Stations", ar:"لا توجد أجهزة"},
+        "امتیاز فعلی:": {en:"Current Points:", ar:"النقاط الحالية:"},
+        "امتیاز کافی نیست": {en:"Not Enough Points", ar:"نقاط غير كافية"},
+        "بازخرید": {en:"Redeem", ar:"استبدال"},
+        "نام الزامی است": {en:"Name Is Required", ar:"الاسم مطلوب"},
+        "نام شعبه الزامی است": {en:"Branch Name Is Required", ar:"اسم الفرع مطلوب"},
+        "عنوان الزامی است": {en:"Title Is Required", ar:"العنوان مطلوب"},
+        "به لیست اضافه شد": {en:"added to the list", ar:"تمت الإضافة إلى القائمة"},
+        "دقیقه": {en:"min", ar:"دقيقة"},
+        "متصل": {en:"Connected", ar:"متصل"},
+        "نامشخص": {en:"Unknown", ar:"غير معروف"},
+        "بدون IP": {en:"No IP", ar:"بدون IP"},
+        "نظرت چی بود؟": {en:"How was it?", ar:"كيف كانت تجربتك؟"},
+        "از ۱ تا ۵ ستاره بده": {en:"Rate 1 to 5 stars", ar:"قيّم من ١ إلى ٥ نجوم"},
+        "نظر (اختیاری)...": {en:"Comment (optional)...", ar:"تعليق (اختياري)..."},
+        "بیخیال": {en:"Skip", ar:"تجاهل"},
+        "انتخاب تاریخ...": {en:"Pick a date...", ar:"اختر التاريخ..."},
+        "تکمیل شده": {en:"Completed", ar:"مكتمل"},
+        "فعال": {en:"Active", ar:"نشط"},
+        "غیرفعال": {en:"Inactive", ar:"غير نشط"},
+        "ورود": {en:"Check-in", ar:"دخول"},
+        "امتیاز": {en:"Points", ar:"نقاط"},
+        "بازیکنان": {en:"Players", ar:"اللاعبون"},
+        "شعبه": {en:"Branch", ar:"فرع"},
+        "رویداد": {en:"Event", ar:"فعالية"},
+        "انتظار": {en:"Wait", ar:"انتظار"},  // careful: substring of "لیست انتظار"/"در انتظار" (longer first ✓)
+        "حضور و غیاب": {en:"Attendance", ar:"الحضور والغياب"},
+        "کارمندی ثبت نشده": {en:"No employees yet", ar:"لا يوجد موظفون"},
+        "طرحی ثبت نشده": {en:"No plans yet", ar:"لا توجد خطط"},
+        "اعلانی وجود ندارد": {en:"No notifications", ar:"لا توجد إشعارات"},
+        "نتیجه‌ای یافت نشد": {en:"No results found", ar:"لا توجد نتائج"},
+        "تاریخچه‌ای وجود ندارد": {en:"No history yet", ar:"لا يوجد سجل"},
+        "داده‌ای موجود نیست": {en:"No data available", ar:"لا توجد بيانات"},
+        "شلوغ‌ترین ساعت": {en:"Peak hour", ar:"ساعة الذروة"},
+        "خوانده شد": {en:"Mark read", ar:"تعليم كمقروء"},
+        "آمار کلی": {en:"Overview", ar:"نظرة عامة"},
+        "بازدید": {en:"Visits", ar:"الزيارات"},
+        "هزینه کل": {en:"Total Spent", ar:"إجمالي المصروف"},
+        "رتبه": {en:"Rank", ar:"الرتبة"},
+        "دستگاه محبوب": {en:"Favorite Station", ar:"الجهاز المفضل"},
+        "مالی": {en:"Billing", ar:"المالية"},
+        "عضو فعالی نیست": {en:"No active membership", ar:"لا توجد عضوية نشطة"},
+        "انتخاب طرح...": {en:"Choose a plan...", ar:"اختر خطة..."},
+        "فعال‌سازی": {en:"Activate", ar:"تفعيل"},
+        "عضویت فعال": {en:"Active Membership", ar:"عضوية نشطة"},
+        "آخرین بازی‌ها": {en:"Recent Sessions", ar:"الجلسات الأخيرة"},
+        "سابقه‌ای ثبت نشده": {en:"No history recorded", ar:"لا يوجد سجل مسجل"},
+        "لاگی ثبت نشده": {en:"No logs yet", ar:"لا توجد سجلات"},
+        "فایل CSV دانلود شد": {en:"CSV file downloaded", ar:"تم تنزيل ملف CSV"},
+        "ذخیره شد": {en:"Saved", ar:"تم الحفظ"},  // careful: substring of "مشخصات مدیر ذخیره شد"? contains "ذخیره شد" ✓ translates part — fine.
+        "شعبه اضافه شد": {en:"Branch added", ar:"تمت إضافة الفرع"},
+        "شعبه تغییر کرد": {en:"Branch switched", ar:"تم تبديل الفرع"},
+        "ثبت‌نام شد": {en:"Registered", ar:"تم التسجيل"},
+        "ممنون از نظر شما": {en:"Thanks for your feedback", ar:"شكرا لرأيك"},
+        "لطفا ستاره انتخاب کنید": {en:"Please pick stars", ar:"اختر النجوم من فضلك"},
+        "لغو": {en:"Cancel", ar:"إلغاء"},
+        "نوع دستگاه:": {en:"Device Type:", ar:"نوع الجهاز:"},
+        "تعرفه:": {en:"Tariff:", ar:"التعريفة:"},
+        "باقی‌مانده:": {en:"Remaining:", ar:"المتبقي:"},
+        "تایمر:": {en:"Timer:", ar:"المؤقت:"},
+        "نفر اضافه": {en:"Extra Person", ar:"شخص إضافي"},
+        "نفر": {en:"persons", ar:"أشخاص"},
+        "رزرو:": {en:"Reservation:", ar:"الحجز:"},
+        "کامپیوتر": {en:"Computer", ar:"كمبيوتر"},
+        "پلی‌استیشن": {en:"PlayStation", ar:"بلاي ستيشن"},
+        "ایکس‌باکس": {en:"Xbox", ar:"إكس بوكس"},
+        "فوتبال دستی": {en:"Foosball", ar:"كرة طاولة"},
+        "بیلیارد": {en:"Billiards", ar:"بلياردو"}
     };
     const I18N_KEYS = Object.keys(I18N).sort((a,b)=>b.length-a.length);
     const _i18nOrig = new WeakMap();
@@ -2034,6 +2248,24 @@
         if (section === 'license') { renderLicenseSection(); }
         if (section === 'settings') { try{renderThemeGrid();}catch(e){} try{loadAlarmSettings();}catch(e){} try{updateUpdateUI();}catch(e){} try{syncAdminCredCard();}catch(e){} try{syncLiteUI();}catch(e){} }
         if (section === 'reports') {}
+        if (section === 'membership') { try{renderMembershipPlans();}catch(e){} }
+        if (section === 'employees') { try{renderEmployees();}catch(e){} }
+        if (section === 'busyHours') { try{renderBusyHoursReport();}catch(e){} }
+        if (section === 'gameHistory') { try{renderGameHistory();}catch(e){} }
+        if (section === 'activityLog') { try{renderActivityLog();}catch(e){} }
+        if (section === 'notifications') { try{renderNotifications();}catch(e){} }
+        if (section === 'advancedSearch') { var si=document.getElementById('searchInput'); if(si) si.focus(); }
+        if (section === 'waiting') { try{renderWaitingList();}catch(e){} try{updateWaitingBadge();}catch(e){} }
+        if (section === 'events') { try{renderEvents();}catch(e){} }
+        if (section === 'branches') { try{renderBranches();}catch(e){} }
+        if (section === 'shifts') { try{renderShifts();}catch(e){} }
+        if (section === 'insights') { try{generateMonthlyComparison();}catch(e){} try{renderForecast();}catch(e){} try{renderSurveyStats();}catch(e){} try{renderStockAlerts();}catch(e){} }
+        if (section === 'tools') { try{renderPOSConfig();}catch(e){} try{renderSecurityPanel();}catch(e){} try{renderCustomerPortal();}catch(e){} try{fillToolsCustomerSelects();}catch(e){} }
+    }
+    function fillToolsCustomerSelects(){
+        var opts = customers.map(function(c){ return '<option value="'+c.id+'">'+escapeHtml(c.name)+'</option>'; }).join('');
+        var l=document.getElementById('loyaltyCustomerSelect'); if(l) l.innerHTML='<option value="">انتخاب مشتری...</option>'+opts;
+        var q=document.getElementById('qrCustomerSelect'); if(q) q.innerHTML='<option value="">انتخاب مشتری...</option>'+opts;
     }
 
     function showToast(msg, type='success'){
@@ -2050,12 +2282,14 @@
         try{renderTypeFilter();}catch(e){}
         if (clients.length === 0) {
             grid.innerHTML = '<div class="glass" style="grid-column: 1/-1; text-align: center; padding: 60px;"><p style="font-size: 3rem; margin-bottom: 16px;">&#128123;</p><p>هیچ کلاینتی ثبت نشده</p><p style="color:rgba(255,255,255,0.4); font-size:0.85rem; margin-top:8px;">برای شروع یک کلاینت جدید اضافه کنید</p></div>';
+            try{ window._cliSig = []; }catch(e){}
             return;
         }
 
         let shownIdx = clients.map((c,i)=>i).filter(i=> !clientTypeFilter || (clients[i].stationType||'none')===clientTypeFilter);
         if(shownIdx.length===0){
             grid.innerHTML = '<div class="glass" style="grid-column: 1/-1; text-align: center; padding: 60px;"><p>در این دسته دستگاهی نیست</p></div>';
+            try{ window._cliSig = clients.map(clientSig); }catch(e){}
             return;
         }
         grid.innerHTML = shownIdx.map((i) => { const c=clients[i];
@@ -2098,13 +2332,13 @@
 
                     <div style="text-align: center; margin: 16px 0;">
                         <p style="font-size: 0.8rem; color: rgba(255,255,255,0.5); margin-bottom: 4px;">زمان سپری شده</p>
-                        <p style="font-size: 1.8rem; font-weight: 900; font-variant-numeric: tabular-nums; ${timerEnabled && c.status==='online' && remainingSec<=300 ? 'color:#ef4444;':''}">${timeStr}</p>
-                        ${timerEnabled? `<div style="margin-top:6px;"><span class="countdown-badge" style="${remainingSec<=300 && c.status==='online'?'background:rgba(239,68,68,0.25); color:#fff;':''}">${c.status==='online'? '⏳ باقی‌مانده: '+remainingStr : '⏱️ تایمر: '+c.timerDuration+' دقیقه'}</span></div>` : ''}
+                        <p id="cliElapsed-${i}" style="font-size: 1.8rem; font-weight: 900; font-variant-numeric: tabular-nums; ${timerEnabled && c.status==='online' && remainingSec<=300 ? 'color:#ef4444;':''}">${timeStr}</p>
+                        ${timerEnabled? `<div id="cliRemainWrap-${i}" style="margin-top:6px;"><span id="cliRemain-${i}" class="countdown-badge" style="${remainingSec<=300 && c.status==='online'?'background:rgba(239,68,68,0.25); color:#fff;':''}">${c.status==='online'? '⏳ باقی‌مانده: '+remainingStr : '⏱️ تایمر: '+c.timerDuration+' دقیقه'}</span></div>` : ''}
                     </div>
 
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 16px;">
                         <span style="color: rgba(255,255,255,0.6);">هزینه فعلی:</span>
-                        <span style="font-weight: 900; color: #22c55e; font-size: 1.1rem;">${cost.toLocaleString()} تومان</span>
+                        <span id="cliCost-${i}" style="font-weight: 900; color: #22c55e; font-size: 1.1rem;">${cost.toLocaleString()} تومان</span>
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; background:rgba(99,102,241,0.08); border-radius:12px; padding:8px 12px;">
@@ -2124,34 +2358,90 @@
                     </div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; background:rgba(6,182,214,0.06); border-radius:12px; padding:8px 12px;">
                         <span style="font-size:0.75rem; color:rgba(255,255,255,0.6);">🌐 ${c.ip||'بدون IP'} <span class="status-dot ${c.online===true?'status-online':(c.online===false?'status-offline':'status-paused')}" title="${c.online===true?'متصل':(c.online===false?'قطع':'نامشخص')}"></span></span>
-                        <span style="display:flex; gap:6px;">
-                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" title="باز کردن" onclick="agentCmd(${i},'unlock')">🔓</button>
-                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" title="قفل" onclick="agentCmd(${i},'lock')">🔒</button>
-                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" title="هشدار" onclick="agentCmd(${i},'warn')">⚠️</button>
-                            <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" title="خاموش" onclick="agentShutdown(${i})">⏻</button>
-                        </span>
                     </div>
                     ${(() => {
                         let svc = clientServiceMap[c.id]||[];
                         let svcCost = svc.reduce((sum, it)=>{ let s=services.find(x=>x.id===it.serviceId); return sum + (s? s.price*it.qty:0); },0);
                         return svcCost>0? `<div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); border-radius:12px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:0.75rem; color:#fbbf24;">🍿 بوفه: ${svc.length} قلم</span><span style="font-weight:800; color:#fbbf24; font-size:0.85rem;">${svcCost.toLocaleString()} تومان</span></div>`:'';
                     })()}
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom:8px;">
-                        <button class="glass-btn" style="padding: 10px 12px; font-size: 0.8rem;" onclick="openTimeModal(${i})">&#9201; زمان</button>
-                        <button class="glass-btn" style="padding: 10px 12px; font-size: 0.8rem; background: rgba(99,102,241,0.18);" onclick="openAmountModal(${i})">💰 مبلغ->زمان</button>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom:8px;">
-                        <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem; background: rgba(245,158,11,0.18);" onclick="openReservationModal(${i})">&#128197; رزرو</button>
-                        <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem; background: rgba(34,197,94,0.18);" onclick="openAddServiceToClient(${i})">🍿 بوفه</button>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-                        <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openShareModalForClient(${i})">📤 ارسال</button>
-                        <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="generatePdfForClient(${i})">📄 PDF</button>
-                        <button class="glass-btn glass-btn-danger" style="padding: 8px 10px; font-size: 0.78rem;" onclick="deleteClient(${i})">&#128465; حذف</button>
+                    ${c.status==='online'
+                        ? `<button class="glass-btn glass-btn-danger" style="width:100%; padding:12px; font-size:1rem; font-weight:900; margin-bottom:8px;" onclick="toggleClientTimer(${i})">■ پایان</button>`
+                        : `<button class="glass-btn glass-btn-success" style="width:100%; padding:12px; font-size:1rem; font-weight:900; margin-bottom:8px;" onclick="toggleClientTimer(${i})">▶ ${c.status==='paused'?'ادامه':'شروع'}</button>`}
+                    <button class="glass-btn" style="width:100%; padding:10px; font-size:0.85rem; margin-bottom:8px;" onclick="toggleClientMenu(${i})">⋯ بیشتر</button>
+                    <div id="clientMenu-${i}" style="display:none; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:10px; margin-bottom:8px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom:8px;">
+                            ${c.status==='online' ? `<button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="pauseClient(${i})">⏸ توقف موقت</button>` : ''}
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openTimeModal(${i})">&#9201; زمان</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openAmountModal(${i})">💰 مبلغ->زمان</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openReservationModal(${i})">&#128197; رزرو</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openAddServiceToClient(${i})">🍿 بوفه</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openShareModalForClient(${i})">📤 ارسال</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="generatePdfForClient(${i})">📄 PDF</button>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom:8px;">
+                            <button class="glass-btn" style="padding: 8px 6px; font-size: 0.78rem;" title="باز کردن" onclick="agentCmd(${i},'unlock')">🔓</button>
+                            <button class="glass-btn" style="padding: 8px 6px; font-size: 0.78rem;" title="قفل" onclick="agentCmd(${i},'lock')">🔒</button>
+                            <button class="glass-btn" style="padding: 8px 6px; font-size: 0.78rem;" title="هشدار" onclick="agentCmd(${i},'warn')">⚠️</button>
+                            <button class="glass-btn glass-btn-danger" style="padding: 8px 6px; font-size: 0.78rem;" title="خاموش" onclick="agentShutdown(${i})">⏻</button>
+                        </div>
+                        <button class="glass-btn glass-btn-danger" style="width:100%; padding: 8px 10px; font-size: 0.78rem;" onclick="deleteClient(${i})">&#128465; حذف</button>
                     </div>
                 </div>
             `;
         }).join('');
+        try{ window._cliSig = clients.map(clientSig); }catch(e){}
+    }
+
+    // Structural signature of a client card. Elapsed/cost are live-updated
+    // in place and excluded, so the 1s tick never rebuilds the DOM (no jumps).
+    function clientSig(c){
+        let r = null;
+        try{ r = getActiveReservationForClient(c.id); }catch(e){}
+        let svc = clientServiceMap[c.id]||[];
+        let rem = (c.timerDuration && c.timerDuration>0 && c.status==='online') ? Math.max(0, c.timerDuration*60 - (c.elapsed||0)) : -1;
+        return [c.status, c.tariff, c.extra||0, c.stationType||'', c.timerDuration||0,
+            svc.length, svc.reduce((s,x)=>s+x.serviceId+':'+x.qty+',',''),
+            r?(r.id||(r.customerName+'|'+r.startTime)):'', c.ip||'',
+            c.online==null?'?':(c.online?'1':'0'),
+            (rem>=0 && rem<=300)?'warn':'ok', c.name].join('|');
+    }
+    function setLiveText(id, txt){
+        let el = document.getElementById(id);
+        if(el && el.textContent !== txt) el.textContent = txt;
+        return !!el;
+    }
+    // Called every second from the timer tick: updates only text nodes.
+    // Full re-render happens only when something structural actually changed.
+    function refreshClientCards(){
+        let sigs = [];
+        try{ sigs = clients.map(clientSig); }catch(e){ renderClients(); return; }
+        let prev = window._cliSig || [];
+        let needFull = sigs.length !== prev.length;
+        if(!needFull){
+            for(let k=0;k<sigs.length;k++){
+                if(sigs[k] !== prev[k]){ needFull = true; break; }
+            }
+        }
+        if(needFull){ renderClients(); try{ updateStats(); }catch(e){} return; }
+        for(let i=0;i<clients.length;i++){
+            let c = clients[i];
+            setLiveText('cliElapsed-'+i, formatTime(c.elapsed||0));
+            try{ setLiveText('cliCost-'+i, calculateCost(c).toLocaleString() + ' تومان'); }catch(e){}
+            if(c.timerDuration && c.timerDuration>0){
+                if(c.status==='online'){
+                    let rem = Math.max(0, c.timerDuration*60 - (c.elapsed||0));
+                    setLiveText('cliRemain-'+i, '⏳ باقی‌مانده: ' + formatTime(rem));
+                } else {
+                    setLiveText('cliRemain-'+i, '⏱️ تایمر: ' + c.timerDuration + ' دقیقه');
+                }
+            }
+            let elp = document.getElementById('cliElapsed-'+i);
+            if(elp){
+                let hot = !!(c.timerDuration && c.timerDuration>0 && c.status==='online' && (c.timerDuration*60-(c.elapsed||0))<=300);
+                let col = hot ? '#ef4444' : '';
+                if(elp.style.color !== col) elp.style.color = col;
+            }
+        }
     }
 
     function openAddClientModal() {
@@ -2344,6 +2634,24 @@
         showToast('تایمر متوقف شد','warning');
     }
 
+    // Card-level timer controls: single Start/Stop toggle + "More" menu
+    function toggleClientTimer(i){
+        currentTimeClient = i;
+        if(clients[i].status === 'online') stopTimer();
+        else startTimer();
+    }
+    function pauseClient(i){
+        currentTimeClient = i;
+        pauseTimer();
+    }
+    function toggleClientMenu(i){
+        let m = document.getElementById('clientMenu-' + i);
+        if(!m) return;
+        let open = m.style.display !== 'none';
+        document.querySelectorAll('[id^="clientMenu-"]').forEach(x => x.style.display = 'none');
+        m.style.display = open ? 'none' : 'block';
+    }
+
     function stopTimer() {
         if (currentTimeClient === null) return;
         const c = clients[currentTimeClient];
@@ -2463,19 +2771,35 @@
     function addTime() {
         if (currentTimeClient === null) return;
         const mins = parseInt(document.getElementById('timeAdjust').value) || 0;
-        clients[currentTimeClient].elapsed = (clients[currentTimeClient].elapsed || 0) + mins * 60;
+        const c = clients[currentTimeClient];
+        c.elapsed = (c.elapsed || 0) + mins * 60;
+        if (c.status === 'online' && c.startTime) {
+            // elapsed is derived from startTime every tick: shift it back so the bonus sticks
+            c.startTime -= mins * 60 * 1000;
+        }
+        // keep pro-rata extra billing consistent (manual edits don't back-charge extras)
+        c._lastElapsed = c.elapsed;
         saveData();
         updateTimeDisplay();
         renderClients();
+        showToast(mins + ' دقیقه اضافه شد','success');
     }
 
     function subTime() {
         if (currentTimeClient === null) return;
         const mins = parseInt(document.getElementById('timeAdjust').value) || 0;
-        clients[currentTimeClient].elapsed = Math.max(0, (clients[currentTimeClient].elapsed || 0) - mins * 60);
+        const c = clients[currentTimeClient];
+        c.elapsed = Math.max(0, (c.elapsed || 0) - mins * 60);
+        if (c.status === 'online') {
+            // shift startTime forward; clamp so elapsed never goes negative
+            c.startTime = Date.now() - c.elapsed * 1000;
+        }
+        // keep pro-rata extra billing consistent (manual edits don't refund extras)
+        c._lastElapsed = c.elapsed;
         saveData();
         updateTimeDisplay();
         renderClients();
+        showToast(mins + ' دقیقه کم شد','success');
     }
 
     function updateTimers() {
@@ -2518,16 +2842,21 @@
             // FIXED: persist at most every 15s (was every 1s -> SSD wear + UI jank + corruption window).
             var __now = Date.now();
             window._lastPersist = window._lastPersist || 0;
-            window._lastFullRender = window._lastFullRender || 0;
             if (__now - window._lastPersist > 15000) { window._lastPersist = __now; try { saveData(); } catch(e){} }
-            if (__now - window._lastFullRender > 5000) {
-                window._lastFullRender = __now;
-                try {
-                    if (document.getElementById('clients-section')?.style.display !== 'none') renderClients();
-                    if (document.getElementById('dashboard-section')?.style.display !== 'none') renderActiveClients();
+            // Live tick: update only text nodes (no DOM rebuild -> no page jumps).
+            // Full re-render happens inside refresh* only on structural changes.
+            try {
+                if (document.getElementById('clients-section')?.style.display !== 'none') refreshClientCards();
+                if (document.getElementById('dashboard-section')?.style.display !== 'none'){ refreshDashboardLive(); }
+            } catch(e){}
+            // Station hours: only when visible, at most every 30s (heavy innerHTML rebuild).
+            window._lastStationHours = window._lastStationHours || 0;
+            try {
+                if (__now - window._lastStationHours > 30000 && document.getElementById('stationHours-section')?.style.display !== 'none') {
+                    window._lastStationHours = __now;
                     renderStationHours();
-                } catch(e){}
-            }
+                }
+            } catch(e){}
         }
         if (currentTimeClient !== null) updateTimeDisplay();
         // update reservation badge periodically
@@ -3280,6 +3609,7 @@
 
         if (active.length === 0) {
             container.innerHTML = '<div class="glass" style="grid-column: 1/-1; text-align: center; padding: 40px; color: rgba(255,255,255,0.5);"><p>هیچ کلاینت فعالی وجود ندارد</p></div>';
+            try{ window._actIds = ''; }catch(e){}
             return;
         }
 
@@ -3288,7 +3618,7 @@
             if(c.timerDuration && c.timerDuration>0){
                 let rem=c.timerDuration*60 - (c.elapsed||0);
                 if(rem<0) rem=0;
-                remaining=`<p style="color:${rem<=300?'#fca5a5':'#fbbf24'}; font-size:0.8rem;">⏳ باقی‌مانده: ${formatTime(rem)}</p>`;
+                remaining=`<p id="actRemain-${c.id}" style="color:${rem<=300?'#fca5a5':'#fbbf24'}; font-size:0.8rem;">⏳ باقی‌مانده: ${formatTime(rem)}</p>`;
             }
             return `
             <div class="glass active-row" style="padding: 20px; display: flex; align-items: center; justify-content: space-between;">
@@ -3298,11 +3628,44 @@
                     ${remaining}
                 </div>
                 <div style="text-align: left;">
-                    <p style="font-size: 1.4rem; font-weight: 900; font-variant-numeric: tabular-nums; color: ${c.timerDuration && (c.timerDuration*60 - c.elapsed)<=300?'#ef4444':'#22c55e'};">${formatTime(c.elapsed || 0)}</p>
-                    <p style="font-size: 0.8rem; color: rgba(255,255,255,0.5);">${calculateCost(c).toLocaleString()} تومان</p>
+                    <p id="actElapsed-${c.id}" style="font-size: 1.4rem; font-weight: 900; font-variant-numeric: tabular-nums; color: ${c.timerDuration && (c.timerDuration*60 - c.elapsed)<=300?'#ef4444':'#22c55e'};">${formatTime(c.elapsed || 0)}</p>
+                    <p id="actCost-${c.id}" style="font-size: 0.8rem; color: rgba(255,255,255,0.5);">${calculateCost(c).toLocaleString()} تومان</p>
                 </div>
             </div>
         `}).join('');
+        try{ window._actIds = active.map(c=>c.id).join(','); }catch(e){}
+    }
+
+    // Light per-second dashboard tick: numbers + surgical list refresh (no rebuild).
+    function refreshDashboardLive(){
+        try{
+            const active = clients.filter(c => c.status === 'online').length;
+            const paused = clients.filter(c => c.status === 'paused').length;
+            const now = new Date();
+            const todayIncome = sessions.filter(s => new Date(s.date).toDateString() === now.toDateString()).reduce((sum, s) => sum + s.cost, 0);
+            let a=document.getElementById('statActive'); if(a && a.textContent != String(active)) a.textContent = active;
+            let b=document.getElementById('statPaused'); if(b && b.textContent != String(paused)) b.textContent = paused;
+            let c=document.getElementById('statTotal'); if(c && c.textContent != String(clients.length)) c.textContent = clients.length;
+            let d2=document.getElementById('statIncome');
+            let incTxt = todayIncome.toLocaleString() + ' تومان';
+            if(d2 && d2.textContent !== incTxt) d2.textContent = incTxt;
+        }catch(e){}
+        try{ refreshActiveClients(); }catch(e){}
+    }
+
+    // Dashboard counterpart of refreshClientCards: in-place text updates only.
+    function refreshActiveClients(){        let online = [];
+        try{ online = clients.filter(c => c.status === 'online'); }catch(e){ return; }
+        let ids = online.map(c=>c.id).join(',');
+        if(window._actIds !== ids){ renderActiveClients(); return; }
+        online.forEach(c => {
+            setLiveText('actElapsed-'+c.id, formatTime(c.elapsed||0));
+            try{ setLiveText('actCost-'+c.id, calculateCost(c).toLocaleString() + ' تومان'); }catch(e){}
+            if(c.timerDuration && c.timerDuration>0){
+                let rem = Math.max(0, c.timerDuration*60 - (c.elapsed||0));
+                setLiveText('actRemain-'+c.id, '⏳ باقی‌مانده: ' + formatTime(rem));
+            }
+        });
     }
 
     // Reports - enhanced with PDF button
@@ -3479,7 +3842,11 @@
           ['alvand_expenses', expenses], ['alvand_tariffSchedules', tariffSchedules], ['alvand_sales', sales],
           ['alvand_clientServiceMap', clientServiceMap], ['alvand_customers', customers],
           ['alvand_operators', operators], ['alvand_walletHistory', walletHistory],
-          ['alvand_stationTypes', stationTypes]
+          ['alvand_stationTypes', stationTypes],
+          ['alvand_membershipPlans', membershipPlans], ['alvand_customerMemberships', customerMemberships],
+          ['alvand_gameHistory', gameHistory], ['alvand_hourlyUsage', hourlyUsage],
+          ['alvand_notifications', notifications], ['alvand_activityLog', activityLog],
+          ['alvand_employees', employees], ['alvand_attendance', attendance]
         ];
         for (var __i = 0; __i < __pairs.length; __i++) {
           try { localStorage.setItem(__pairs[__i][0], JSON.stringify(__pairs[__i][1])); }
@@ -3938,6 +4305,23 @@
         showToast('ساعت بکاپ: '+(v||'23:59'),'success');
     }
 
+
+    // Bridge: expose live stores to extension modules (new-features.js, round2-*.js)
+    // Getters (not copies) so reassignments inside app.js stay visible.
+    try{
+        Object.defineProperties(window, {
+            clients: { get: function(){ return clients; }, configurable: true },
+            sessions: { get: function(){ return sessions; }, configurable: true },
+            customers: { get: function(){ return customers; }, configurable: true },
+            reservations: { get: function(){ return reservations; }, configurable: true },
+            services: { get: function(){ return services; }, configurable: true },
+            expenses: { get: function(){ return expenses; }, configurable: true },
+            clientServiceMap: { get: function(){ return clientServiceMap; }, configurable: true },
+            currentOperator: { get: function(){ return currentOperator; }, configurable: true },
+            stationTypes: { get: function(){ return stationTypes; }, configurable: true },
+            tariffs: { get: function(){ return tariffs; }, configurable: true }
+        });
+    }catch(e){}
 
     // Init
     init();
