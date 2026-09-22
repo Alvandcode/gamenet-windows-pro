@@ -85,8 +85,18 @@ try {
   // round2-c
   check(typeof sandbox.renderPOSConfig === 'function', 'r2c: renderPOSConfig exists');
   check(typeof sandbox.renderCustomerQR === 'function', 'r2c: renderCustomerQR exists');
-  // zoom
-  check(typeof sandbox.getZoom === 'function', 'zoom: getZoom exists');
+  // share modal helpers (prompt() replacements)
+  check(typeof sandbox.copyTextToClipboard === 'function', 'share: copyTextToClipboard exists');
+  check(typeof sandbox.openCopyTextModal === 'function', 'share: openCopyTextModal exists');
+  check(typeof sandbox.copyFromCopyModal === 'function', 'share: copyFromCopyModal exists');
+  check(typeof sandbox.setShopInfo === 'function', 'share: setShopInfo exists');
+  check(typeof sandbox.saveShopInfo === 'function', 'share: saveShopInfo exists');
+  check(typeof sandbox.saveJoinEvent === 'function', 'share: saveJoinEvent exists');
+  // stale-index guards: out-of-range currentTimeClient must never throw
+  try {
+    vm.runInContext('currentTimeClient=999; updateTimeDisplay(); startTimer(); pauseTimer(); stopTimer(); resetTimer(); addTime(); subTime(); toggleClientTimer(999); pauseClient(999); triggerAlarm(999); extendTimerEnd(); currentTimeClient=null;', sandbox);
+    console.log('  PASS guards: stale indexes never throw');
+  } catch (e) { failures++; console.error('  FAIL stale-index guard: ' + e.message); }
   check(typeof sandbox.applyZoom === 'function', 'zoom: applyZoom exists');
   check(typeof sandbox.zoomBy === 'function', 'zoom: zoomBy exists');
   const z0 = vm.runInContext('applyZoom(100)', sandbox);
@@ -107,6 +117,15 @@ try {
   check(typeof sandbox.toggleClientTimer === 'function', 'card: toggleClientTimer exists');
   check(typeof sandbox.pauseClient === 'function', 'card: pauseClient exists');
   check(typeof sandbox.toggleClientMenu === 'function', 'card: toggleClientMenu exists');
+  // share without prompt()
+  check(typeof sandbox.copyTextToClipboard === 'function', 'share: copyTextToClipboard exists');
+  check(typeof sandbox.openCopyTextModal === 'function', 'share: openCopyTextModal exists');
+  check(typeof sandbox.copyFromCopyModal === 'function', 'share: copyFromCopyModal exists');
+  check(typeof sandbox.setShopInfo === 'function', 'shop: setShopInfo exists');
+  check(typeof sandbox.saveShopInfo === 'function', 'shop: saveShopInfo exists');
+  check(typeof sandbox.saveJoinEvent === 'function', 'event: saveJoinEvent exists');
+  const noPrompt = vm.runInContext('[copyTextToClipboard,openCopyTextModal,copyFromCopyModal,shareVia,setShopInfo,saveShopInfo,joinEvent,saveJoinEvent].every(f=>!/\\bprompt\\s*\\(/.test(f.toString()))', sandbox);
+  check(noPrompt === true, 'share: no prompt() in share/shop/join flows');
   // surgical refresh must not throw and must not rebuild when nothing changed
   try {
     vm.runInContext('renderClients(); refreshClientCards();', sandbox);
@@ -149,7 +168,7 @@ try {
     catch (e) { failures++; console.error('  FAIL render crash: ' + fn + ' :: ' + e.message); }
   }
   // i18n coverage: every new Persian UI string must have en+ar entries
-  const requiredKeys = ['عضویت','لیست انتظار','رویدادها','شعبه‌ها','شیفت‌ها','تحلیل و پیش‌بینی','ابزارها','بیشتر','پایان','ادامه','توقف موقت','طرح‌های عضویت و اشتراک','طرح جدید','نام طرح','توضیحات','مدیریت کارمندان','کارمند جدید','گزارش حضور و غیاب','نام کامل','تلفن','حقوق (تومان)','سمت','کارمند','تاریخچه بازی','لاگ فعالیت','پاکسازی','جستجوی پیشرفته','رد کردن','افزودن به لیست','نام مشتری','لیست انتظار خالی است','انجام شد','رویدادها و تورنمنت','رویداد جدید','عنوان','تاریخ','ورودی (تومان)','جایزه','رویدادی نیست','بازیکنان:','شرکت در رویداد','مدیریت شعبه‌ها','شعبه جدید','نام شعبه','آدرس','شعبه اصلی','تغییر','برنامه شیفت کارمندان','شیفت جدید','مقایسه این ماه با ماه قبل','پیش‌بینی درآمد','رضایت مشتریان','هشدار موجودی بوفه','آستانه هشدار','این ماه','ماه قبل','سشن','تغییر:','میانگین روزانه','داده‌ای نیست','نظر','تمام شده','کم موجودی','تمام موجودی‌ها کافی است','خروجی CSV (اکسل)','سشن‌های امروز','چاپ رسید حرارتی','دستگاه کارتخوان','بروزرسانی','امنیت و رمزنگاری','امتیاز وفاداری مشتری','انتخاب مشتری...','فعال‌سازی کارتخوان','رمزنگاری بکاپ مشتریان','رمزنگاری','بررسی رمزگشایی','مشتری','دستگاه آزاد','در انتظار','مشغول','آزاد','امتیاز فعلی:','بازخرید','نام الزامی است','دقیقه','بدون IP','نظرت چی بود؟','بیخیال','لغو','نفر','رزرو:','ساعت','متصل','نامشخص'];
+  const requiredKeys = ['عضویت','لیست انتظار','رویدادها','شعبه‌ها','شیفت‌ها','تحلیل و پیش‌بینی','ابزارها','بیشتر','پایان','ادامه','توقف موقت','طرح‌های عضویت و اشتراک','طرح جدید','نام طرح','توضیحات','مدیریت کارمندان','کارمند جدید','گزارش حضور و غیاب','نام کامل','تلفن','حقوق (تومان)','سمت','کارمند','تاریخچه بازی','لاگ فعالیت','پاکسازی','جستجوی پیشرفته','رد کردن','افزودن به لیست','نام مشتری','لیست انتظار خالی است','انجام شد','رویدادها و تورنمنت','رویداد جدید','عنوان','تاریخ','ورودی (تومان)','جایزه','رویدادی نیست','بازیکنان:','شرکت در رویداد','مدیریت شعبه‌ها','شعبه جدید','نام شعبه','آدرس','شعبه اصلی','تغییر','برنامه شیفت کارمندان','شیفت جدید','مقایسه این ماه با ماه قبل','پیش‌بینی درآمد','رضایت مشتریان','هشدار موجودی بوفه','آستانه هشدار','این ماه','ماه قبل','سشن','تغییر:','میانگین روزانه','داده‌ای نیست','نظر','تمام شده','کم موجودی','تمام موجودی‌ها کافی است','خروجی CSV (اکسل)','سشن‌های امروز','چاپ رسید حرارتی','دستگاه کارتخوان','بروزرسانی','امنیت و رمزنگاری','امتیاز وفاداری مشتری','انتخاب مشتری...','فعال‌سازی کارتخوان','رمزنگاری بکاپ مشتریان','رمزنگاری','بررسی رمزگشایی','مشتری','دستگاه آزاد','در انتظار','مشغول','آزاد','امتیاز فعلی:','بازخرید','نام الزامی است','دقیقه','بدون IP','نظرت چی بود؟','بیخیال','لغو','نفر','رزرو:','ساعت','متصل','نامشخص','اول ایمیل گیرنده را وارد کن','متن کپی شد','کپی نشد - دستی انتخاب و کپی کن','کپی متن','کپی خودکار ممکن نشد - متن زیر را دستی کپی کن','کپی','مشخصات مغازه','نام مغازه','تلفن مغازه','ثبت‌نام','نام بازیکن'];
   const dictKeys = vm.runInContext('Object.keys(I18N)', sandbox);
   let missing = [];
   for (const k of requiredKeys) {

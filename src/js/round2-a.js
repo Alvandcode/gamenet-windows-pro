@@ -65,8 +65,18 @@ window.printThermalReceipt = function(d){
   logAct('print','receipt ' + (d.clientName||''));
 };
 window.setShopInfo = function(){
-  var n = prompt('نام مغازه:', localStorage.getItem('alvand_shopName') || '');
-  if (n !== null) localStorage.setItem('alvand_shopName', n);
+  var n = document.getElementById('shopNameInput');
+  if (n) n.value = localStorage.getItem('alvand_shopName') || '';
+  var p = document.getElementById('shopPhoneInput');
+  if (p) p.value = localStorage.getItem('alvand_shopPhone') || '';
+  var m = document.getElementById('shopInfoModal'); if (m) m.classList.add('show');
+};
+window.saveShopInfo = function(){
+  var n = document.getElementById('shopNameInput');
+  var p = document.getElementById('shopPhoneInput');
+  if (n) localStorage.setItem('alvand_shopName', n.value.trim());
+  if (p) localStorage.setItem('alvand_shopPhone', p.value.trim());
+  var m = document.getElementById('shopInfoModal'); if (m) m.classList.remove('show');
   toast('ذخیره شد','success');
 };
 

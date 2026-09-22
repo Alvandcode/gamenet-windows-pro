@@ -128,6 +128,13 @@
             border-color: var(--active-accent) !important;
             box-shadow: 0 0 32px -4px var(--active-accent), 0 20px 40px rgba(0,0,0,0.4) !important;
         }
+        /* Spotlight: hovered card stays sharp, siblings dim + blur */
+        #clientsGrid:has(.client-card:hover) .client-card:not(:hover) {
+            filter: blur(2px) brightness(0.6) saturate(0.85);
+        }
+        body.lite #clientsGrid:has(.client-card:hover) .client-card:not(:hover) {
+            filter: none;
+        }
         .active-pill {
             background: var(--active-accent);
             color: #101018;

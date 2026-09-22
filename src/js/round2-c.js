@@ -102,12 +102,20 @@ window.deleteEvent = function(id){
   sv('alvand_events', EV); window.renderEvents();
 };
 window.joinEvent = function(id){
+  window._joinEventId = id;
+  var n = document.getElementById('joinEventName'); if (n) n.value = '';
+  var m = document.getElementById('joinEventModal'); if (m) m.classList.add('show');
+};
+window.saveJoinEvent = function(){
+  var id = window._joinEventId;
   var e = EV.find(function(x){ return x.id === id; });
   if (!e) return;
-  var name = prompt('نام بازیکن:');
-  if (!name) return;
+  var n = document.getElementById('joinEventName');
+  var name = n ? n.value.trim() : '';
+  if (!name){ toast('نام الزامی است','error'); return; }
   e.participants.push({name: name, date: new Date().toISOString()});
   sv('alvand_events', EV); window.renderEvents(); toast('ثبت‌نام شد','success');
+  var m = document.getElementById('joinEventModal'); if (m) m.classList.remove('show');
 };
 window.renderEvents = function(){
   var c = document.getElementById('eventsList');

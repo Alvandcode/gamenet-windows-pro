@@ -1178,6 +1178,46 @@
         </div>
     </div>
 
+    <!-- Manual Copy Modal (clipboard fallback, replaces prompt()) -->
+    <div class="modal-overlay" id="copyTextModal">
+        <div class="glass" style="width: 90%; max-width: 480px; padding: 28px; animation: slideIn 0.4s ease;">
+            <h2 style="margin-bottom: 8px; text-align: center;">📋 کپی متن</h2>
+            <p style="color: rgba(255,255,255,0.6); font-size: 0.85rem; text-align: center; margin-bottom: 16px;">کپی خودکار ممکن نشد - متن زیر را دستی کپی کن</p>
+            <textarea id="copyTextArea" readonly style="width: 100%; min-height: 140px; font-size: 0.85rem; line-height: 1.8;"></textarea>
+            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 16px;">
+                <button class="glass-btn glass-btn-success" onclick="copyFromCopyModal()">📋 کپی</button>
+                <button class="glass-btn glass-btn-danger" onclick="closeModal('copyTextModal')">بستن</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shop Info Modal (replaces prompt()) -->
+    <div class="modal-overlay" id="shopInfoModal">
+        <div class="glass" style="width: 90%; max-width: 420px; padding: 28px; animation: slideIn 0.4s ease;">
+            <h2 style="margin-bottom: 20px; text-align: center;">🏪 مشخصات مغازه</h2>
+            <div style="display:grid; gap:12px;">
+                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام مغازه</label><input type="text" id="shopNameInput"></div>
+                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">تلفن مغازه</label><input type="text" id="shopPhoneInput"></div>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 16px;">
+                <button class="glass-btn glass-btn-success" onclick="saveShopInfo()">ذخیره</button>
+                <button class="glass-btn glass-btn-danger" onclick="closeModal('shopInfoModal')">بستن</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Event Modal (replaces prompt()) -->
+    <div class="modal-overlay" id="joinEventModal">
+        <div class="glass" style="width: 90%; max-width: 400px; padding: 28px; animation: slideIn 0.4s ease;">
+            <h2 style="margin-bottom: 20px; text-align: center;">🏆 شرکت در رویداد</h2>
+            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام بازیکن</label><input type="text" id="joinEventName"></div>
+            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 16px;">
+                <button class="glass-btn glass-btn-success" onclick="saveJoinEvent()">ثبت‌نام</button>
+                <button class="glass-btn glass-btn-danger" onclick="closeModal('joinEventModal')">بستن</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Timer End Alarm Modal -->
     <div class="modal-overlay" id="timerEndModal" style="z-index: 200;">
         <div class="glass" style="width: 90%; max-width: 450px; padding: 32px; text-align:center; border-color: rgba(239,68,68,0.5); background: rgba(239,68,68,0.12);">

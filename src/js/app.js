@@ -1896,7 +1896,18 @@
         "پلی‌استیشن": {en:"PlayStation", ar:"بلاي ستيشن"},
         "ایکس‌باکس": {en:"Xbox", ar:"إكس بوكس"},
         "فوتبال دستی": {en:"Foosball", ar:"كرة طاولة"},
-        "بیلیارد": {en:"Billiards", ar:"بلياردو"}
+        "بیلیارد": {en:"Billiards", ar:"بلياردو"},
+        "اول ایمیل گیرنده را وارد کن": {en:"Enter the recipient email first", ar:"أدخل بريد المستلم أولا"},
+        "متن کپی شد": {en:"Text copied", ar:"تم نسخ النص"},
+        "کپی نشد - دستی انتخاب و کپی کن": {en:"Copy failed - select and copy manually", ar:"تعذر النسخ - حدد وانسخ يدويا"},
+        "کپی متن": {en:"Copy Text", ar:"نسخ النص"},
+        "کپی خودکار ممکن نشد - متن زیر را دستی کپی کن": {en:"Auto-copy failed - copy the text below manually", ar:"تعذر النسخ التلقائي - انسخ النص أدناه يدويا"},
+        "کپی": {en:"Copy", ar:"نسخ"},
+        "مشخصات مغازه": {en:"Shop Details", ar:"بيانات المتجر"},
+        "نام مغازه": {en:"Shop Name", ar:"اسم المتجر"},
+        "تلفن مغازه": {en:"Shop Phone", ar:"هاتف المتجر"},
+        "ثبت‌نام": {en:"Register", ar:"تسجيل"},
+        "نام بازیکن": {en:"Player Name", ar:"اسم اللاعب"}
     };
     const I18N_KEYS = Object.keys(I18N).sort((a,b)=>b.length-a.length);
     const _i18nOrig = new WeakMap();
@@ -2294,6 +2305,7 @@
         }
         grid.innerHTML = shownIdx.map((i) => { const c=clients[i];
             const statusClass = c.status === 'online' ? 'status-online' : c.status === 'paused' ? 'status-paused' : 'status-offline';
+            const statusColor = c.status === 'online' ? '#22c55e' : c.status === 'paused' ? '#f59e0b' : '#ef4444';
             const tariffLabel = c.tariff === 'single' ? 'تک نفره' : 'دو نفره';
             const tariffClass = c.tariff === 'single' ? 'tariff-single' : 'tariff-double';
             const timeStr = formatTime(c.elapsed || 0);
@@ -2311,7 +2323,7 @@
 
             return `
                 <div class="glass client-card ${isReserved?'reserved-card':''} ${c.status==='online'?'client-card-active':''} ${timerEnabled && remainingSec<=300 && c.status==='online' ? 'shake':''}" style="padding: 24px; position: relative; overflow: hidden;">
-                    <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: ${c.status === 'online' ? '#22c55e' : c.status === 'paused' ? '#f59e0b' : '#ef4444'};"></div>
+                    <div class="client-status-bar" style="position: absolute; top: 0; left: 0; right: 0; height: 10px; background: ${statusColor}; box-shadow: 0 2px 14px ${statusColor};"></div>
                     ${isReserved? `<div style="position:absolute; top:10px; left:12px;" class="reservation-badge">🔒 رزرو: ${escapeHtml(reserved.customerName)} - ${reserved.startTime} (${reserved.duration}د)</div>`:''}
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px; margin-top:${isReserved?'22px':'0'};">
                         <div>
@@ -2497,6 +2509,12 @@
             clients.splice(index, 1);
             // also remove reservations for this client
             reservations = reservations.filter(r=>r.clientId!==cid);
+            // fix stale index references (array shifted): otherwise the 1s tick
+            // reads .elapsed of undefined -> "Cannot read properties" errors
+            if(currentTimeClient===index){ currentTimeClient=null; try{closeModal('timeModal');}catch(e){} }
+            else if(currentTimeClient!==null && currentTimeClient>index){ currentTimeClient--; }
+            if(alarmClientIndex===index){ try{dismissAlarm();}catch(e){} alarmClientIndex=null; }
+            else if(alarmClientIndex!==null && alarmClientIndex>index){ alarmClientIndex--; }
             saveData();
             saveReservations();
             renderClients();
@@ -2511,6 +2529,7 @@
     function openTimeModal(index) {
         currentTimeClient = index;
         const c = clients[index];
+        if(!c){ currentTimeClient=null; return; }
         document.getElementById('timeClientName').textContent = c.name;
         let _ipEl=document.getElementById('timeClientIP');
         if(_ipEl){ _ipEl.value=c.ip||''; _ipEl.onchange=()=>{ c.ip=_ipEl.value.trim(); saveData(); renderClients(); }; }
@@ -2542,6 +2561,7 @@
     function updateTimeDisplay() {
         if (currentTimeClient === null) return;
         const c = clients[currentTimeClient];
+        if(!c){ currentTimeClient=null; try{closeModal('timeModal');}catch(e){} return; }
         document.getElementById('timeDisplay').textContent = formatTime(c.elapsed || 0);
         // countdown
         let cd=document.getElementById('countdownDisplay');
@@ -2600,6 +2620,7 @@
     function startTimer() {
         if (currentTimeClient === null) return;
         const c = clients[currentTimeClient];
+        if(!c){ currentTimeClient=null; return; }
         // check reservation conflict before starting
         let conflict=checkStartConflict(c.id);
         if(conflict){
@@ -2623,6 +2644,7 @@
     function pauseTimer() {
         if (currentTimeClient === null) return;
         const c = clients[currentTimeClient];
+        if(!c){ currentTimeClient=null; return; }
         if (c.status !== 'online') return;
 
         c.status = 'paused';
@@ -2637,11 +2659,13 @@
     // Card-level timer controls: single Start/Stop toggle + "More" menu
     function toggleClientTimer(i){
         currentTimeClient = i;
+        if(!clients[i]){ currentTimeClient=null; return; }
         if(clients[i].status === 'online') stopTimer();
         else startTimer();
     }
     function pauseClient(i){
         currentTimeClient = i;
+        if(!clients[i]){ currentTimeClient=null; return; }
         pauseTimer();
     }
     function toggleClientMenu(i){
@@ -2655,6 +2679,7 @@
     function stopTimer() {
         if (currentTimeClient === null) return;
         const c = clients[currentTimeClient];
+        if(!c){ currentTimeClient=null; return; }
         if (c.status === 'online') {
             c.elapsed = Math.floor((Date.now() - c.startTime) / 1000);
         }
@@ -2755,6 +2780,7 @@
     function resetTimer() {
         if (currentTimeClient === null) return;
         const c = clients[currentTimeClient];
+        if(!c){ currentTimeClient=null; return; }
         c.elapsed = 0;
         c.extraSeconds=0;
         c._lastElapsed=null;
@@ -2772,6 +2798,7 @@
         if (currentTimeClient === null) return;
         const mins = parseInt(document.getElementById('timeAdjust').value) || 0;
         const c = clients[currentTimeClient];
+        if(!c){ currentTimeClient=null; return; }
         c.elapsed = (c.elapsed || 0) + mins * 60;
         if (c.status === 'online' && c.startTime) {
             // elapsed is derived from startTime every tick: shift it back so the bonus sticks
@@ -2789,6 +2816,7 @@
         if (currentTimeClient === null) return;
         const mins = parseInt(document.getElementById('timeAdjust').value) || 0;
         const c = clients[currentTimeClient];
+        if(!c){ currentTimeClient=null; return; }
         c.elapsed = Math.max(0, (c.elapsed || 0) - mins * 60);
         if (c.status === 'online') {
             // shift startTime forward; clamp so elapsed never goes negative
@@ -2866,6 +2894,7 @@
     function triggerAlarm(clientIdx){
         alarmClientIndex=clientIdx;
         let c=clients[clientIdx];
+        if(!c){ alarmClientIndex=null; return; }
         document.getElementById('timerEndText').innerHTML=`کلاینت <b>${escapeHtml(c.name)}</b> به زمان تعیین شده (${c.timerDuration} دقیقه) رسید.<br>زمان سپری شده: <b>${formatTime(c.elapsed)}</b><br>هزینه فعلی: <b>${calculateCost(c).toLocaleString()} تومان</b>`;
         document.getElementById('timerEndModal').classList.add('show');
         // warning lights
@@ -2900,6 +2929,7 @@
     function extendTimerEnd(mins){
         if(alarmClientIndex===null) return;
         let c=clients[alarmClientIndex];
+        if(!c){ alarmClientIndex=null; return; }
         c.timerDuration = (c.timerDuration||0)+mins;
         c.notified=false;
         saveData();
@@ -3458,22 +3488,62 @@
             window.open(url,'_blank');
             showToast('در واتساپ باز شد','success');
         } else if(platform==='rubika'){
-            // Rubika has no web share, copy to clipboard
-            navigator.clipboard.writeText(text).then(()=>{
-                showToast('متن کپی شد - در روبیکا پیست کنید','success');
-            }).catch(()=>{
-                // fallback prompt
-                prompt('متن را کپی کنید و در روبیکا ارسال کنید:', text);
+            // Rubika has no web share: copy to clipboard, or show manual-copy modal
+            copyTextToClipboard(text).then(ok=>{
+                if(ok) showToast('متن کپی شد - در روبیکا پیست کنید','success');
+                else openCopyTextModal(text);
             });
             // try rubika intent if installed
             try{ window.location.href=`rubika://share?text=${encoded}`; }catch(e){}
         } else if(platform==='email'){
-            if(!email){ email=prompt('ایمیل گیرنده را وارد کنید:'); if(!email) return; }
+            if(!email){
+                showToast('اول ایمیل گیرنده را وارد کن','error');
+                let em=document.getElementById('shareEmail');
+                if(em){ em.focus(); em.style.borderColor='#ef4444'; setTimeout(()=>{em.style.borderColor='';},2500); }
+                return;
+            }
             let subject=encodeURIComponent('گزارش گیم‌نت الوند');
             let body=encoded;
             window.location.href=`mailto:${email}?subject=${subject}&body=${body}`;
             showToast('ایمیل باز شد','success');
         }
+    }
+
+    // Clipboard with legacy fallback (file:// + sandbox may block async clipboard)
+    function fallbackCopyText(text){
+        try{
+            let ta=document.createElement('textarea');
+            ta.value=text;
+            ta.style.cssText='position:fixed;top:0;left:0;opacity:0;';
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            let ok=false;
+            try{ ok=document.execCommand('copy'); }catch(e){}
+            ta.remove();
+            return ok;
+        }catch(e){ return false; }
+    }
+    function copyTextToClipboard(text){
+        try{
+            if(navigator.clipboard && navigator.clipboard.writeText){
+                return navigator.clipboard.writeText(text).then(()=>true).catch(()=>fallbackCopyText(text));
+            }
+        }catch(e){}
+        return Promise.resolve(fallbackCopyText(text));
+    }
+    // Manual-copy modal: last resort when clipboard is blocked
+    function openCopyTextModal(text){
+        let ta=document.getElementById('copyTextArea');
+        if(ta) ta.value=text||'';
+        document.getElementById('copyTextModal').classList.add('show');
+        setTimeout(()=>{ try{ ta.focus(); ta.select(); }catch(e){} },100);
+    }
+    function copyFromCopyModal(){
+        let ta=document.getElementById('copyTextArea');
+        let ok=false;
+        try{ ta.focus(); ta.select(); ok=document.execCommand('copy'); }catch(e){}
+        if(ok){ showToast('متن کپی شد','success'); closeModal('copyTextModal'); }
+        else showToast('کپی نشد - دستی انتخاب و کپی کن','warning');
     }
 
     function generatePdfForClient(idx){
