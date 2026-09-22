@@ -130,6 +130,9 @@
                 <div class="nav-item" onclick="showSection('tools', this)">
                     <span style="font-size: 1.3rem;">🧰</span> ابزارها
                 </div>
+                <div class="nav-item" onclick="showSection('phonebook', this)">
+                    <span style="font-size: 1.3rem;">📒</span> دفترچه تلفن
+                </div>
             </nav>
 
             <div id="operatorBar" class="glass" style="padding:12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem;">
@@ -884,8 +887,58 @@
                 </div>
             </section>
 
-            <!-- Survey Modal (global) -->
-            <div class="modal-overlay" id="surveyModal">
+            <!-- Phonebook Section -->
+            <section id="phonebook-section" class="section" style="display: none;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px;">
+                    <h1 style="font-size:1.8rem; font-weight:900;">📒 دفترچه تلفن</h1>
+                    <button class="glass-btn glass-btn-success" onclick="openPhonebookModal()">➕ مخاطب جدید</button>
+                </div>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">جزئیات حساب هر مخاطب خودکار از لیست مشتریان و کارکرد پیدا و نمایش داده می‌شود</p>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">⚙️ اتصال پنل پیامک (اختیاری)</h3>
+                    <div id="smsConfigContent"></div>
+                </div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">✉️ متن پیام</h3>
+                    <p style="color:rgba(255,255,255,0.5); font-size:0.8rem; margin-bottom:8px;">از <b>{نام}</b> برای اسم هر مخاطب استفاده کن</p>
+                    <textarea id="smsComposer" rows="3" placeholder="سلام {نام}، ..."></textarea>
+                    <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+                        <button class="glass-btn glass-btn-success" onclick="sendBulkSms()">📤 ارسال گروهی به همه</button>
+                    </div>
+                </div>
+                <div id="phonebookList" style="margin-bottom:16px;"></div>
+                <div class="glass" style="padding:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h3>📜 گزارش ارسال‌ها</h3>
+                        <button class="glass-btn glass-btn-danger" style="padding:6px 12px; font-size:0.75rem;" onclick="clearSmsLog()">پاکسازی</button>
+                    </div>
+                    <div id="smsLogList"></div>
+                </div>
+                <!-- Phonebook Entry Modal -->
+                <div class="modal-overlay" id="phonebookModal">
+                    <div class="glass modal" style="padding:24px; max-width:500px; width:90%;">
+                        <h3 style="margin-bottom:16px;">مخاطب</h3>
+                        <input type="hidden" id="pbId">
+                        <div style="display:grid; gap:12px;">
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام *</label><input type="text" id="pbFirst"></div>
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام خانوادگی</label><input type="text" id="pbLast"></div>
+                            </div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">موبایل</label><input type="text" id="pbMobile" placeholder="09..." style="text-align:left; direction:ltr;"></div>
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">تلفن ثابت</label><input type="text" id="pbFixed" style="text-align:left; direction:ltr;"></div>
+                            </div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">یادداشت</label><input type="text" id="pbNote"></div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="savePhonebookEntry()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('phonebookModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Survey Modal (global) -->            <div class="modal-overlay" id="surveyModal">
                 <div class="glass modal" style="padding:24px; max-width:400px; width:90%; text-align:center;">
                     <h3 style="margin-bottom:8px;">⭐ نظرت چی بود؟</h3>
                     <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:16px;">از ۱ تا ۵ ستاره بده</p>
@@ -1105,14 +1158,10 @@
                     <input type="email" id="resEmail" placeholder="email@example.com">
                 </div>
             </div>
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+            <div style="margin-bottom:12px;">
                 <div>
                     <label style="display: block; margin-bottom: 6px; color: rgba(255,255,255,0.7);">تلگرام / واتساپ</label>
                     <input type="text" id="resTelegram" placeholder="@username یا شماره">
-                </div>
-                <div>
-                    <label style="display: block; margin-bottom: 6px; color: rgba(255,255,255,0.7);">روبیکا</label>
-                    <input type="text" id="resRubika" placeholder="آیدی روبیکا">
                 </div>
             </div>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
@@ -1174,19 +1223,6 @@
                 <button class="glass-btn glass-btn-danger" onclick="closeModal('shareModal')">بستن</button>
             </div>
             <p style="font-size:0.75rem; color: rgba(255,255,255,0.4); text-align:center; margin-top:10px;">متن گزارش برای تلگرام و واتساپ باز می‌شود؛ برای ایمیل اول آدرس را وارد کن.</p>
-        </div>
-    </div>
-
-    <!-- Manual Copy Modal (clipboard fallback, replaces prompt()) -->
-    <div class="modal-overlay" id="copyTextModal">
-        <div class="glass" style="width: 90%; max-width: 480px; padding: 28px; animation: slideIn 0.4s ease;">
-            <h2 style="margin-bottom: 8px; text-align: center;">📋 کپی متن</h2>
-            <p style="color: rgba(255,255,255,0.6); font-size: 0.85rem; text-align: center; margin-bottom: 16px;">کپی خودکار ممکن نشد - متن زیر را دستی کپی کن</p>
-            <textarea id="copyTextArea" readonly style="width: 100%; min-height: 140px; font-size: 0.85rem; line-height: 1.8;"></textarea>
-            <div style="display: flex; gap: 10px; justify-content: center; margin-top: 16px;">
-                <button class="glass-btn glass-btn-success" onclick="copyFromCopyModal()">📋 کپی</button>
-                <button class="glass-btn glass-btn-danger" onclick="closeModal('copyTextModal')">بستن</button>
-            </div>
         </div>
     </div>
 
@@ -1510,7 +1546,7 @@
                     <input type="email" id="custEmail" placeholder="email@example.com">
                 </div>
                 <div>
-                    <label style="display:block; margin-bottom:6px; color:rgba(255,255,255,0.7);">تلگرام / روبیکا</label>
+                    <label style="display:block; margin-bottom:6px; color:rgba(255,255,255,0.7);">تلگرام</label>
                     <input type="text" id="custSocial" placeholder="@username">
                 </div>
             </div>
@@ -1590,5 +1626,6 @@
     <script src="src/js/round2-a.js"></script>
     <script src="src/js/round2-b.js"></script>
     <script src="src/js/round2-c.js"></script>
+    <script src="src/js/phonebook.js"></script>
 </body>
 </html>

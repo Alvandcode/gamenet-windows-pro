@@ -790,7 +790,7 @@
             document.getElementById('custName').value=c.name;
             document.getElementById('custPhone').value=c.phone||'';
             document.getElementById('custEmail').value=c.email||'';
-            document.getElementById('custSocial').value=c.telegram||c.rubika||'';
+            document.getElementById('custSocial').value=c.telegram||'';
             document.getElementById('custBirthday').value=c.birthday||'';
             document.getElementById('custWalletDisplay').textContent=(c.wallet||0).toLocaleString()+' تومان';
             document.getElementById('custHoursDisplay').textContent=Math.floor(c.totalHours||0)+'h';
@@ -823,9 +823,9 @@
         if(!name){ showToast('نام الزامی','error'); return; }
         if(id){
             let c=customers.find(x=>x.id===parseInt(id));
-            Object.assign(c,{name,phone,email, telegram:social, rubika:social, birthday});
+            Object.assign(c,{name,phone,email, telegram:social, birthday});
         } else {
-            customers.push({id:Date.now(), name,phone,email, telegram:social, rubika:social, birthday, wallet:0, debt:0, totalHours:0, totalSpent:0, createdAt:new Date().toISOString()});
+            customers.push({id:Date.now(), name,phone,email, telegram:social, birthday, wallet:0, debt:0, totalHours:0, totalSpent:0, createdAt:new Date().toISOString()});
         }
         localStorage.setItem('alvand_customers', JSON.stringify(customers));
         closeModal('customerModal');
@@ -1910,7 +1910,60 @@
         "نام بازیکن": {en:"Player Name", ar:"اسم اللاعب"},
         "کتابخانه PDF آفلاین در دسترس نیست - چاپ سیستمی": {en:"PDF library offline - using system print", ar:"مكتبة PDF غير متصلة - استخدام الطباعة"},
         "پنجره چاپ باز می‌شود - «ذخیره PDF» را بزن": {en:"Print dialog opens - choose Save as PDF", ar:"نافذة الطباعة ستفتح - اختر حفظ كـ PDF"},
-        "متن گزارش برای تلگرام و واتساپ باز می‌شود؛ برای ایمیل اول آدرس را وارد کن.": {en:"Report text opens for Telegram and WhatsApp; enter the address first for email.", ar:"يفتح نص التقرير لتليغرام وواتساب؛ أدخل العنوان أولا للبريد."}
+        "متن گزارش برای تلگرام و واتساپ باز می‌شود؛ برای ایمیل اول آدرس را وارد کن.": {en:"Report text opens for Telegram and WhatsApp; enter the address first for email.", ar:"يفتح نص التقرير لتليغرام وواتساب؛ أدخل العنوان أولا للبريد."},
+        "دفترچه تلفن": {en:"Phonebook", ar:"دفتر الهاتف"},
+        "مخاطب جدید": {en:"New Contact", ar:"جهة اتصال جديدة"},
+        "جزئیات حساب هر مخاطب خودکار از لیست مشتریان و کارکرد پیدا و نمایش داده می‌شود": {en:"Each contact's account details are found automatically from customers and performance", ar:"يتم العثور على تفاصيل حساب كل جهة اتصال تلقائيا من العملاء والأداء"},
+        "اتصال پنل پیامک (اختیاری)": {en:"SMS Panel Connection (Optional)", ar:"ربط لوحة الرسائل (اختياري)"},
+        "متن پیام": {en:"Message Text", ar:"نص الرسالة"},
+        "از {نام} برای اسم هر مخاطب استفاده کن": {en:"Use {نام} for each contact's name", ar:"استخدم {نام} لاسم كل جهة اتصال"},
+        "سلام {نام}، ...": {en:"Hi {نام}, ...", ar:"مرحبا {نام}، ..."},
+        "ارسال گروهی به همه": {en:"Bulk Send to All", ar:"إرسال جماعي للجميع"},
+        "گزارش ارسال‌ها": {en:"Send Log", ar:"سجل الإرسال"},
+        "مخاطب": {en:"Contact", ar:"جهة اتصال"},
+        "نام *": {en:"First Name", ar:"الاسم"},
+        "نام خانوادگی": {en:"Last Name", ar:"اسم العائلة"},
+        "موبایل": {en:"Mobile", ar:"جوال"},
+        "تلفن ثابت": {en:"Landline", ar:"هاتف ثابت"},
+        "یادداشت": {en:"Note", ar:"ملاحظة"},
+        "مخاطبی ثبت نشده": {en:"No contacts yet", ar:"لا توجد جهات اتصال"},
+        "متصل به حساب ✅": {en:"Linked ✅", ar:"مرتبط ✅"},
+        "بدون تطابق": {en:"No Match", ar:"لا يوجد تطابق"},
+        "ساعت بازی": {en:"Play Time", ar:"وقت اللعب"},
+        "سشن‌ها": {en:"Sessions", ar:"الجلسات"},
+        "پیامک": {en:"SMS", ar:"رسالة نصية"},
+        "نام یا نام خانوادگی الزامی است": {en:"First or last name is required", ar:"الاسم أو اسم العائلة مطلوب"},
+        "حداقل یک شماره تلفن وارد کن": {en:"Enter at least one phone number", ar:"أدخل رقما واحدا على الأقل"},
+        "موبایل معتبر نیست (09xxxxxxxxx)": {en:"Invalid mobile (09xxxxxxxxx)", ar:"جوال غير صالح (09xxxxxxxxx)"},
+        "مخاطب ذخیره شد": {en:"Contact saved", ar:"تم حفظ جهة الاتصال"},
+        "فعال‌سازی پنل پیامک": {en:"Enable SMS Panel", ar:"تفعيل لوحة الرسائل"},
+        "کاوه‌نگار (Kavenegar)": {en:"Kavenegar", ar:"كاوه نيغار"},
+        "سفارشی (Custom HTTP)": {en:"Custom HTTP", ar:"HTTP مخصص"},
+        "کلید API": {en:"API Key", ar:"مفتاح API"},
+        "شماره فرستنده": {en:"Sender Number", ar:"رقم المرسل"},
+        "متد": {en:"Method", ar:"الطريقة"},
+        "قالب آدرس (متغیرها: {key} {sender} {to} {text})": {en:"URL template (vars: {key} {sender} {to} {text})", ar:"قالب الرابط (المتغيرات: {key} {sender} {to} {text})"},
+        "هدرها (JSON، اختیاری)": {en:"Headers (JSON, optional)", ar:"الترويسات (JSON، اختياري)"},
+        "ارسال مستقیم با API کاوه‌نگار (متد ارسال ساده).": {en:"Direct send via Kavenegar API (simple send).", ar:"إرسال مباشر عبر API كاوه نيغار."},
+        "شماره تست (09...)": {en:"Test number (09...)", ar:"رقم الاختبار (09...)"},
+        "تست ارسال": {en:"Test Send", ar:"إرسال تجريبي"},
+        "پنل پیامک فعال شد": {en:"SMS panel enabled", ar:"تم تفعيل لوحة الرسائل"},
+        "پنل پیامک غیرفعال شد": {en:"SMS panel disabled", ar:"تم تعطيل لوحة الرسائل"},
+        "تنظیمات پیامک ذخیره شد": {en:"SMS settings saved", ar:"تم حفظ إعدادات الرسائل"},
+        "فرمت JSON هدرها اشتباه است": {en:"Headers JSON format is wrong", ar:"صيغة JSON للترويسات خاطئة"},
+        "پنل پیامک غیرفعال است": {en:"SMS panel is disabled", ar:"لوحة الرسائل معطلة"},
+        "در حال ارسال...": {en:"Sending...", ar:"جارٍ الإرسال..."},
+        "پیامک ارسال شد ✅": {en:"SMS sent ✅", ar:"تم إرسال الرسالة ✅"},
+        "خطا در ارسال": {en:"Send error", ar:"خطأ في الإرسال"},
+        "اول متن پیام را بنویس": {en:"Write the message first", ar:"اكتب الرسالة أولا"},
+        "این مخاطب موبایل ندارد": {en:"This contact has no mobile", ar:"جهة الاتصال هذه بلا جوال"},
+        "مخاطب پیدا نشد": {en:"Contact not found", ar:"جهة الاتصال غير موجودة"},
+        "شماره تست را وارد کن": {en:"Enter the test number", ar:"أدخل رقم الاختبار"},
+        "تست پنل پیامک گیم‌نت ✅": {en:"Gamenet SMS panel test ✅", ar:"اختبار لوحة رسائل غيم نت ✅"},
+        "مخاطبی با موبایل معتبر نیست": {en:"No contacts with valid mobile", ar:"لا توجد جهات اتصال بجوال صالح"},
+        "تمام شد:": {en:"Done:", ar:"تم:"},
+        "موفق از": {en:"successful out of", ar:"ناجحة من"},
+        "ارسالی ثبت نشده": {en:"No sends logged", ar:"لا توجد إرسالات مسجلة"}
     };
     const I18N_KEYS = Object.keys(I18N).sort((a,b)=>b.length-a.length);
     const _i18nOrig = new WeakMap();
@@ -2275,6 +2328,7 @@
         if (section === 'shifts') { try{renderShifts();}catch(e){} }
         if (section === 'insights') { try{generateMonthlyComparison();}catch(e){} try{renderForecast();}catch(e){} try{renderSurveyStats();}catch(e){} try{renderStockAlerts();}catch(e){} }
         if (section === 'tools') { try{renderPOSConfig();}catch(e){} try{renderSecurityPanel();}catch(e){} try{renderCustomerPortal();}catch(e){} try{fillToolsCustomerSelects();}catch(e){} }
+        if (section === 'phonebook') { try{renderPhonebook();}catch(e){} try{renderSmsConfig();}catch(e){} try{renderSmsLog();}catch(e){} }
     }
     function fillToolsCustomerSelects(){
         var opts = customers.map(function(c){ return '<option value="'+c.id+'">'+escapeHtml(c.name)+'</option>'; }).join('');
@@ -3111,7 +3165,6 @@
             document.getElementById('resPhone').value='';
             document.getElementById('resEmail').value='';
             document.getElementById('resTelegram').value='';
-            document.getElementById('resRubika').value='';
             document.getElementById('resNotes').value='';
             document.getElementById('reservationConflictWarning').style.display='none';
             // default date/time now
@@ -3147,7 +3200,6 @@
         let phone=document.getElementById('resPhone').value.trim();
         let email=document.getElementById('resEmail').value.trim();
         let telegram=document.getElementById('resTelegram').value.trim();
-        let rubika=document.getElementById('resRubika').value.trim();
         let date=document.getElementById('resDate').value;
         let startTime=document.getElementById('resStartTime').value;
         let duration=parseInt(document.getElementById('resDuration').value);
@@ -3164,14 +3216,14 @@
         let client=clients.find(c=>c.id===clientId);
         if(idVal){
             let r=reservations.find(x=>x.id===parseInt(idVal));
-            Object.assign(r,{clientId, clientName:client?client.name:'', customerName, phone, email, telegram, rubika, date, startTime, duration, notes});
+            Object.assign(r,{clientId, clientName:client?client.name:'', customerName, phone, email, telegram, date, startTime, duration, notes});
             showToast('رزرو بروزرسانی شد','success');
         } else {
             reservations.push({
                 id: Date.now(),
                 clientId,
                 clientName: client?client.name:'',
-                customerName, phone, email, telegram, rubika, date, startTime, duration, notes,
+                customerName, phone, email, telegram, date, startTime, duration, notes,
                 status: 'pending',
                 createdAt: new Date().toISOString()
             });
@@ -3195,7 +3247,6 @@
         document.getElementById('resPhone').value=r.phone||'';
         document.getElementById('resEmail').value=r.email||'';
         document.getElementById('resTelegram').value=r.telegram||'';
-        document.getElementById('resRubika').value=r.rubika||'';
         document.getElementById('resDate').value=r.date;
         document.getElementById('resStartTime').value=r.startTime;
         document.getElementById('resDuration').value=r.duration;
@@ -3256,7 +3307,7 @@
                     <div>
                         <h3 style="font-weight:800; margin-bottom:6px;">${escapeHtml(r.clientName)} <span style="font-weight:400; color:rgba(255,255,255,0.5);"> - ${escapeHtml(r.customerName)}</span></h3>
                         <p style="font-size:0.85rem; color:rgba(255,255,255,0.6);">📅 ${r.date} ⏰ ${r.startTime} - ${end.toTimeString().slice(0,5)} (${r.duration} دقیقه)</p>
-                        <p style="font-size:0.8rem; color:rgba(255,255,255,0.5); margin-top:4px;">📞 ${escapeHtml(r.phone||'-')} | ✈️ ${escapeHtml(r.telegram||'-')} | 🔴 ${escapeHtml(r.rubika||'-')} | 📧 ${escapeHtml(r.email||'-')}</p>
+                        <p style="font-size:0.8rem; color:rgba(255,255,255,0.5); margin-top:4px;">📞 ${escapeHtml(r.phone||'-')} | ✈️ ${escapeHtml(r.telegram||'-')} | 📧 ${escapeHtml(r.email||'-')}</p>
                         ${r.notes? `<p style="font-size:0.8rem; color:#fbbf24; margin-top:6px;">📝 ${escapeHtml(r.notes)}</p>`:''}
                     </div>
                     <span style="padding:6px 12px; border-radius:50px; background:${statusColor}22; color:${statusColor}; border:1px solid ${statusColor}44; font-size:0.75rem; font-weight:700;">${statusText}</span>
@@ -3279,7 +3330,7 @@
         let map=new Map();
         reservations.forEach(r=>{
             let key=r.customerName+'|'+r.phone;
-            if(!map.has(key)) map.set(key,{name:r.customerName, phone:r.phone, email:r.email, telegram:r.telegram, rubika:r.rubika, count:0, total:0});
+            if(!map.has(key)) map.set(key,{name:r.customerName, phone:r.phone, email:r.email, telegram:r.telegram, count:0, total:0});
             map.get(key).count++;
         });
         sessions.forEach(s=>{
@@ -3295,7 +3346,7 @@
             <div class="glass" style="padding:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h4 style="font-weight:700;">${escapeHtml(c.name)}</h4>
-                    <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">📞 ${escapeHtml(c.phone||'-')} | 📧 ${escapeHtml(c.email||'-')} | ✈️ ${c.telegram||'-'} | 🔴 ${c.rubika||'-'}</p>
+                    <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">📞 ${escapeHtml(c.phone||'-')} | 📧 ${escapeHtml(c.email||'-')} | ✈️ ${c.telegram||'-'}</p>
                     <p style="font-size:0.75rem; color:rgba(255,255,255,0.4);">${c.count} رزرو</p>
                 </div>
                 <button class="glass-btn" style="padding:8px 14px; font-size:0.8rem;" onclick="openShareModalForCustomer('${c.name.replace(/'/g,"\\'")}','${escapeHtml(c.phone)}','${escapeHtml(c.email)}')">📤 ارسال گزارش</button>
@@ -3542,43 +3593,6 @@
             window.location.href=`mailto:${email}?subject=${subject}&body=${body}`;
             showToast('ایمیل باز شد','success');
         }
-    }
-
-    // Clipboard with legacy fallback (file:// + sandbox may block async clipboard)
-    function fallbackCopyText(text){
-        try{
-            let ta=document.createElement('textarea');
-            ta.value=text;
-            ta.style.cssText='position:fixed;top:0;left:0;opacity:0;';
-            document.body.appendChild(ta);
-            ta.focus(); ta.select();
-            let ok=false;
-            try{ ok=document.execCommand('copy'); }catch(e){}
-            ta.remove();
-            return ok;
-        }catch(e){ return false; }
-    }
-    function copyTextToClipboard(text){
-        try{
-            if(navigator.clipboard && navigator.clipboard.writeText){
-                return navigator.clipboard.writeText(text).then(()=>true).catch(()=>fallbackCopyText(text));
-            }
-        }catch(e){}
-        return Promise.resolve(fallbackCopyText(text));
-    }
-    // Manual-copy modal: last resort when clipboard is blocked
-    function openCopyTextModal(text){
-        let ta=document.getElementById('copyTextArea');
-        if(ta) ta.value=text||'';
-        document.getElementById('copyTextModal').classList.add('show');
-        setTimeout(()=>{ try{ ta.focus(); ta.select(); }catch(e){} },100);
-    }
-    function copyFromCopyModal(){
-        let ta=document.getElementById('copyTextArea');
-        let ok=false;
-        try{ ta.focus(); ta.select(); ok=document.execCommand('copy'); }catch(e){}
-        if(ok){ showToast('متن کپی شد','success'); closeModal('copyTextModal'); }
-        else showToast('کپی نشد - دستی انتخاب و کپی کن','warning');
     }
 
     function generatePdfForClient(idx){

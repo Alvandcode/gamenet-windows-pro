@@ -20,4 +20,7 @@ contextBridge.exposeInMainWorld('gamenet', {
     fingerprint: () => ipcRenderer.invoke('gamenet:device-fingerprint'),
   },
   openExternal: (url) => ipcRenderer.invoke('gamenet:open-external', url),
+  sms: {
+    send: (opts) => ipcRenderer.invoke('gamenet:sms-send', opts),
+  },
 });

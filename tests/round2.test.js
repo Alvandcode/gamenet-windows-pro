@@ -47,7 +47,7 @@ function check(cond, msg) {
   if (cond) console.log('  PASS ' + msg);
   else { failures++; console.error('  FAIL ' + msg); }
 }
-const files = ['src/js/config.js', 'src/js/security.js', 'src/js/license-pubkey.js', 'src/js/license.js', 'src/js/storage.js', 'src/js/app.js', 'src/js/patches.js', 'src/js/jalali.js', 'src/js/zoom.js', 'src/js/new-features.js', 'src/js/round2-a.js', 'src/js/round2-b.js', 'src/js/round2-c.js'];
+const files = ['src/js/config.js', 'src/js/security.js', 'src/js/license-pubkey.js', 'src/js/license.js', 'src/js/storage.js', 'src/js/app.js', 'src/js/patches.js', 'src/js/jalali.js', 'src/js/zoom.js', 'src/js/new-features.js', 'src/js/round2-a.js', 'src/js/round2-b.js', 'src/js/round2-c.js', 'src/js/phonebook.js'];
 for (const f of files) {
   try {
     vm.runInContext(load(f), sandbox, { filename: f });
@@ -86,9 +86,6 @@ try {
   check(typeof sandbox.renderPOSConfig === 'function', 'r2c: renderPOSConfig exists');
   check(typeof sandbox.renderCustomerQR === 'function', 'r2c: renderCustomerQR exists');
   // share modal helpers (prompt() replacements)
-  check(typeof sandbox.copyTextToClipboard === 'function', 'share: copyTextToClipboard exists');
-  check(typeof sandbox.openCopyTextModal === 'function', 'share: openCopyTextModal exists');
-  check(typeof sandbox.copyFromCopyModal === 'function', 'share: copyFromCopyModal exists');
   check(typeof sandbox.setShopInfo === 'function', 'share: setShopInfo exists');
   check(typeof sandbox.saveShopInfo === 'function', 'share: saveShopInfo exists');
   check(typeof sandbox.saveJoinEvent === 'function', 'share: saveJoinEvent exists');
@@ -133,14 +130,45 @@ try {
   check(typeof sandbox.pauseClient === 'function', 'card: pauseClient exists');
   check(typeof sandbox.toggleClientMenu === 'function', 'card: toggleClientMenu exists');
   // share without prompt()
-  check(typeof sandbox.copyTextToClipboard === 'function', 'share: copyTextToClipboard exists');
-  check(typeof sandbox.openCopyTextModal === 'function', 'share: openCopyTextModal exists');
-  check(typeof sandbox.copyFromCopyModal === 'function', 'share: copyFromCopyModal exists');
   check(typeof sandbox.setShopInfo === 'function', 'shop: setShopInfo exists');
   check(typeof sandbox.saveShopInfo === 'function', 'shop: saveShopInfo exists');
   check(typeof sandbox.saveJoinEvent === 'function', 'event: saveJoinEvent exists');
-  const noPrompt = vm.runInContext('[copyTextToClipboard,openCopyTextModal,copyFromCopyModal,shareVia,setShopInfo,saveShopInfo,joinEvent,saveJoinEvent].every(f=>!/\\bprompt\\s*\\(/.test(f.toString()))', sandbox);
+  const noPrompt = vm.runInContext('[shareVia,setShopInfo,saveShopInfo,joinEvent,saveJoinEvent].every(f=>!/\\bprompt\\s*\\(/.test(f.toString()))', sandbox);
   check(noPrompt === true, 'share: no prompt() in share/shop/join flows');
+  // phonebook: matching, validation, SMS request building
+  check(typeof sandbox.renderPhonebook === 'function', 'pb: renderPhonebook exists');
+  check(typeof sandbox.savePhonebookEntry === 'function', 'pb: savePhonebookEntry exists');
+  check(typeof sandbox.renderSmsConfig === 'function', 'pb: renderSmsConfig exists');
+  check(typeof sandbox.buildSmsRequest === 'function', 'pb: buildSmsRequest exists');
+  check(typeof sandbox.sendBulkSms === 'function', 'pb: sendBulkSms exists');
+  try {
+    const m1 = vm.runInContext('pbNormName("  علی   رضایی ")', sandbox);
+    check(m1 === 'علی رضایی', 'pb: name normalized');
+    const m2 = vm.runInContext('pbNormPhone("۰۹۱۲-۳۴۵ ۶۷۸۹")', sandbox);
+    check(m2 === '09123456789', 'pb: fa digits normalized (got ' + m2 + ')');
+    const m3 = vm.runInContext('pbMobileOk("09123456789") && !pbMobileOk("123") && !pbMobileOk("")', sandbox);
+    check(m3 === true, 'pb: mobile validation');
+    // seed a customer, then link by name + by phone
+    vm.runInContext(`customers.push({id:201, name:'علی رضایی', phone:'09123456789', wallet:5000, debt:0, totalHours:12, totalSpent:200000});
+      localStorage.setItem('alvand_phonebook', JSON.stringify([{id:301, firstName:'علی', lastName:'رضایی', phoneMobile:'09123456789', phoneFixed:'', note:''}]));`, sandbox);
+    const link = vm.runInContext('pbFindLinked(JSON.parse(localStorage.getItem("alvand_phonebook"))[0])', sandbox);
+    check(link && link.customer && link.customer.id === 201, 'pb: auto-link by name/phone');
+    const det = vm.runInContext('pbAccountDetails(customers.find(c=>c.id===201))', sandbox);
+    check(det && det.wallet === 5000 && det.totalHours === 12, 'pb: account details pulled');
+    // SMS request building (no network)
+    const bad = vm.runInContext('buildSmsRequest({provider:"kavenegar", apiKey:"", sender:"1"}, "09123456789", "hi")', sandbox);
+    check(bad && bad.error === 'کلید API تنظیم نشده', 'pb: missing key rejected');
+    const badMob = vm.runInContext('buildSmsRequest({provider:"kavenegar", apiKey:"k", sender:"1"}, "123", "hi")', sandbox);
+    check(badMob && !!badMob.error, 'pb: invalid mobile rejected');
+    const kav = vm.runInContext('buildSmsRequest({provider:"kavenegar", apiKey:"K", sender:"1000"}, "09123456789", "سلام")', sandbox);
+    check(kav && kav.method === 'GET' && kav.url.indexOf('api.kavenegar.com') > 0 && kav.url.indexOf('receptor=09123456789') > 0, 'pb: kavenegar URL built');
+    const cus = vm.runInContext('buildSmsRequest({provider:"custom", apiKey:"K", sender:"S", method:"POST", urlTemplate:"https://x.test/s?k={key}&to={to}", headersJson:"{\\"A\\":\\"b\\"}"}, "09123456789", "hi")', sandbox);
+    check(cus && cus.method === 'POST' && cus.url === 'https://x.test/s?k=K&to=09123456789' && cus.headers.A === 'b', 'pb: custom template built');
+    const badH = vm.runInContext('buildSmsRequest({provider:"custom", apiKey:"K", sender:"S", urlTemplate:"https://x", headersJson:"{bad"}, "09123456789", "hi")', sandbox);
+    check(badH && !!badH.error, 'pb: bad headers JSON rejected');
+    vm.runInContext('renderPhonebook(); renderSmsConfig(); renderSmsLog();', sandbox);
+    console.log('  PASS pb: renders ok');
+  } catch (e) { failures++; console.error('  FAIL phonebook: ' + e.stack.split('\n').slice(0,3).join(' | ')); }
   // rubika fully removed from share flow
   const noRubikaFn = vm.runInContext('!/rubika/i.test(shareVia.toString())', sandbox);
   check(noRubikaFn === true, 'share: rubika removed from shareVia');
@@ -193,7 +221,7 @@ try {
     catch (e) { failures++; console.error('  FAIL render crash: ' + fn + ' :: ' + e.message); }
   }
   // i18n coverage: every new Persian UI string must have en+ar entries
-  const requiredKeys = ['عضویت','لیست انتظار','رویدادها','شعبه‌ها','شیفت‌ها','تحلیل و پیش‌بینی','ابزارها','بیشتر','پایان','ادامه','توقف موقت','طرح‌های عضویت و اشتراک','طرح جدید','نام طرح','توضیحات','مدیریت کارمندان','کارمند جدید','گزارش حضور و غیاب','نام کامل','تلفن','حقوق (تومان)','سمت','کارمند','تاریخچه بازی','لاگ فعالیت','پاکسازی','جستجوی پیشرفته','رد کردن','افزودن به لیست','نام مشتری','لیست انتظار خالی است','انجام شد','رویدادها و تورنمنت','رویداد جدید','عنوان','تاریخ','ورودی (تومان)','جایزه','رویدادی نیست','بازیکنان:','شرکت در رویداد','مدیریت شعبه‌ها','شعبه جدید','نام شعبه','آدرس','شعبه اصلی','تغییر','برنامه شیفت کارمندان','شیفت جدید','مقایسه این ماه با ماه قبل','پیش‌بینی درآمد','رضایت مشتریان','هشدار موجودی بوفه','آستانه هشدار','این ماه','ماه قبل','سشن','تغییر:','میانگین روزانه','داده‌ای نیست','نظر','تمام شده','کم موجودی','تمام موجودی‌ها کافی است','خروجی CSV (اکسل)','سشن‌های امروز','چاپ رسید حرارتی','دستگاه کارتخوان','بروزرسانی','امنیت و رمزنگاری','امتیاز وفاداری مشتری','انتخاب مشتری...','فعال‌سازی کارتخوان','رمزنگاری بکاپ مشتریان','رمزنگاری','بررسی رمزگشایی','مشتری','دستگاه آزاد','در انتظار','مشغول','آزاد','امتیاز فعلی:','بازخرید','نام الزامی است','دقیقه','بدون IP','نظرت چی بود؟','بیخیال','لغو','نفر','رزرو:','ساعت','متصل','نامشخص','اول ایمیل گیرنده را وارد کن','متن کپی شد','کپی نشد - دستی انتخاب و کپی کن','کپی متن','کپی خودکار ممکن نشد - متن زیر را دستی کپی کن','کپی','مشخصات مغازه','نام مغازه','تلفن مغازه','ثبت‌نام','نام بازیکن','کتابخانه PDF آفلاین در دسترس نیست - چاپ سیستمی','پنجره چاپ باز می‌شود - «ذخیره PDF» را بزن','متن گزارش برای تلگرام و واتساپ باز می‌شود؛ برای ایمیل اول آدرس را وارد کن.'];
+  const requiredKeys = ['عضویت','لیست انتظار','رویدادها','شعبه‌ها','شیفت‌ها','تحلیل و پیش‌بینی','ابزارها','بیشتر','پایان','ادامه','توقف موقت','طرح‌های عضویت و اشتراک','طرح جدید','نام طرح','توضیحات','مدیریت کارمندان','کارمند جدید','گزارش حضور و غیاب','نام کامل','تلفن','حقوق (تومان)','سمت','کارمند','تاریخچه بازی','لاگ فعالیت','پاکسازی','جستجوی پیشرفته','رد کردن','افزودن به لیست','نام مشتری','لیست انتظار خالی است','انجام شد','رویدادها و تورنمنت','رویداد جدید','عنوان','تاریخ','ورودی (تومان)','جایزه','رویدادی نیست','بازیکنان:','شرکت در رویداد','مدیریت شعبه‌ها','شعبه جدید','نام شعبه','آدرس','شعبه اصلی','تغییر','برنامه شیفت کارمندان','شیفت جدید','مقایسه این ماه با ماه قبل','پیش‌بینی درآمد','رضایت مشتریان','هشدار موجودی بوفه','آستانه هشدار','این ماه','ماه قبل','سشن','تغییر:','میانگین روزانه','داده‌ای نیست','نظر','تمام شده','کم موجودی','تمام موجودی‌ها کافی است','خروجی CSV (اکسل)','سشن‌های امروز','چاپ رسید حرارتی','دستگاه کارتخوان','بروزرسانی','امنیت و رمزنگاری','امتیاز وفاداری مشتری','انتخاب مشتری...','فعال‌سازی کارتخوان','رمزنگاری بکاپ مشتریان','رمزنگاری','بررسی رمزگشایی','مشتری','دستگاه آزاد','در انتظار','مشغول','آزاد','امتیاز فعلی:','بازخرید','نام الزامی است','دقیقه','بدون IP','نظرت چی بود؟','بیخیال','لغو','نفر','رزرو:','ساعت','متصل','نامشخص','اول ایمیل گیرنده را وارد کن','متن کپی شد','کپی نشد - دستی انتخاب و کپی کن','کپی متن','کپی خودکار ممکن نشد - متن زیر را دستی کپی کن','کپی','مشخصات مغازه','نام مغازه','تلفن مغازه','ثبت‌نام','نام بازیکن','کتابخانه PDF آفلاین در دسترس نیست - چاپ سیستمی','پنجره چاپ باز می‌شود - «ذخیره PDF» را بزن','متن گزارش برای تلگرام و واتساپ باز می‌شود؛ برای ایمیل اول آدرس را وارد کن.','دفترچه تلفن','مخاطب جدید','جزئیات حساب هر مخاطب خودکار از لیست مشتریان و کارکرد پیدا و نمایش داده می‌شود','اتصال پنل پیامک (اختیاری)','متن پیام','از {نام} برای اسم هر مخاطب استفاده کن','سلام {نام}، ...','ارسال گروهی به همه','گزارش ارسال‌ها','مخاطب','نام *','نام خانوادگی','موبایل','تلفن ثابت','یادداشت','مخاطبی ثبت نشده','متصل به حساب ✅','بدون تطابق','ساعت بازی','سشن‌ها','پیامک','نام یا نام خانوادگی الزامی است','حداقل یک شماره تلفن وارد کن','موبایل معتبر نیست (09xxxxxxxxx)','مخاطب ذخیره شد','فعال‌سازی پنل پیامک','کاوه‌نگار (Kavenegar)','سفارشی (Custom HTTP)','کلید API','شماره فرستنده','متد','قالب آدرس (متغیرها: {key} {sender} {to} {text})','هدرها (JSON، اختیاری)','ارسال مستقیم با API کاوه‌نگار (متد ارسال ساده).','شماره تست (09...)','تست ارسال','پنل پیامک فعال شد','پنل پیامک غیرفعال شد','تنظیمات پیامک ذخیره شد','فرمت JSON هدرها اشتباه است','پنل پیامک غیرفعال است','در حال ارسال...','پیامک ارسال شد ✅','خطا در ارسال','اول متن پیام را بنویس','این مخاطب موبایل ندارد','مخاطب پیدا نشد','شماره تست را وارد کن','تست پنل پیامک گیم‌نت ✅','مخاطبی با موبایل معتبر نیست','تمام شد:','موفق از','ارسالی ثبت نشده'];
   const dictKeys = vm.runInContext('Object.keys(I18N)', sandbox);
   let missing = [];
   for (const k of requiredKeys) {

@@ -17,6 +17,8 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const https = require('https');
+const http = require('http');
 
 // Stable hardware fingerprint for license binding (MACs + host + user + cpu).
 // Not secret, just stable: copying a license file to another PC won't activate.
@@ -166,6 +168,42 @@ function setupBackupIPC() {
       if (!['https:', 'http:', 'mailto:'].includes(u.protocol)) throw new Error('blocked protocol');
       await shell.openExternal(u.toString());
       return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  });
+
+  // SMS panel sending from the main process (no renderer CSP limits).
+  ipcMain.handle('gamenet:sms-send', async (_evt, opts = {}) => {
+    try {
+      const u = new URL(String(opts.url || ''));
+      if (!['https:', 'http:'].includes(u.protocol)) throw new Error('blocked protocol');
+      const lib = u.protocol === 'https:' ? https : http;
+      const method = String(opts.method || 'GET').toUpperCase();
+      const headers = (opts.headers && typeof opts.headers === 'object') ? opts.headers : {};
+      const body = opts.body != null ? String(opts.body) : null;
+      const result = await new Promise((resolve, reject) => {
+        const req = lib.request({
+          hostname: u.hostname,
+          port: u.port || (u.protocol === 'https:' ? 443 : 80),
+          path: u.pathname + (u.search || ''),
+          method,
+          headers,
+          timeout: 15000,
+        }, (res) => {
+          let data = '';
+          res.on('data', (chunk) => {
+            data += chunk;
+            if (data.length > 65536) { try { req.destroy(); } catch (_) {} }
+          });
+          res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: String(data).slice(0, 500) }));
+        });
+        req.on('timeout', () => { try { req.destroy(new Error('timeout')); } catch (_) {} });
+        req.on('error', reject);
+        if (body && method !== 'GET') req.write(body);
+        req.end();
+      });
+      return result;
     } catch (err) {
       return { ok: false, error: String((err && err.message) || err) };
     }
