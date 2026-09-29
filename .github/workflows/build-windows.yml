@@ -3,10 +3,17 @@ name: Build Windows EXE
 on:
   push:
     branches: [main, master]
+  pull_request:
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
   contents: write
+
+# never run two releases for the same branch at once
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -21,14 +28,25 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # DEPENDENCIES FIRST: the old order ran `npm run validate` before
+      # `npm ci`, so the checks executed with no node_modules and passed
+      # vacuously - a green build that proved nothing.
+      - name: Install dependencies
+        run: npm ci
+
       - name: Validate project
         run: npm run validate
 
-      - name: Install dependencies (reproducible)
-        run: npm ci
-
-      - name: Smoke-check JS syntax
+      - name: Unit + syntax tests
         run: npm test
+
+      - name: End-to-end tests (real DOM)
+        run: |
+          npm run test:e2e
+          npm run test:ux
+
+      - name: Smoke-check the renderer boots in a real browser
+        run: node tests/browser-smoke.test.js
 
       - name: Read app version
         id: pkgver
@@ -47,11 +65,14 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Create Release (automatic)
+      # Only publish a release for a real version bump, otherwise every commit
+      # (and every re-run) produced a new tag and a new "latest" release.
+      - name: Create Release (only on a version bump)
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.pkgver.outputs.version }}-b${{ github.run_number }}
-          name: Gamenet Manager Pro v${{ steps.pkgver.outputs.version }} (build ${{ github.run_number }})
+          tag_name: v${{ steps.pkgver.outputs.version }}
+          name: Gamenet Manager Pro v${{ steps.pkgver.outputs.version }}
           files: |
             dist/*.exe
           generate_release_notes: true

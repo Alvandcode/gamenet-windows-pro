@@ -7,25 +7,51 @@ function logAct(ty, d){ if (window.logActivity) window.logActivity(ty, d); }
 function sp(k, fb){ try { if (window.safeParse) return window.safeParse(localStorage.getItem(k)) || fb; } catch(e){} return fb; }
 
 /* ---- 1. CSV export ---- */
+/** RFC4180 cell + Excel/Sheets formula-injection guard.
+ *  Without the quote/escape step a name containing a comma or a newline shifts
+ *  every following column, and a name starting with = + - @ is executed as a
+ *  formula (DDE) when the shop owner opens the file in Excel. */
+function csvCell(v){
+  var s = (v === null || v === undefined) ? '' : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;      // neutralise formulas
+  if (/[",\n\r;]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
 function dlCSV(name, rows){
-  var csv = rows.map(function(r){ return r.join(','); }).join('\n');
+  var csv = rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
   var blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8;'});
   var url = URL.createObjectURL(blob);
-  var a = document.createElement('a'); a.href = url; a.download = name; a.click();
-  URL.revokeObjectURL(url);
+  var a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  // revoking synchronously can cancel the download in Chromium
+  setTimeout(function(){ try{ URL.revokeObjectURL(url); a.remove(); }catch(e){} }, 4000);
 }
 function sessionsFiltered(type){
   var now = new Date();
   var ss = window.sessions || [];
-  if (type === 'daily') return {list: ss.filter(function(s){ return new Date(s.date).toDateString() === now.toDateString(); }), tag: 'daily'};
-  if (type === 'weekly'){ var w = new Date(now - 7*864e5); return {list: ss.filter(function(s){ return new Date(s.date) >= w; }), tag: 'weekly'}; }
-  var m = new Date(now - 30*864e5); return {list: ss.filter(function(s){ return new Date(s.date) >= m; }), tag: 'monthly'};
+  /* local calendar buckets. The old code used rolling windows
+   * (now - 7 days / now - 30 days): on a Wednesday the "weekly" report only
+   * covered half of the current week and the previous week was unreachable,
+   * and "monthly" drifted by a day every month. */
+  function from(start){
+    start = start.getTime();
+    return ss.filter(function(s){
+      var t = new Date(s.date).getTime();
+      return !isNaN(t) && t >= start && t <= now.getTime();
+    });
+  }
+  if (type === 'daily') return {list: ss.filter(function(s){ return window.isSameDay(s.date, now); }), tag: 'daily'};
+  if (type === 'weekly'){ var w = (window.weekStart ? window.weekStart(now) : new Date(now - 6*864e5)); return {list: from(w), tag: 'weekly'}; }
+  var m = (window.monthStart ? window.monthStart(now) : new Date(now - 29*864e5));
+  return {list: from(m), tag: 'monthly'};
 }
 window.exportSessionsCSV = function(type){
   var r = sessionsFiltered(type);
   var rows = [['کلاینت','تعرفه','مدت (دقیقه)','هزینه (تومان)','تاریخ']];
   r.list.forEach(function(s){
-    rows.push([s.clientName, s.tariff==='single'?'تک نفره':'دو نفره', Math.round(s.duration/60), s.cost, new Date(s.date).toLocaleDateString('fa-IR')]);
+    rows.push([s.clientName, s.tariff==='single'?'تک نفره':'دو نفره', Math.round((Number(s.duration)||0)/60), Number(s.cost)||0, new Date(s.date).toLocaleDateString('fa-IR')]);
   });
   dlCSV('gamenet-' + r.tag + '.csv', rows);
   logAct('export','CSV sessions '+r.tag); toast('فایل CSV دانلود شد','success');
@@ -33,35 +59,60 @@ window.exportSessionsCSV = function(type){
 window.exportExpensesCSV = function(){
   var ex = sp('alvand_expenses', []);
   var rows = [['عنوان','مبلغ (تومان)','تاریخ']];
-  ex.forEach(function(e){ rows.push([e.title||'', e.amount||0, new Date(e.date).toLocaleDateString('fa-IR')]); });
+  ex.forEach(function(e){ rows.push([e.title||'', Number(e.amount)||0, new Date(e.date).toLocaleDateString('fa-IR')]); });
   dlCSV('gamenet-expenses.csv', rows);
   logAct('export','CSV expenses'); toast('فایل CSV دانلود شد','success');
 };
 window.exportCustomersCSV = function(){
   var cs = window.customers || [];
   var rows = [['نام','تلفن','کیف پول','ساعت','هزینه']];
-  cs.forEach(function(c){ rows.push([c.name, c.phone||'', c.wallet||0, Math.round(c.totalHours||0), c.totalSpent||0]); });
+  cs.forEach(function(c){ rows.push([c.name, c.phone||'', Number(c.wallet)||0, Math.round(Number(c.totalHours)||0), Number(c.totalSpent)||0]); });
   dlCSV('gamenet-customers.csv', rows);
   logAct('export','CSV customers'); toast('فایل CSV دانلود شد','success');
 };
 
 /* ---- 2. thermal receipt ---- */
+// Uses an off-screen iframe + window.print(): window.open() is DENIED by the
+// main process (setWindowOpenHandler returns 'deny'), so the old popup version
+// always reported "popup blocked" inside the packaged app.
 window.printThermalReceipt = function(d){
   d = d || {};
   var shop = localStorage.getItem('alvand_shopName') || 'گیم‌نت';
   var no = 'R' + Date.now().toString().slice(-6);
   var now = new Date();
-  var h = '<html><head><style>@page{size:80mm auto;margin:2mm}body{font-family:monospace;font-size:12px;direction:rtl;text-align:center}</style></head><body>';
-  h += '<h3>' + shop + '</h3><hr>';
-  h += '<p>رسید ' + no + '</p>';
+  var esc2 = function(v){ return String(v==null?'':v).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  var h = '<html><head><meta charset="utf-8"><style>@page{size:80mm auto;margin:2mm}'
+        + 'body{font-family:sans-serif;font-size:12px;direction:rtl;text-align:center;margin:0}'
+        + 'hr{border:0;border-top:1px dashed #000}</style></head><body>';
+  h += '<h3>' + esc2(shop) + '</h3><hr>';
+  h += '<p>رسید ' + esc2(no) + '</p>';
   h += '<p>' + now.toLocaleDateString('fa-IR') + ' ' + now.toLocaleTimeString('fa-IR') + '</p>';
-  h += '<p>کلاینت: ' + (d.clientName||'-') + '</p>';
-  h += '<p>مدت: ' + Math.round((d.duration||0)/60) + ' دقیقه</p>';
-  h += '<h3>' + (d.cost||0).toLocaleString() + ' تومان</h3>';
+  h += '<p>کلاینت: ' + esc2(d.clientName || '-') + '</p>';
+  h += '<p>مدت: ' + Math.round((Number(d.duration)||0)/60) + ' دقیقه</p>';
+  h += '<h3>' + (Number(d.cost)||0).toLocaleString('fa-IR') + ' تومان</h3>';
+  if (d.services && d.services.length) {
+    h += '<p style="font-size:11px">' + d.services.map(function(it){
+      return esc2((it.name || '') + ' x' + (Number(it.qty)||0));
+    }).join('<br>') + '</p>';
+  }
   h += '<p>با تشکر از حضور شما</p></body></html>';
-  var w = window.open('', '_blank', 'width=300,height=600');
-  if (w){ w.document.write(h); w.document.close(); setTimeout(function(){ w.print(); }, 500); }
-  else toast('پاپ‌آپ بلاک شده است','error');
+  try{
+    var f = document.createElement('iframe');
+    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+    document.body.appendChild(f);
+    var d2 = f.contentWindow ? f.contentWindow.document : null;
+    if(!d2){ document.body.removeChild(f); toast('چاپ ممکن نشد','error'); return; }
+    d2.open();
+    d2.write(h);
+    d2.close();
+    setTimeout(function(){
+      try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){}
+      setTimeout(function(){ try{ document.body.removeChild(f); }catch(e){} }, 1500);
+    }, 250);
+    toast('چاپ رسید...','success');
+  }catch(e){
+    toast('چاپ ممکن نشد','error');
+  }
   logAct('print','receipt ' + (d.clientName||''));
 };
 window.setShopInfo = function(){

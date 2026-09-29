@@ -6,7 +6,7 @@
   "license": "MIT",
   "main": "main.js",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "start": "electron .",
@@ -15,6 +15,9 @@
     "dist:win": "electron-builder --win",
     "test": "node tests/smoke.test.js && node tests/boot.test.js && node tests/license.test.js && node tests/round2.test.js && node --check main.js && node --check preload.js && node --check src/js/config.js && node --check src/js/security.js && node --check src/js/license-pubkey.js && node --check src/js/license.js && node --check src/js/storage.js && node --check src/js/app.js && node --check src/js/patches.js && node --check src/js/jalali.js && node --check src/js/zoom.js && node --check src/js/new-features.js && node --check src/js/round2-a.js && node --check src/js/round2-b.js && node --check src/js/round2-c.js && node --check src/js/phonebook.js && echo OK",
     "test:e2e": "node tests/e2e.test.js",
+    "test:ux": "node tests/ux.test.js",
+    "test:browser": "node tests/browser-smoke.test.js",
+    "test:all": "npm test && npm run test:e2e && npm run test:ux && npm run test:browser",
     "validate": "node tests/smoke.test.js && node tests/boot.test.js && node tests/license.test.js"
   },
   "build": {
@@ -28,6 +31,7 @@
       "preload.js",
       "index.html",
       "config.example.json",
+      "config.local.json",
       "src/**/*",
       "assets/**/*"
     ],

@@ -102,12 +102,19 @@
         expenses: document.getElementById('permExpenses').checked,
         customers: document.getElementById('permCustomers').checked,
         backup: document.getElementById('permBackup').checked,
-        operators: false, tariffs: true
+        tariffs: !!(document.getElementById('permTariffs') || {}).checked,
+        employees: !!(document.getElementById('permEmployees') || {}).checked,
+        operators: !!(document.getElementById('permOperators') || {}).checked
       };
       var hashed = await hashIfNeeded(password);
       if (id) {
-        var op = operators.find(function (x) { return x.id === parseInt(id, 10); });
+        var op = operators.find(function (x) { return String(x.id) === String(id); });
         if (!op) return;
+        // demoting the last admin would lock the shop out of its own data
+        if (op.role === 'admin' && role !== 'admin') {
+          var admins = operators.filter(function (x) { return x.role === 'admin'; });
+          if (admins.length <= 1) { showToast('آخرین مدیر را نمی‌توان به اپراتور تغییر داد', 'error'); return; }
+        }
         if (password === '••••' || password === '****') {
           Object.assign(op, { username: username, role: role, perms: perms });
         } else {
@@ -152,7 +159,7 @@
         try {
           var raw = localStorage.getItem('alvand_backup');
           if (raw && window.gamenet && window.gamenet.backup) {
-            var nm = 'gamenet-backup-' + new Date().toISOString().slice(0, 10);
+            var nm = 'gamenet-backup-' + (window.localDayKey ? window.localDayKey(new Date()) : new Date().toISOString().slice(0, 10));
             window.gamenet.backup.write(nm, raw).catch(function () {});
           }
         } catch (_) {}

@@ -32,6 +32,7 @@ const sandbox = {
   Notification: function () {},
   crypto: require('crypto').webcrypto,
   TextEncoder,
+  TextDecoder,
   Buffer,
   btoa,
   atob,
@@ -43,6 +44,8 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 let failures = 0;
+// Web Crypto is promise-based, so the encrypt/decrypt checks run async
+let cryptoChecks = Promise.resolve();
 function check(cond, msg) {
   if (cond) console.log('  PASS ' + msg);
   else { failures++; console.error('  FAIL ' + msg); }
@@ -210,11 +213,13 @@ try {
   // behavior: waiting list add + badge path
   vm.runInContext('addToWaitingList("t1", "0911", "pc", "")', sandbox);
   // behavior: encrypt/decrypt roundtrip
-  const encOk = vm.runInContext('encryptAndSave("tkey", {a:1}, "secret1")', sandbox);
-  const dec = vm.runInContext('decryptAndLoad("tkey", "secret1")', sandbox);
-  check(encOk === true && dec && dec.a === 1, 'encrypt/decrypt roundtrip works');
-  const decBad = vm.runInContext('decryptAndLoad("tkey", "wrong")', sandbox);
-  check(decBad === null, 'wrong password returns null');
+  cryptoChecks = (async () => {
+    const encOk = await vm.runInContext('encryptAndSave("tkey", {a:1}, "secret1")', sandbox);
+    const dec = await vm.runInContext('decryptAndLoad("tkey", "secret1")', sandbox);
+    check(encOk === true && dec && dec.a === 1, 'encrypt/decrypt roundtrip works (PBKDF2+AES-GCM)');
+    const decBad = await vm.runInContext('decryptAndLoad("tkey", "wrong")', sandbox);
+    check(decBad === null, 'wrong password returns null');
+  })();
   // behavior: renders do not throw on stub DOM
   for (const fn of ['renderWaitingList()', 'renderSurveyStats()', 'renderBranches()', 'renderShifts()', 'renderStockAlerts()', 'generateMonthlyComparison()', 'renderForecast()', 'renderPOSConfig()', 'renderCustomerPortal()', 'renderEvents()', 'renderSecurityPanel()', 'renderMembershipPlans()', 'renderBusyHoursReport()', 'renderActivityLog()', 'renderEmployees()', 'renderNotifications()']) {
     try { vm.runInContext(fn, sandbox); console.log('  PASS render ok: ' + fn); }
@@ -234,5 +239,10 @@ try {
   failures++;
   console.error('  CHECK ERROR: ' + e.stack);
 }
-console.log(failures === 0 ? 'ROUND2 TESTS PASSED' : failures + ' ROUND2 TEST(S) FAILED');
-process.exit(failures ? 1 : 0);
+cryptoChecks.then(function () {
+  console.log(failures === 0 ? 'ROUND2 TESTS PASSED' : failures + ' ROUND2 TEST(S) FAILED');
+  process.exit(failures ? 1 : 0);
+}, function (e) {
+  console.error('  CRYPTO CHECK ERROR: ' + (e && e.stack || e));
+  process.exit(1);
+});

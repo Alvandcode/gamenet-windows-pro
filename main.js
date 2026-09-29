@@ -20,25 +20,56 @@ const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
 
-// Stable hardware fingerprint for license binding (MACs + host + user + cpu).
-// Not secret, just stable: copying a license file to another PC won't activate.
+// Stable hardware fingerprint for license binding.
+//
+// Must survive the things that legitimately change on a customer's PC:
+//   - plugging/unplugging a USB Wi-Fi dongle or a docking station
+//   - enabling/disabling the built-in adapter
+//   - renaming the machine
+//   - a virtual adapter (Hyper-V / VPN / WSL) coming and going
+// The old version hashed EVERY non-internal MAC plus the hostname, so any of
+// the above bricked the license and the owner had to call the seller.
+// Now: the sorted set of permanent-looking MACs is reduced to a single stable
+// "primary" adapter, and the hostname is dropped. If nothing qualifies we fall
+// back to the previous scheme so binding still works at all.
+const TRANSIENT_MAC_PREFIXES = ['00:05:69', '00:0c:29', '00:1c:42', '00:15:5d', '00:50:56', '02:42:ac', '0a:00:27', '00:16:3e', '00:1b:78', '08:00:27'];
+function isTransientMac(mac) {
+  const m = String(mac).toLowerCase();
+  if (m.startsWith('00:00:00')) return true;
+  return TRANSIENT_MAC_PREFIXES.some((p) => m.startsWith(p)); // hyper-v / vmware / virtualbox / docker
+}
+function permanentMacs() {
+  const out = [];
+  try {
+    const ifs = os.networkInterfaces() || {};
+    for (const name of Object.keys(ifs)) {
+      for (const nic of ifs[name] || []) {
+        if (!nic || !nic.mac || nic.internal) continue;
+        const mac = nic.mac.toLowerCase();
+        if (mac === '00:00:00:00:00:00' || isTransientMac(mac)) continue;
+        out.push(mac);
+      }
+    }
+  } catch { /* ignore */ }
+  return [...new Set(out)].sort();
+}
 function deviceFingerprint() {
   try {
-    const macs = [];
-    try {
-      const ifs = os.networkInterfaces() || {};
-      for (const name of Object.keys(ifs)) {
-        for (const nic of ifs[name] || []) {
-          if (nic && nic.mac && nic.mac !== '00:00:00:00:00:00' && !nic.internal) macs.push(nic.mac.toLowerCase());
-        }
-      }
-    } catch { /* ignore */ }
-    macs.sort();
+    const macs = permanentMacs();
     let user = '';
     try { user = (os.userInfo() || {}).username || ''; } catch { /* ignore */ }
     let cpu = '';
     try { cpu = ((os.cpus() || [])[0] || {}).model || ''; } catch { /* ignore */ }
-    const raw = [os.hostname(), user, os.platform(), os.arch(), cpu, macs.join(',')].join('|');
+    let stable = 'none';
+    if (macs.length) {
+      // the lowest permanent MAC survives dongles and VPN adapters appearing
+      stable = macs[0];
+    } else {
+      // no usable NIC: fall back to platform + user + cpu so two PCs on the same
+      // shop LAN still differ
+      stable = [os.platform(), os.arch(), user, cpu].join('|');
+    }
+    const raw = [stable, os.platform(), os.arch()].join('|');
     return crypto.createHash('sha256').update(raw, 'utf8').digest('hex');
   } catch {
     return '';
@@ -51,6 +82,7 @@ const isDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'develo
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
+  // keep loading: the remaining top-level work is IPC + window creation only
 }
 
 // Stable taskbar identity: the installer shortcut and the running app must
@@ -82,7 +114,22 @@ function loadWindowState() {
   try {
     const raw = fs.readFileSync(stateFile(), 'utf-8');
     const s = JSON.parse(raw);
-    if (typeof s.width === 'number' && typeof s.height === 'number') return s;
+    if (typeof s.width === 'number' && typeof s.height === 'number') {
+      const out = { width: Math.max(900, Math.min(10000, Math.round(s.width))),
+                   height: Math.max(600, Math.min(10000, Math.round(s.height))) };
+      // A window remembered on a monitor that is now unplugged would open
+      // off-screen with no way to reach it.
+      if (typeof s.x === 'number' && typeof s.y === 'number') {
+        const { screen } = require('electron');
+        const vis = screen.getAllDisplays().some((d) => {
+          const w = d.workArea;
+          return s.x < w.x + w.width - 60 && s.x + out.width > w.x + 60 &&
+                 s.y < w.y + w.height - 40 && s.y + 60 > w.y;
+        });
+        if (vis) { out.x = Math.round(s.x); out.y = Math.round(s.y); }
+      }
+      return out;
+    }
   } catch { /* first run or corrupt -> fallback */ }
   return fallback;
 }
@@ -116,15 +163,15 @@ function setupBackupIPC() {
       if (data.length > 50 * 1024 * 1024) throw new Error('backup too large (>50MB)');
       JSON.parse(data); // validate
       fs.mkdirSync(backupDir(), { recursive: true });
-      const target = backupFilePath(name || ('gamenet-backup-' + new Date().toISOString().slice(0, 10)));
+      const target = backupFilePath(name || ('gamenet-backup-' + new Date().toISOString().replace(/[:.]/g, '-')));
       const tmp = target + '.tmp';
       fs.writeFileSync(tmp, data, 'utf-8');
       fs.renameSync(tmp, target);
-      // keep only last 14 files
+      // keep only the last 14 files
       try {
         const files = fs.readdirSync(backupDir())
           .filter((f) => f.endsWith('.json'))
-          .map((f) => ({ f, t: fs.statSync(path.join(backupDir(), f)).mtimeMs }))
+          .map((f) => ({ f, t: (() => { try { return fs.statSync(path.join(backupDir(), f)).mtimeMs; } catch (_) { return 0; } })() }))
           .sort((a, b) => b.t - a.t);
         for (const extra of files.slice(14)) {
           try { fs.unlinkSync(path.join(backupDir(), extra.f)); } catch { /* ignore */ }
@@ -183,23 +230,41 @@ function setupBackupIPC() {
       const headers = (opts.headers && typeof opts.headers === 'object') ? opts.headers : {};
       const body = opts.body != null ? String(opts.body) : null;
       const result = await new Promise((resolve, reject) => {
-        const req = lib.request({
-          hostname: u.hostname,
-          port: u.port || (u.protocol === 'https:' ? 443 : 80),
-          path: u.pathname + (u.search || ''),
-          method,
-          headers,
-          timeout: 15000,
-        }, (res) => {
-          let data = '';
-          res.on('data', (chunk) => {
-            data += chunk;
-            if (data.length > 65536) { try { req.destroy(); } catch (_) {} }
+        let settled = false;
+        const done = (fn, arg) => { if (settled) return; settled = true; fn(arg); };
+        let req;
+        try {
+          req = lib.request({
+            hostname: u.hostname,
+            port: u.port || (u.protocol === 'https:' ? 443 : 80),
+            path: u.pathname + (u.search || ''),
+            method,
+            headers,
+            timeout: 15000,
+          }, (res) => {
+            let data = '';
+            let aborted = false;
+            res.on('data', (chunk) => {
+              data += chunk;
+              if (data.length > 65536) {
+                // The old code called req.destroy() with no error: the promise
+                // never settled, so sendBulkSms() froze forever on that entry.
+                aborted = true;
+                try { req.destroy(); } catch (_) {}
+                done(resolve, { ok: false, status: res.statusCode, error: 'response too large (>64KB)' });
+              }
+            });
+            res.on('end', () => {
+              if (aborted) return;
+              done(resolve, { ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: String(data).slice(0, 500) });
+            });
+            res.on('error', (e) => done(reject, e));
           });
-          res.on('end', () => resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode, body: String(data).slice(0, 500) }));
-        });
+        } catch (e) { done(reject, e); return; }
         req.on('timeout', () => { try { req.destroy(new Error('timeout')); } catch (_) {} });
-        req.on('error', reject);
+        // a socket that dies without an 'error' must still settle the promise
+        req.on('error', (e) => done(reject, e));
+        req.on('close', () => done(resolve, { ok: false, error: 'connection closed' }));
         if (body && method !== 'GET') req.write(body);
         req.end();
       });
@@ -244,10 +309,25 @@ function createWindow() {
   }
 
   // Lock navigation to local file only. External links -> system browser.
+  // The renderer never navigates: everything is an inline handler. Redirects are
+  // locked down too, otherwise a crafted file:// link could bounce the window
+  // out to the network.
   mainWindow.webContents.on('will-navigate', (e, url) => {
     try {
       const u = new URL(url);
       if (u.protocol === 'file:') return; // our own index.html
+      e.preventDefault();
+      if (['https:', 'http:', 'mailto:'].includes(u.protocol)) {
+        shell.openExternal(url).catch(() => {});
+      }
+    } catch {
+      e.preventDefault();
+    }
+  });
+  mainWindow.webContents.on('will-redirect', (e, url) => {
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'file:') return;
       e.preventDefault();
       if (['https:', 'http:', 'mailto:'].includes(u.protocol)) {
         shell.openExternal(url).catch(() => {});
@@ -267,11 +347,20 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // Least privilege: deny camera/mic/geolocation, allow notifications (timer alarms)
+  // Least privilege: deny camera/mic/geolocation, allow notifications (timer
+  // alarms) and clipboard writes (copy license / copy report text).
   try {
     mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
       if (permission === 'notifications') return callback(true);
+      // navigator.clipboard is used by the license panel and the share report;
+      // denying it made those buttons fail silently.
+      if (permission === 'clipboard-write' || permission === 'clipboard-sanitized-write') return callback(true);
       return callback(false);
+    });
+    mainWindow.webContents.session.setPermissionCheckHandler((_wc, permission) => {
+      return permission === 'notifications' ||
+             permission === 'clipboard-write' ||
+             permission === 'clipboard-sanitized-write';
     });
   } catch { /* older electron: ignore */ }
 

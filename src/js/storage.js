@@ -53,10 +53,17 @@
   function collectDump() {
     var dump = { date: new Date().toISOString(), version: window.APP_VERSION || '1.8.1' };
     try {
+      // every shop key, not just the first 10: a partial mirror is worse than
+      // no mirror because it looks like a working safety net.
       var keys = ['clients', 'tariffs', 'sessions', 'reservations', 'services', 'expenses',
         'tariffSchedules', 'sales', 'clientServiceMap', 'stationTypes', 'payments',
         'customers', 'operators', 'walletHistory', 'license', 'allLicenses',
-        'theme', 'alarmSound', 'alarmRepeat', 'rounding', 'lang', 'backupDay', 'backupTime'];
+        'theme', 'alarmSound', 'alarmRepeat', 'rounding', 'lang', 'backupDay', 'backupTime',
+        'membershipPlans', 'customerMemberships', 'gameHistory', 'hourlyUsage', 'notifications',
+        'activityLog', 'employees', 'attendance', 'waitingList', 'loyaltyPoints', 'surveys',
+        'smsLog', 'smsConfig', 'phonebook', 'events', 'branches', 'currentBranch', 'shifts',
+        'lowStockThreshold', 'posConfig', 'shopName', 'shopPhone', 'lite', 'uiZoom',
+        'navGroups', 'backup'];
       for (var i = 0; i < keys.length; i++) {
         try { dump[keys[i]] = localStorage.getItem(PREFIX + keys[i]); } catch (_) {}
       }
@@ -70,13 +77,36 @@
       var payload = JSON.stringify(collectDump());
       if (payload === lastMirrorPayload) return; // unchanged
       lastMirrorPayload = payload;
-      var name = 'gamenet-auto-' + new Date().toISOString().slice(0, 10);
+      // one file per write, not per day: the date-based name overwrote the
+      // previous day's mirror, so main.js's "keep the last 14" never did anything
+      var stamp = new Date().toISOString().replace(/[:.]/g,'-');
+      var name = 'gamenet-auto-' + stamp;
       window.gamenet.backup.write(name, payload).then(function (res) {
         if (!res || !res.ok) {
           lastMirrorPayload = ''; // retry next time
           if (!quiet) console.warn('[gamenet] file mirror failed', res);
-        }
+        } else { trimMirrors(); }
       }).catch(function () { lastMirrorPayload = ''; });
+    } catch (_) {}
+  }
+  /** Keep the newest N mirror files so the backups folder cannot grow forever. */
+  function trimMirrors(){
+    try{
+      var keep = 14;
+      var names = [];
+      for (var i = 0; i < localStorage.length; i++){
+        var k = localStorage.key(i);
+        if (k && k.indexOf(PREFIX + 'mirror:') === 0) names.push(k);
+      }
+      if (names.length <= keep) return;
+      var entries = names.map(function (k){
+        return { k: k, t: safeParse(localStorage.getItem(k), {}) && 0 };
+      });
+      // fall back to insertion order encoded in the key suffix
+      entries.sort(function (a, b){ return a.k < b.k ? 1 : -1; });
+      entries.slice(keep).forEach(function (e){
+        try { localStorage.removeItem(e.k); } catch (_) {}
+      });
     } catch (_) {}
   }
 

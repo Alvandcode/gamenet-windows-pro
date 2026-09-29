@@ -48,14 +48,64 @@ window.sendToPOS = function(amount){
   return true;
 };
 
-/* ---- 12. QR code ---- */
-window.renderCustomerQR = function(cid, cname){
-  var c = document.getElementById('customerQRContent');
-  if (!c) return;
-  var payload = 'GAMENET:' + cid + ':' + (cname||'');
-  var url = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(payload);
-  c.innerHTML = '<div style="text-align:center"><img src="'+url+'" style="border-radius:12px;background:#fff;padding:8px" onerror="this.outerHTML=\'<p>آفلاین - کد: '+esc(payload)+'</p>\'"><p style="margin-top:8px;font-size:.8rem;color:rgba(255,255,255,0.5)">'+esc(payload)+'</p></div>';
-};
+  /* ---- 12. QR code ---- */
+  // The remote QR service is allowed by the CSP (img-src https://api.qrserver.com).
+  // Offline fallback: show the payload as selectable text plus a copy button,
+  // instead of a broken image icon.
+  window.renderCustomerQR = function(cid, cname){
+    var c = document.getElementById('customerQRContent');
+    if (!c) return;
+    var payload = 'GAMENET:' + cid + ':' + (cname || '');
+    var url = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(payload);
+    var fb = '<div style="text-align:center;padding:8px;">'
+      + '<p style="font-size:.85rem;color:rgba(255,255,255,0.6);">آفلاین - کد متنی مشتری:</p>'
+      + '<p style="font-family:monospace;direction:ltr;user-select:all;word-break:break-all;">' + esc(payload) + '</p>'
+      + '<button class="glass-btn" onclick="copyTextToClipboard(this)">کپی کد</button></div>';
+    c.innerHTML = '<div style="text-align:center">'
+      + '<img src="' + url + '" alt="QR" data-payload="' + esc(payload) + '"'
+      + ' style="border-radius:12px;background:#fff;padding:8px"'
+      + ' onerror="qrFallback(this)">'
+      + '<p style="margin-top:8px;font-size:.8rem;color:rgba(255,255,255,0.5)">' + esc(payload) + '</p></div>';
+  };
+  function qrFallback(img){
+    if(!img) return '';
+    var payload = img.getAttribute('data-payload') || '';
+    var html = '<div style="text-align:center;padding:8px;">'
+      + '<p style="font-size:.85rem;color:rgba(255,255,255,0.6);">آفلاین - کد متنی مشتری:</p>'
+      + '<p style="font-family:monospace;direction:ltr;user-select:all;word-break:break-all;">' + esc(payload) + '</p>'
+      + '<button class="glass-btn" data-payload="' + esc(payload) + '" onclick="copyTextToClipboard(this)">کپی کد</button></div>';
+    img.outerHTML = html;
+    return html;
+  }
+  /** Clipboard helper. navigator.clipboard needs a secure context AND a
+   *  granted 'clipboard-write' permission; fall back to execCommand. */
+  window.copyTextToClipboard = function(node, text){
+    if(!node) return;
+    var t = (text != null) ? text : (node.getAttribute('data-payload') || node.textContent || '');
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      try{
+        navigator.clipboard.writeText(t)
+          .then(function(){ toast('کپی شد','success'); })
+          .catch(function(){ legacyCopy(t); });
+        return;
+      }catch(e){}
+    }
+    legacyCopy(t);
+    function legacyCopy(v){
+      try{
+        var ta=document.createElement('textarea');
+        ta.value=v;
+        ta.style.position='fixed';
+        ta.style.top='-1000px';
+        document.body.appendChild(ta);
+        ta.select();
+        var done=false;
+        try{ done=document.execCommand('copy'); }catch(e){}
+        document.body.removeChild(ta);
+        toast(done?'کپی شد':'کپی نشد - دستی انتخاب کن', done?'success':'warning');
+      }catch(e){ toast('کپی نشد','error'); }
+    }
+  };
 
 /* ---- 13. customer portal ---- */
 window.renderCustomerPortal = function(){
@@ -91,7 +141,7 @@ window.saveEventFromModal = function(){
   var f = document.getElementById('evFee');
   var p = document.getElementById('evPrize');
   var ds = document.getElementById('evDesc');
-  EV.push({id: Date.now(), title: title, date: isoDate, fee: f ? (parseInt(f.value)||0) : 0, prize: p ? p.value.trim() : '', desc: ds ? ds.value.trim() : '', participants: [], status: 'open'});
+  EV.push({id: Date.now(), title: title, date: isoDate, fee: f ? (window.parseFaNumber ? window.parseFaNumber(f.value,0) : (parseInt(f.value)||0)) : 0, prize: p ? p.value.trim() : '', desc: ds ? ds.value.trim() : '', participants: [], status: 'open'});
   sv('alvand_events', EV); logAct('event','new '+title); toast('ذخیره شد','success');
   var m = document.getElementById('eventModal'); if (m) m.classList.remove('show');
   window.renderEvents();
@@ -124,7 +174,7 @@ window.renderEvents = function(){
   c.innerHTML = EV.map(function(e){
     var dDisp = window.formatDateSmart ? formatDateSmart(e.date||'') : (e.date||'');
     return '<div class="glass" style="padding:14px;margin-bottom:10px"><b>'+esc(e.title)+'</b>'
-      + '<p style="font-size:.8rem;color:rgba(255,255,255,0.5)">'+dDisp+' | ورودی: '+(e.fee||0).toLocaleString()+' | جایزه: '+esc(e.prize||'-')+'</p>'
+      + '<p style="font-size:.8rem;color:rgba(255,255,255,0.5)">'+dDisp+' | ورودی: '+(e.fee||0).toLocaleString('fa-IR')+' | جایزه: '+esc(e.prize||'-')+'</p>'
       + '<p style="font-size:.8rem">بازیکنان: '+(e.participants||[]).length+'</p>'
       + '<div style="margin-top:6px"><button class="glass-btn glass-btn-success" onclick="joinEvent('+e.id+')">شرکت در رویداد</button> '
       + '<button class="glass-btn glass-btn-danger" onclick="deleteEvent('+e.id+')">حذف</button></div></div>';
@@ -177,26 +227,82 @@ function b64decodeBytes(b64){
   for (i=0;i<bin.length;i++) out.push(bin.charCodeAt(i));
   return out;
 }
-function xorCrypt(bytes, keyBytes){
-  var out = [], i;
-  for (i=0;i<bytes.length;i++) out.push(bytes[i] ^ keyBytes[i % keyBytes.length]);
-  return out;
-}
-window.encryptAndSave = function(key, obj, pass){
-  if (!pass || pass.length < 4){ toast('رمز حداقل ۴ کاراکتر','error'); return false; }
-  try{
-    var enc = b64encodeBytes(xorCrypt(utf8Bytes(JSON.stringify(obj)), utf8Bytes(pass)));
-    localStorage.setItem(key + '_enc', enc);
-    toast('رمزنگاری شد','success'); logAct('security','encrypt '+key); return true;
-  }catch(e){ toast('خطا در رمزنگاری','error'); return false; }
-};
-window.decryptAndLoad = function(key, pass){
-  try{
-    var enc = localStorage.getItem(key + '_enc');
-    if (!enc){ toast('داده رمزنگاری‌شده نیست','error'); return null; }
-    return JSON.parse(bytesToStr(xorCrypt(b64decodeBytes(enc), utf8Bytes(pass))));
-  }catch(e){ toast('رمز اشتباه یا داده خراب','error'); return null; }
-};
+  /* ---------------------------------------------------------------------
+     Real encryption: PBKDF2-SHA256 (150k iterations) -> AES-GCM.
+     The previous implementation was a repeating-key XOR, which is not
+     encryption at all: the keystream repeats every N bytes and anyone can
+     recover the plaintext. It was presented to the user as "رمزنگاری بکاپ
+     مشتریان" (customer backup encryption), so it has to be real.
+     Stored format: base64( salt(16) | iv(12) | ciphertext+tag )
+     --------------------------------------------------------------------- */
+  var PBKDF2_ITER = 150000;
+  function subtle(){ try { return (window.crypto && window.crypto.subtle) || null; } catch (e) { return null; } }
+  function randBytes(n){ return window.crypto.getRandomValues(new Uint8Array(n)); }
+  function b64FromBytes(u8){
+    var bin = '';
+    for (var i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+    return btoa(bin);
+  }
+  function bytesFromB64(b64){
+    var bin = atob(String(b64 || ''));
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  async function deriveKey(pass, saltBytes){
+    var s = subtle();
+    if (!s) throw new Error('no-subtle');
+    // must be a real Uint8Array (BufferSource); utf8Bytes() returns a plain Array
+    var raw = (typeof TextEncoder !== 'undefined') ? new TextEncoder().encode(String(pass))
+                                                   : new Uint8Array(utf8Bytes(pass));
+    var base = await s.importKey('raw', raw, { name: 'PBKDF2' }, false, ['deriveKey']);
+    return s.deriveKey(
+      { name: 'PBKDF2', salt: saltBytes, iterations: PBKDF2_ITER, hash: 'SHA-256' },
+      base,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+  window.encryptAndSave = async function (key, obj, pass) {
+    if (!pass || pass.length < 4) { toast('رمز حداقل ۴ کاراکتر', 'error'); return false; }
+    var s = subtle();
+    if (!s) { toast('رمزنگاری روی این سیستم پشتیبانی نمی‌شود', 'error'); return false; }
+    try {
+      var salt = randBytes(16);
+      var iv = randBytes(12);
+      var k = await deriveKey(pass, salt);
+      var ct = await s.encrypt({ name: 'AES-GCM', iv: iv }, k, new TextEncoder().encode(JSON.stringify(obj)));
+      var packed = new Uint8Array(salt.length + iv.length + ct.byteLength);
+      packed.set(salt, 0);
+      packed.set(iv, salt.length);
+      packed.set(new Uint8Array(ct), salt.length + iv.length);
+      localStorage.setItem(key + '_enc', b64FromBytes(packed));
+      localStorage.setItem(key + '_encv', '2');
+      toast('رمزنگاری شد', 'success');
+      logAct('security', 'encrypt ' + key);
+      return true;
+    } catch (e) { toast('خطا در رمزنگاری', 'error'); return false; }
+  };
+  window.decryptAndLoad = async function (key, pass) {
+    var s = subtle();
+    if (!s) { toast('رمزگشایی روی این سیستم پشتیبانی نمی‌شود', 'error'); return null; }
+    try {
+      var enc = localStorage.getItem(key + '_enc');
+      if (!enc) { toast('داده رمزنگاری‌شده نیست', 'error'); return null; }
+      var packed = bytesFromB64(enc);
+      if (packed.length < 29) { toast('داده خراب است', 'error'); return null; }
+      var salt = packed.slice(0, 16);
+      var iv = packed.slice(16, 28);
+      var ct = packed.slice(28);
+      var k = await deriveKey(pass, salt);
+      var pt = await s.decrypt({ name: 'AES-GCM', iv: iv }, k, ct);
+      return JSON.parse(new TextDecoder().decode(pt));
+    } catch (e) {
+      toast('رمز اشتباه یا داده خراب', 'error');
+      return null;
+    }
+  };
 window.renderSecurityPanel = function(){
   var c = document.getElementById('securityPanelContent');
   if (!c) return;
@@ -207,18 +313,27 @@ window.renderSecurityPanel = function(){
     + '<button class="glass-btn" onclick="decryptCustomersBackup()">بررسی رمزگشایی</button></div>'
     + '<p id="encStatus" style="font-size:.8rem;color:rgba(255,255,255,0.5);margin-top:8px"></p></div>';
 };
-window.encryptCustomersBackup = function(){
+window.encryptCustomersBackup = async function(){
   var p = document.getElementById('encPass');
   var pass = p ? p.value : '';
-  var ok = window.encryptAndSave('alvand_customers', window.customers || [], pass);
   var s = document.getElementById('encStatus');
-  if (s) s.textContent = ok ? 'رمزنگاری شد' : 'خطا';
+  if (s) s.textContent = 'در حال رمزنگاری...';
+  var list = [];
+  try { list = (window.customers || []).slice(); } catch (e) { list = []; }
+  // the customers live in localStorage, read them there so nothing is missed
+  try {
+    var raw = localStorage.getItem('alvand_customers');
+    if (raw) { var parsed = window.safeParse ? window.safeParse(raw, null) : JSON.parse(raw); if (Array.isArray(parsed)) list = parsed; }
+  } catch (e) {}
+  var ok = await window.encryptAndSave('alvand_customers', list, pass);
+  if (s) s.textContent = ok ? ('رمزنگاری شد (' + list.length + ' مشتری)') : 'خطا';
 };
-window.decryptCustomersBackup = function(){
+window.decryptCustomersBackup = async function(){
   var p = document.getElementById('encPass');
   var pass = p ? p.value : '';
-  var d = window.decryptAndLoad('alvand_customers', pass);
   var s = document.getElementById('encStatus');
-  if (s) s.textContent = d ? ('رمزگشایی شد: ' + d.length + ' مشتری') : 'خطا';
+  if (s) s.textContent = 'در حال بررسی...';
+  var d = await window.decryptAndLoad('alvand_customers', pass);
+  if (s) s.textContent = d ? ('رمزگشایی شد: ' + d.length + ' مشتری') : 'رمز اشتباه است';
 };
 })();

@@ -114,7 +114,10 @@ try {
   const bigInline = (h.match(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g) || [])
     .some((b) => b.length > 50000);
   ok(!bigInline, 'index.html has no giant inline script (modularized)');
-  ok(h.length < 140000, 'index.html shell is slim (<140KB, got ' + h.length + ')');
+  // 140KB was the ceiling when the shell was dashboard-only; the finance/ops
+  // pages added real markup. The inline-script check above is the real guard
+  // against a blob in the HTML - this one is only a runaway-size tripwire.
+  ok(h.length < 220000, 'index.html shell stays under 220KB (got ' + h.length + ')');
 } catch (e) {
   ok(false, 'index.html readable: ' + e.message);
 }
@@ -257,8 +260,65 @@ try {
   ok(!w.includes('v1.8.${{'), 'workflow no longer hardcodes v1.8 tag mismatch');
   ok(!w.includes("startsWith(github.ref"), 'workflow releases automatically without manual tag');
   ok(w.includes('steps.pkgver.outputs.version'), 'workflow tags release from package.json version');
+  // deps must be installed BEFORE anything is validated, otherwise the checks
+  // run with no node_modules and pass without proving anything
+  // compare the STEP positions, not any mention in a comment
+  const ciIdx = w.indexOf('- name: Install dependencies');
+  const valIdx = w.indexOf('- name: Validate project');
+  ok(ciIdx > -1 && valIdx > ciIdx, 'workflow installs dependencies before validating (ci@' + ciIdx + ' validate@' + valIdx + ')');
+  ok(w.includes('test:e2e') && w.includes('test:ux'), 'workflow runs the DOM test suites');
+  ok(w.includes('browser-smoke'), 'workflow runs the real-browser smoke test');
+  ok(w.includes('concurrency:'), 'workflow has a concurrency group (no parallel releases)');
+  ok(w.includes('pull_request'), 'workflow also runs on pull requests');
 } catch (e) {
   ok(false, 'workflow readable: ' + e.message);
+}
+
+try {
+  // the real regressions this release fixed, asserted on the source itself
+  const app = read('src/js/app.js');
+  const sec = read('src/js/security.js');
+  const stg = read('src/js/storage.js');
+
+  // 1. no duplicated 440-line block / no duplicate function declarations
+  const fnNames = [...app.matchAll(/^\s*function\s+([A-Za-z0-9_$]+)\s*\(/gm)].map((m) => m[1]);
+  const dupes = fnNames.filter((n, i) => fnNames.indexOf(n) !== i);
+  ok(dupes.length === 0, 'app.js has no duplicate function declarations' + (dupes.length ? ' (' + [...new Set(dupes)].join(',') + ')' : ''));
+  ok((app.match(/alvand_activityLog/g) || []).length === 0, 'app.js never writes alvand_activityLog (new-features owns it)');
+  ok((app.match(/alvand_employees/g) || []).length === 0, 'app.js never writes alvand_employees (new-features owns it)');
+
+  // 2. single renderCustomers
+  ok((app.match(/function renderCustomers\s*\(/g) || []).length === 1, 'exactly one renderCustomers()');
+  ok((app.match(/function renderCustomerRoster\s*\(/g) || []).length === 1, 'reservation roster has its own renderer');
+  ok(read('index.html').includes('id="customerRosterList"'), 'roster has its own container');
+
+  // 3. permissions fail closed
+  ok(/if\(key===undefined\) return false;/.test(app), 'hasPerm fails closed for unknown sections');
+  ok(/const PERM_MAP/.test(app), 'a single PERM_MAP covers every section');
+
+  // 4. money guards
+  ok(/function clientElapsed/.test(app), 'clientElapsed() guards the startTime/null case');
+  ok(!/remaining===300\)/.test(app), '5-minute warning no longer relies on exact equality');
+  ok(/function safeRate/.test(app) && /function parseHhMm/.test(app), 'tariff parsing/rates are guarded');
+  ok(!/known\.size>p\.maxDev/.test(app), 'device-capacity off-by-one fixed');
+
+  // 5. XSS
+  ok(/function numId/.test(sec) && /function jsStr/.test(sec), 'numId()/jsStr() helpers exist');
+  ok(/replace\(\/\"\/g, '\\\\\"'\)/.test(sec), 'jsStr escapes double quotes (attribute-safe)');
+  ok(!/openShareModalForCustomer\('\$\{/.test(app), 'no customer data inlined into onclick JS');
+
+  // 6. backup
+  ok(/function collectBackupObject/.test(app), 'backup collects every store');
+  ok(/validatedRestoreObject/.test(app), 'restore validates before writing');
+  ok(/function sanitizeBackup/.test(sec), 'sanitizeBackup is a real validator');
+  ok(/'activityLog'/.test(stg), 'the file mirror includes the new-features stores');
+
+  // 7. CSP
+  const csp = (read('index.html').match(/Content-Security-Policy" content="([^"]+)"/) || [])[1] || '';
+  ok(/http:\/\/192\.168\.\*/.test(csp), 'CSP allows the LAN agent');
+  ok(/api\.qrserver\.com/.test(csp), 'CSP allows the QR image');
+} catch (e) {
+  ok(false, 'regression guards: ' + e.message);
 }
 
 console.log(failures === 0 ? '\nALL SMOKE TESTS PASSED' : `\n${failures} TEST(S) FAILED`);

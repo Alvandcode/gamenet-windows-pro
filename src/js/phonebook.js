@@ -20,16 +20,53 @@ function saveLog(){ sv('alvand_smsLog', SMSLOG); }
 
 /* ---------- normalization / matching ---------- */
 var FA_D = '۰۱۲۳۴۵۶۷۸۹';
-function enDigits(s){ return String(s == null ? '' : s).replace(/[۰-۹]/g, function(c){ return FA_D.indexOf(c); }); }
+/* Persian keyboards type U+06F0..U+06F9, Arabic keyboards (and a lot of Iranian
+ * phonebooks pasted from Excel) use the Arabic-Indic U+0660..U+0669. The old
+ * code only handled the Persian range, so an Arabic-Indic number lost every
+ * digit in normPhone() and every entry was rejected as "not a valid mobile". */
+function enDigits(s){
+  return String(s == null ? '' : s)
+    .replace(/[۰-۹]/g, function(c){ return FA_D.indexOf(c); })
+    .replace(/[٠-٩]/g, function(c){ return String(c.charCodeAt(0) - 0x0660); });
+}
 function normName(s){
-  return String(s || '').replace(/[\u200c\u200d]/g, '').replace(/[ي]/g, 'ی').replace(/[ك]/g, 'ک').replace(/[ة]/g, 'ه').replace(/\s+/g, ' ').trim();
+  return String(s || '')
+    .replace(/[\u200c\u200d]/g, '')          /* ZWNJ / ZWJ */
+    .replace(/[ي]/g, 'ی')            /* Arabic yeh -> Persian yeh */
+    .replace(/[ك]/g, 'ک')            /* Arabic kaf -> Persian keheh */
+    .replace(/[ة]/g, 'ه')            /* teh marbuta -> heh */
+    .replace(/[أآإ]/g, 'ا')/* alef variants -> alef */
+    .replace(/[ىی]/g, 'ی')      /* alef maksura -> yeh */
+    .replace(/[​-‏﻿]/g, '')     /* zero-width / directional marks */
+    .replace(/[،؛.,;()\[\]{}\-_/\\|"'`]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 function normPhone(s){ return enDigits(s).replace(/[^0-9]/g, ''); }
+/* 00989123456789 / +989123456789 / 9123456789 all mean 09123456789 */
+function toLocalMobile(p){
+  p = normPhone(p);
+  if (/^0098(?:\d{10})$/.test(p)) p = '0' + p.slice(4);
+  else if (/^98\d{10}$/.test(p)) p = '0' + p.slice(2);
+  else if (/^9\d{9}$/.test(p)) p = '0' + p;
+  return p;
+}
 function last10(p){ p = normPhone(p); return p.length >= 10 ? p.slice(-10) : p; }
-function mobileOk(p){ return /^09\d{9}$/.test(normPhone(p)); }
+function mobileOk(p){ return /^09\d{9}$/.test(toLocalMobile(p)); }
+function num(v){
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  if (v == null || v === '') return 0;
+  /* parseFaNumber() truncates to an integer, so totalHours "12.5" became 12.
+   * parseFaDecimal() keeps the decimal part. */
+  var n = window.parseFaDecimal ? window.parseFaDecimal(v, 0) : parseFloat(enDigits(v));
+  return (typeof n === 'number' && isFinite(n)) ? n : 0;
+}
 window.pbNormName = normName;
 window.pbNormPhone = normPhone;
 window.pbMobileOk = mobileOk;
+window.pbToLocalMobile = toLocalMobile;
+window.pbNum = num;
 
 function fullName(e){ return ((e.firstName||'') + ' ' + (e.lastName||'')).trim(); }
 function findLinkedCustomer(entry){
@@ -37,9 +74,27 @@ function findLinkedCustomer(entry){
   if (!cs.length) return {customer:null, via:null};
   var fn = normName(fullName(entry));
   var mob = last10(entry.phoneMobile||''), fix = last10(entry.phoneFixed||'');
-  var i, c;
+  var i, c, fnTokens, ct;
   if (fn){
-    for (i=0;i<cs.length;i++){ if (cs[i] && normName(cs[i].name) === fn) return {customer:cs[i], via:'name'}; }
+    /* Exact full-name equality only matched people whose name was typed exactly
+     * the same way in both places ("علی محمدی" vs "محمدی، علی" or a contact that
+     * only carries the first name never linked to its customer). Compare the
+     * token sets instead, longest match wins. */
+    fnTokens = fn.split(' ').filter(function(t){ return t.length >= 2; });
+    if (fnTokens.length){
+      var best = null, bestScore = 0;
+      for (i=0;i<cs.length;i++){
+        c = cs[i]; if (!c) continue;
+        ct = normName(c.name); if (!ct) continue;
+        var score = 0;
+        if (ct === fn) score = fnTokens.length + 1;
+        else {
+          for (var t=0;t<fnTokens.length;t++){ if (ct.indexOf(fnTokens[t]) !== -1) score++; }
+        }
+        if (score > bestScore){ bestScore = score; best = c; }
+      }
+      if (best && bestScore >= fnTokens.length && bestScore >= 2) return {customer:best, via:'name'};
+    }
   }
   for (i=0;i<cs.length;i++){
     c = cs[i]; if (!c || !c.phone) continue;
@@ -52,7 +107,11 @@ window.pbFindLinked = findLinkedCustomer;
 
 function accountDetails(c){
   if (!c) return null;
-  var rank = (window.getRank ? window.getRank(c.totalHours||0) : {name:'-', discount:0});
+  /* every field is coerced: customers restored from an old backup (or hand
+   * edited JSON) can carry "12.5" as a string, and det.totalHours.toFixed(1)
+   * used to throw "toFixed is not a function" and blank the whole list. */
+  var totalHours = num(c.totalHours);
+  var rank = (window.getRank ? window.getRank(totalHours) : {name:'-', discount:0});
   var membership = null;
   try{ membership = window.getActiveMembership ? getActiveMembership(c.id) : null; }catch(e){}
   var loyalty = 0;
@@ -62,10 +121,10 @@ function accountDetails(c){
     if (window.getCustomerHistory){ sessCount = getCustomerHistory(c.name).length; }
     else if (window.sessions){ sessCount = window.sessions.filter(function(s){ return s.clientName === c.name; }).length; }
   }catch(e){}
-  return {wallet:c.wallet||0, debt:c.debt||0, totalHours:c.totalHours||0, totalSpent:c.totalSpent||0,
-    rankName:rank.name, discount:rank.discount||0,
-    memberName: membership ? membership.planName : '', memberLeft: membership ? Math.max(0, (membership.hoursTotal||0)-(membership.hoursUsed||0)) : 0,
-    loyalty:loyalty, sessions:sessCount};
+  return {wallet:num(c.wallet), debt:num(c.debt), totalHours:totalHours, totalSpent:num(c.totalSpent),
+    rankName:(rank && rank.name) || '-', discount:num(rank && rank.discount),
+    memberName: membership ? membership.planName : '', memberLeft: membership ? Math.max(0, num(membership.hoursTotal)-num(membership.hoursUsed)) : 0,
+    loyalty:num(loyalty), sessions:sessCount};
 }
 window.pbAccountDetails = accountDetails;
 
@@ -80,13 +139,13 @@ window.renderPhonebook = function(){
     var detHtml = '';
     if (det){
       detHtml = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;background:rgba(34,197,94,0.06);border-radius:10px;padding:10px;font-size:0.78rem;">'
-        + '<div>💳 کیف پول<br><b style="color:' + (det.wallet<0?'#ef4444':'#22c55e') + ';">' + det.wallet.toLocaleString() + '</b></div>'
+        + '<div>💳 کیف پول<br><b style="color:' + (det.wallet<0?'#ef4444':'#22c55e') + ';">' + det.wallet.toLocaleString('fa-IR') + '</b></div>'
         + '<div>⏰ ساعت بازی<br><b>' + det.totalHours.toFixed(1) + '</b></div>'
-        + '<div>💰 هزینه کل<br><b>' + det.totalSpent.toLocaleString() + '</b></div>'
+        + '<div>💰 هزینه کل<br><b>' + det.totalSpent.toLocaleString('fa-IR') + '</b></div>'
         + '<div>🏆 رتبه<br><b>' + esc(det.rankName) + '</b></div>'
         + '<div>🎫 عضویت<br><b>' + esc(det.memberName || '-') + '</b></div>'
         + '<div>🎮 سشن‌ها<br><b>' + det.sessions + '</b></div>'
-        + (det.debt > 0 ? '<div style="grid-column:1/-1;color:#ef4444;">بدهی: <b>' + det.debt.toLocaleString() + ' تومان</b></div>' : '')
+        + (det.debt > 0 ? '<div style="grid-column:1/-1;color:#ef4444;">بدهی: <b>' + det.debt.toLocaleString('fa-IR') + ' تومان</b></div>' : '')
         + '</div>';
     }
     return '<div class="glass" style="padding:14px;margin-bottom:10px;">'
@@ -132,14 +191,14 @@ function val(id){ var el = document.getElementById(id); return el ? el.value.tri
 window.savePhonebookEntry = function(){
   var id = val('pbId');
   var first = val('pbFirst'), last = val('pbLast');
-  var mobile = enDigits(val('pbMobile')).replace(/[^0-9]/g, '');
-  var fixed = enDigits(val('pbFixed')).replace(/[^0-9]/g, '');
+  var mobile = toLocalMobile(val('pbMobile'));
+  var fixed = normPhone(val('pbFixed'));
   var note = val('pbNote');
   if (!first && !last){ toast('نام یا نام خانوادگی الزامی است','error'); return; }
   if (!mobile && !fixed){ toast('حداقل یک شماره تلفن وارد کن','error'); return; }
   if (mobile && !mobileOk(mobile)){ toast('موبایل معتبر نیست (09xxxxxxxxx)','error'); return; }
   if (id){
-    var e = PB.find(function(x){ return x.id === parseInt(id); });
+    var e = PB.find(function(x){ return Number(x.id) === parseInt(id, 10); });
     if (e) Object.assign(e, {firstName:first, lastName:last, phoneMobile:mobile, phoneFixed:fixed, note:note});
   } else {
     PB.push({id:Date.now(), firstName:first, lastName:last, phoneMobile:mobile, phoneFixed:fixed, note:note, createdAt:new Date().toISOString()});
@@ -152,7 +211,7 @@ window.savePhonebookEntry = function(){
 };
 window.deletePhonebookEntry = function(id){
   if (!confirm('حذف شود؟')) return;
-  PB = PB.filter(function(x){ return x.id !== id; });
+  PB = PB.filter(function(x){ return Number(x.id) !== Number(id); });
   savePB(); window.renderPhonebook();
 };
 

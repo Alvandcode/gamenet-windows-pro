@@ -70,7 +70,7 @@ function renderMembershipPlans(){
                 '<div>' +
                     '<h4 style="font-weight:800;">' + esc(p.name) + ' <span style="font-size:0.7rem; padding:2px 6px; border-radius:50px; background:' + (p.type==='monthly'?'rgba(99,102,241,0.15)':'rgba(34,197,94,0.15)') + '; color:' + (p.type==='monthly'?'#818cf8':'#22c55e') + ';">' + (p.type==='monthly'?'ماهانه':'سالانه') + '</span></h4>' +
                     '<p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">' + esc(p.description) + '</p>' +
-                    '<p style="font-size:0.85rem; margin-top:4px;">⏰ ' + p.hours + ' ساعت | 💰 ' + p.price.toLocaleString() + ' تومان | 🏷️ ' + p.discount + '% تخفیف</p>' +
+                    '<p style="font-size:0.85rem; margin-top:4px;">⏰ ' + p.hours + ' ساعت | 💰 ' + p.price.toLocaleString('fa-IR') + ' تومان | 🏷️ ' + p.discount + '% تخفیف</p>' +
                 '</div>' +
             '</div>' +
             '<div style="display:flex; gap:6px; margin-top:12px;">' +
@@ -253,7 +253,7 @@ function renderGameHistory(customerName){
             '<div><span style="font-weight:700;">' + esc(h.clientName) + '</span> ' +
             (h.customerName ? '<span style="font-size:0.7rem; color:#818cf8;">(' + esc(h.customerName) + ')</span>' : '') +
             '<br><span style="font-size:0.75rem; color:rgba(255,255,255,0.5);">' + d.toLocaleDateString('fa-IR') + ' ' + d.toLocaleTimeString('fa-IR') + '</span></div>' +
-            '<div style="text-align:left;">⏱️ ' + (h.duration/60).toFixed(0) + ' دقیقه | 💰 ' + h.cost.toLocaleString() + ' تومان</div>' +
+            '<div style="text-align:left;">⏱️ ' + (h.duration/60).toFixed(0) + ' دقیقه | 💰 ' + h.cost.toLocaleString('fa-IR') + ' تومان</div>' +
         '</div>';
     }).join('');
 }
@@ -392,7 +392,7 @@ function checkBirthdayNotifications(){
         if(!c.birthday) return;
         var bday = new Date(c.birthday);
         if(bday.getDate() === now.getDate() && bday.getMonth() === now.getMonth()){
-            var existing = notifications.find(function(n){ return n.type === 'birthday' && n.targetCustomer === c.name && new Date(n.date).toDateString() === now.toDateString(); });
+            var existing = notifications.find(function(n){ return n.type === 'birthday' && n.targetCustomer === c.name && window.isSameDay(n.date, now); });
             if(!existing){
                 addNotification('birthday', 'تولد مشتری 🎂', 'امروز تولد ' + c.name + ' است! تخفیف ۱۰٪ فعال شد.', c.name);
                 showToast('🎂 امروز تولد ' + c.name + ' است!', 'success');
@@ -401,73 +401,10 @@ function checkBirthdayNotifications(){
     });
 }
 
-// ===== PHASE 1: ADVANCED CUSTOMER PROFILE =====
-function renderAdvancedCustomerProfile(customerId){
-    var container = document.getElementById('advancedProfileContent');
-    if(!container) return;
-    var customer = (window.customers || []).find(function(x){ return x.id === customerId; });
-    if(!customer){ container.innerHTML = '<p>مشتری پیدا نشد</p>'; return; }
-
-    var stats = getCustomerStats(customer.name);
-    var membership = getActiveMembership(customer.id);
-    var rank = window.getRank ? window.getRank(customer.totalHours || 0) : {name:'نامشخص', discount:0};
-    var history = getCustomerHistory(customer.name).slice(0, 10);
-
-    var membershipHtml = '';
-    if(membership){
-        var daysLeft = Math.ceil((new Date(membership.expires) - new Date()) / (1000*60*60*24));
-        var usagePct = Math.round((membership.hoursUsed / membership.hoursTotal) * 100);
-        membershipHtml = '<div class="glass" style="padding:16px; border-color:rgba(34,197,94,0.3);">' +
-            '<h4 style="margin-bottom:8px;">🎫 عضویت فعال</h4>' +
-            '<p style="font-weight:700;">' + esc(membership.planName) + '</p>' +
-            '<div class="slot-bar" style="margin:8px 0;"><div class="slot-fill" style="width:' + usagePct + '%;"></div></div>' +
-            '<p style="font-size:0.8rem;">مانده: ' + (membership.hoursTotal - membership.hoursUsed).toFixed(1) + ' از ' + membership.hoursTotal + ' ساعت (' + daysLeft + ' روز)</p>' +
-            '<p style="font-size:0.8rem; color:#22c55e;">تخفیف: ' + membership.discount + '%</p>' +
-        '</div>';
-    } else {
-        membershipHtml = '<div class="glass" style="padding:16px;">' +
-            '<h4 style="margin-bottom:8px;">🎫 عضویت</h4>' +
-            '<p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">عضو فعالی نیست</p>' +
-            '<select id="assignPlanSelect" style="margin-top:8px; max-width:200px;">' +
-                '<option value="">انتخاب طرح...</option>' +
-                membershipPlans.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + ' - ' + p.price.toLocaleString() + ' تومان</option>'; }).join('') +
-            '</select>' +
-            '<button class="glass-btn glass-btn-success" style="margin-top:8px; padding:6px 12px; font-size:0.8rem;" onclick="assignMembershipToCustomer(' + customer.id + ', parseInt(document.getElementById(\'assignPlanSelect\').value))">فعال‌سازی</button>' +
-        '</div>';
-    }
-
-    var historyHtml = history.length > 0 ? history.map(function(h){
-        return '<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.8rem;">' +
-            '<span>' + new Date(h.date).toLocaleDateString('fa-IR') + '</span>' +
-            '<span>' + (h.duration/60).toFixed(0) + ' دقیقه</span>' +
-            '<span style="color:#22c55e;">' + h.cost.toLocaleString() + '</span>' +
-        '</div>';
-    }).join('') : '<p style="color:rgba(255,255,255,0.5); font-size:0.8rem;">سابقه‌ای ثبت نشده</p>';
-
-    container.innerHTML =
-        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">' +
-            '<div class="glass" style="padding:16px;">' +
-                '<h4 style="margin-bottom:8px;">📊 آمار کلی</h4>' +
-                '<p style="font-size:0.85rem;">🎮 بازدید: <b>' + stats.visitCount + '</b> بار</p>' +
-                '<p style="font-size:0.85rem;">⏰ ساعت بازی: <b>' + stats.totalHours.toFixed(1) + '</b> ساعت</p>' +
-                '<p style="font-size:0.85rem;">💰 هزینه کل: <b>' + stats.totalCost.toLocaleString() + '</b> تومان</p>' +
-                '<p style="font-size:0.85rem;">🏆 رتبه: <b>' + rank.name + '</b></p>' +
-                '<p style="font-size:0.85rem;">❤️ دستگاه محبوب: <b>' + esc(stats.favoriteType || 'نامشخص') + '</b></p>' +
-            '</div>' +
-            '<div class="glass" style="padding:16px;">' +
-                '<h4 style="margin-bottom:8px;">💰 مالی</h4>' +
-                '<p style="font-size:0.85rem;">💳 کیف پول: <b style="color:' + ((customer.wallet||0) < 0 ? '#ef4444' : '#22c55e') + ';">' + (customer.wallet||0).toLocaleString() + '</b> تومان</p>' +
-                (customer.debt > 0 ? '<p style="font-size:0.85rem; color:#ef4444;">بدهی: ' + customer.debt.toLocaleString() + ' تومان</p>' : '') +
-                '<p style="font-size:0.85rem;">🏷️ تخفیف تولد: ' + (customer.birthday ? '✅ فعال' : '❌ بدون تولد') + '</p>' +
-            '</div>' +
-        '</div>' +
-        membershipHtml +
-        '<div class="glass" style="padding:16px; margin-top:16px;">' +
-            '<h4 style="margin-bottom:12px;">📜 آخرین بازی‌ها</h4>' +
-            historyHtml +
-        '</div>';
-}
-window.renderAdvancedCustomerProfile = renderAdvancedCustomerProfile;
+// Removed: renderAdvancedCustomerProfile() had no caller and wrote into
+// #advancedProfileContent, an element that does not exist in index.html - the
+// 65-line "advanced profile" was unreachable in every build. The customer list
+// (renderCustomers) is the single owner of the customer UI.
 
 // ===== PHASE 2: ACTIVITY LOG =====
 function renderActivityLog(){
@@ -543,7 +480,7 @@ function renderSearchResults(query){
     }
     if(results.sessions.length > 0){
         html += '<h4 style="margin:12px 0 8px;">🎮 سشن‌ها (' + results.sessions.length + ')</h4>';
-        html += results.sessions.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px;">' + esc(r.data.clientName) + ' - ' + new Date(r.data.date).toLocaleDateString('fa-IR') + ' - ' + r.data.cost.toLocaleString() + ' تومان</div>'; }).join('');
+        html += results.sessions.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px;">' + esc(r.data.clientName) + ' - ' + new Date(r.data.date).toLocaleDateString('fa-IR') + ' - ' + r.data.cost.toLocaleString('fa-IR') + ' تومان</div>'; }).join('');
     }
     if(results.reservations.length > 0){
         html += '<h4 style="margin:12px 0 8px;">📅 رزروها (' + results.reservations.length + ')</h4>';
@@ -554,28 +491,12 @@ function renderSearchResults(query){
 }
 window.renderSearchResults = renderSearchResults;
 
-// ===== PHASE 2: DATA ENCRYPTION (Local) =====
-function encryptLocalData(data, key){
-    if(!data || !key) return data;
-    try{
-        var result = '';
-        for(var i = 0; i < data.length; i++){
-            result += String.fromCharCode(data.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-        }
-        return btoa(result);
-    }catch(e){ return data; }
-}
-function decryptLocalData(data, key){
-    if(!data || !key) return data;
-    try{
-        var decoded = atob(data);
-        var result = '';
-        for(var i = 0; i < decoded.length; i++){
-            result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-        }
-        return result;
-    }catch(e){ return data; }
-}
+// ===== PHASE 2: DATA ENCRYPTION =====
+// Removed: encryptLocalData/decryptLocalData were a repeating-key XOR and were
+// never called. XOR is not encryption, and btoa() throws on any Persian text so
+// the function silently returned the PLAINTEXT for the data it was meant to
+// protect. The real implementation (PBKDF2 + AES-GCM) lives in round2-c.js as
+// encryptAndSave/decryptAndLoad and is reachable from the Security panel.
 
 // ===== PHASE 3: EMPLOYEE MANAGEMENT =====
 function renderEmployees(){
@@ -586,13 +507,13 @@ function renderEmployees(){
         return;
     }
     container.innerHTML = employees.map(function(emp){
-        var todayAtt = attendance.find(function(a){ return a.employeeId === emp.id && new Date(a.date).toDateString() === new Date().toDateString(); });
+        var todayAtt = attendance.find(function(a){ return a.employeeId === emp.id && window.isSameDay(a.date, new Date()); });
         var isWorking = todayAtt && !todayAtt.clockOut;
         return '<div class="glass" style="padding:16px;">' +
             '<div style="display:flex; justify-content:space-between; align-items:center;">' +
                 '<div>' +
                     '<h4 style="font-weight:800;">' + esc(emp.name) + ' <span style="font-size:0.7rem; padding:2px 8px; border-radius:50px; background:' + (isWorking ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.1)') + '; color:' + (isWorking ? '#22c55e' : 'rgba(255,255,255,0.5)') + ';">' + (isWorking ? 'فعال' : 'غیرفعال') + '</span></h4>' +
-                    '<p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">📞 ' + esc(emp.phone||'-') + ' | 💰 ' + (emp.salary||0).toLocaleString() + ' تومان</p>' +
+                    '<p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">📞 ' + esc(emp.phone||'-') + ' | 💰 ' + (emp.salary||0).toLocaleString('fa-IR') + ' تومان</p>' +
                 '</div>' +
                 '<div style="display:flex; gap:6px;">' +
                     '<button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="editEmployee(' + emp.id + ')">✏️</button>' +
@@ -682,7 +603,7 @@ function clockInEmployee(id){
 window.clockInEmployee = clockInEmployee;
 
 function clockOutEmployee(id){
-    var today = attendance.find(function(a){ return a.employeeId === id && !a.clockOut && new Date(a.date).toDateString() === new Date().toDateString(); });
+    var today = attendance.find(function(a){ return a.employeeId === id && !a.clockOut && window.isSameDay(a.date, new Date()); });
     if(today){
         today.clockOut = new Date().toISOString();
         saveAttendance();
@@ -814,7 +735,7 @@ if(typeof origStopTimer === 'function'){
                     tariff: c.tariff, stationType: c.stationType || '',
                     services: (window.clientServiceMap && window.clientServiceMap[c.id]) || []
                 });
-                logActivity('session', 'پایان سشن: ' + c.name, 'مدت: ' + Math.round(duration/60) + ' دقیقه - هزینه: ' + cost.toLocaleString() + ' تومان');
+                logActivity('session', 'پایان سشن: ' + c.name, 'مدت: ' + Math.round(duration/60) + ' دقیقه - هزینه: ' + cost.toLocaleString('fa-IR') + ' تومان');
             }
         }catch(e){}
         return origStopTimer.apply(this, arguments);

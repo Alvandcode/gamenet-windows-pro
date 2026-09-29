@@ -1,7 +1,11 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://api.github.com https://api.ipify.org https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
+    <!-- connect-src needs http://192.168.* / 10.* / 172.16-31.* for the LAN agent
+         (http://<pc-ip>:48721) and img-src needs the QR service, otherwise the
+         remote-agent buttons and the customer QR silently never work.
+         https://api.ipify.org stays for the online/offline + license IP ping. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://api.qrserver.com; connect-src 'self' https: http://192.168.* http://10.* http://172.16.* http://172.17.* http://172.18.* http://172.19.* http://172.2?.* http://172.3?.* https://api.ipify.org https://api.github.com https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
     <link rel="stylesheet" href="src/styles/main.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -39,11 +43,11 @@
         </div>
     </div>
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
-    <div id="appLayout" style="display: flex; min-height: 100vh; position: relative; direction: rtl;">
+    <div id="appLayout" style="display: flex; min-height: calc(100vh / var(--ui-zoom, 1)); position: relative; direction: rtl;">
         <!-- Sidebar -->
-        <aside class="glass" style="width: 280px; margin: 20px; padding: 24px; display: flex; flex-direction: column; position: sticky; top: 20px; height: calc(100vh - 40px);">
+        <aside class="glass" style="width: 280px; margin: 20px; padding: 24px; display: flex; flex-direction: column; position: sticky; top: 20px; height: calc((100vh - 40px) / var(--ui-zoom, 1));">
             <div class="mobile-close-btn" onclick="toggleSidebar()" style="display: none;">&#10005;</div>
-            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <div class="sidebar-brand" style="display: flex; align-items: center; gap: 14px; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                 <div class="logo-container logo-img"><img src="assets/logo.png" alt="A" onerror="this.outerHTML='A'"></div>
                 <div>
                     <h1 style="font-size: 1.1rem; font-weight: 900; background: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Gamenet Manager Pro</h1>
@@ -51,87 +55,148 @@
                 </div>
             </div>
 
-            <nav style="flex: 1;">
-                <div class="nav-item active" onclick="showSection('dashboard', this)">
-                    <span style="font-size: 1.3rem;">&#128202;</span> داشبورد
+            <nav style="flex: 1; overflow-y: auto; overflow-x: hidden; padding-left: 4px;">
+                <div class="nav-group open" data-group="ops">
+                    <div class="nav-group-head" onclick="toggleNavGroup('ops')">
+                        <span class="nav-group-icon">&#127919;</span><span class="nav-group-title">عملیات روزانه</span><span class="nav-group-arrow">&#9666;</span>
+                    </div>
+                    <div class="nav-group-body">
+                        <div class="nav-item active" onclick="showSection('dashboard', this)">
+                            <span style="font-size: 1.3rem;">&#128202;</span> داشبورد
+                        </div>
+                        <div class="nav-item" onclick="showSection('clients', this)">
+                            <span style="font-size: 1.3rem;">&#128101;</span> مدیریت کلاینت‌ها
+                        </div>
+                        <div class="nav-item" onclick="showSection('reservations', this)">
+                            <span style="font-size: 1.3rem;">&#128197;</span> رزروها <span id="reservationBadge" style="background:#ef4444; color:white; border-radius:50%; padding:2px 7px; font-size:0.7rem; display:none;">0</span>
+                        </div>
+                        <div class="nav-item" onclick="showSection('waiting', this)">
+                            <span style="font-size: 1.3rem;">&#9203;</span> لیست انتظار <span id="waitingBadge" style="background:#f59e0b; color:white; border-radius:50%; padding:2px 7px; font-size:0.7rem; display:none;">0</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="nav-item" onclick="showSection('clients', this)">
-                    <span style="font-size: 1.3rem;">&#128101;</span> مدیریت کلاینت‌ها
+
+                <div class="nav-group" data-group="money">
+                    <div class="nav-group-head" onclick="toggleNavGroup('money')">
+                        <span class="nav-group-icon">&#128176;</span><span class="nav-group-title">مالی و گزارش</span><span class="nav-group-arrow">&#9666;</span>
+                    </div>
+                    <div class="nav-group-body">
+                        <div class="nav-item" onclick="showSection('income', this)">
+                            <span style="font-size: 1.3rem;">&#128176;</span> درآمد
+                        </div>
+                        <div class="nav-item" onclick="showSection('reports', this)">
+                            <span style="font-size: 1.3rem;">&#128200;</span> گزارش‌ها
+                        </div>
+                        <div class="nav-item" onclick="showSection('insights', this)">
+                            <span style="font-size: 1.3rem;">&#128200;</span> تحلیل و پیش‌بینی
+                        </div>
+                        <div class="nav-item" onclick="showSection('busyHours', this)">
+                            <span style="font-size: 1.3rem;">&#128293;</span> ساعات شلوغ
+                        </div>
+                        <div class="nav-item" onclick="showSection('expenses', this)">
+                            <span style="font-size: 1.3rem;">&#128176;</span> هزینه‌ها
+                        </div>
+                    </div>
                 </div>
-                <div class="nav-item" onclick="showSection('tariffs', this)">
-                    <span style="font-size: 1.3rem;">&#128142;</span> تعرفه‌ها
+
+                <div class="nav-group" data-group="pricing">
+                    <div class="nav-group-head" onclick="toggleNavGroup('pricing')">
+                        <span class="nav-group-icon">&#128142;</span><span class="nav-group-title">تعرفه و قیمت‌ها</span><span class="nav-group-arrow">&#9666;</span>
+                    </div>
+                    <div class="nav-group-body">
+                        <div class="nav-item" onclick="showSection('tariffs', this)">
+                            <span style="font-size: 1.3rem;">&#128142;</span> تعرفه‌ها
+                        </div>
+                        <div class="nav-item" onclick="showSection('tariffSchedule', this)">
+                            <span style="font-size: 1.3rem;">&#9200;</span> تعرفه ساعتی
+                        </div>
+                    </div>
                 </div>
-                <div class="nav-item" onclick="showSection('reports', this)">
-                    <span style="font-size: 1.3rem;">&#128200;</span> گزارش‌ها
+
+                <div class="nav-group" data-group="people">
+                    <div class="nav-group-head" onclick="toggleNavGroup('people')">
+                        <span class="nav-group-icon">&#128101;</span><span class="nav-group-title">مشتریان و اعضا</span><span class="nav-group-arrow">&#9666;</span>
+                    </div>
+                    <div class="nav-group-body">
+                        <div class="nav-item" onclick="showSection('customers', this)">
+                            <span style="font-size: 1.3rem;">&#128100;</span> مشتریان
+                        </div>
+                        <div class="nav-item" onclick="showSection('gameHistory', this)">
+                            <span style="font-size: 1.3rem;">&#127918;</span> تاریخچه بازی
+                        </div>
+                        <div class="nav-item" onclick="showSection('membership', this)">
+                            <span style="font-size: 1.3rem;">&#127903;</span> عضویت
+                        </div>
+                        <div class="nav-item" onclick="showSection('phonebook', this)">
+                            <span style="font-size: 1.3rem;">&#128214;</span> دفترچه تلفن
+                        </div>
+                        <div class="nav-item" onclick="showSection('events', this)">
+                            <span style="font-size: 1.3rem;">&#127942;</span> رویدادها
+                        </div>
+                    </div>
                 </div>
-                <div class="nav-item" onclick="showSection('income', this)">
-                    <span style="font-size: 1.3rem;">&#128176;</span> درآمد
+
+                <div class="nav-group" data-group="services">
+                    <div class="nav-group-head" onclick="toggleNavGroup('services')">
+                        <span class="nav-group-icon">&#127829;</span><span class="nav-group-title">بوفه و شیفت</span><span class="nav-group-arrow">&#9666;</span>
+                    </div>
+                    <div class="nav-group-body">
+                        <div class="nav-item" onclick="showSection('buffet', this)">
+                            <span style="font-size: 1.3rem;">&#127829;</span> بوفه و خدمات
+                        </div>
+                        <div class="nav-item" onclick="showSection('branches', this)">
+                            <span style="font-size: 1.3rem;">&#127970;</span> شعبه‌ها
+                        </div>
+                        <div class="nav-item" onclick="showSection('shifts', this)">
+                            <span style="font-size: 1.3rem;">&#128197;</span> شیفت‌ها
+                        </div>
+                    </div>
                 </div>
-                <div class="nav-item" onclick="showSection('reservations', this)">
-                    <span style="font-size: 1.3rem;">&#128197;</span> رزروها <span id="reservationBadge" style="background:#ef4444; color:white; border-radius:50%; padding:2px 7px; font-size:0.7rem; display:none;">0</span>
+
+                <div class="nav-group" data-group="tools">
+                    <div class="nav-group-head" onclick="toggleNavGroup('tools')">
+                        <span class="nav-group-icon">&#128296;</span><span class="nav-group-title">ابزارها</span><span class="nav-group-arrow">&#9666;</span>
+                    </div>
+                    <div class="nav-group-body">
+                        <div class="nav-item" onclick="showSection('tools', this)">
+                            <span style="font-size: 1.3rem;">&#128296;</span> ابزارها
+                        </div>
+                        <div class="nav-item" onclick="showSection('advancedSearch', this)">
+                            <span style="font-size: 1.3rem;">&#128269;</span> جستجو
+                        </div>
+                    </div>
                 </div>
-                <div class="nav-item" onclick="showSection('customers', this)">
-                    <span style="font-size: 1.3rem;">&#128100;</span> مشتریان
+
+                <div class="nav-group" data-group="admin">
+                    <div class="nav-group-head" onclick="toggleNavGroup('admin')">
+                        <span class="nav-group-icon">&#128101;</span><span class="nav-group-title">مدیریت و کارکنان</span><span class="nav-group-arrow">&#9666;</span>
+                    </div>
+                    <div class="nav-group-body">
+                        <div class="nav-item" onclick="showSection('employees', this)">
+                            <span style="font-size: 1.3rem;">&#128119;</span> کارمندان
+                        </div>
+                        <div class="nav-item" onclick="showSection('operators', this)" id="navOperators">
+                            <span style="font-size: 1.3rem;">&#128274;</span> اپراتورها
+                        </div>
+                        <div class="nav-item" onclick="showSection('notifications', this)">
+                            <span style="font-size: 1.3rem;">&#128276;</span> اعلان‌ها <span id="notifBadge" style="background:#ef4444; color:white; border-radius:50%; padding:2px 7px; font-size:0.7rem; display:none;">0</span>
+                        </div>
+                        <div class="nav-item" onclick="showSection('activityLog', this)">
+                            <span style="font-size: 1.3rem;">&#128203;</span> لاگ فعالیت
+                        </div>
+                    </div>
                 </div>
-                <div class="nav-item" onclick="showSection('membership', this)">
-                    <span style="font-size: 1.3rem;">🎫</span> عضویت
-                </div>
-                <div class="nav-item" onclick="showSection('buffet', this)">
-                    <span style="font-size: 1.3rem;">&#127829;</span> بوفه و خدمات
-                </div>
-                <div class="nav-item" onclick="showSection('expenses', this)">
-                    <span style="font-size: 1.3rem;">&#128176;</span> هزینه‌ها
-                </div>
-                <div class="nav-item" onclick="showSection('tariffSchedule', this)">
-                    <span style="font-size: 1.3rem;">⏰</span> تعرفه ساعتی
-                </div>
-                <div class="nav-item" onclick="toggleSettingsMenu(this)" id="navSettings">
-                    <span style="font-size: 1.3rem;">⚙️</span> تنظیمات <span id="settingsArrow" style="margin-right:auto; font-size:0.75rem;">◀</span>
-                </div>
-                <div class="settings-submenu" id="settingsSubmenu">
-                    <button class="settings-sub-item" onclick="showSection('settings', document.getElementById('navSettings'))">🎨 تم و صدا</button>
-                    <button class="settings-sub-item" onclick="showSection('stationHours', document.getElementById('navSettings'))">🖥️ کارکرد ایستگاه</button>
-                    <button class="settings-sub-item" onclick="showSection('backup', document.getElementById('navSettings'))">💾 بکاپ‌گیری</button>
-                    <button class="settings-sub-item" id="settingsSubLicense" onclick="showSection('license', document.getElementById('navSettings'))">🔑 لایسنس</button>
-                </div>
-                <div class="nav-item" onclick="showSection('operators', this)" id="navOperators">
-                    <span style="font-size: 1.3rem;">&#128272;</span> اپراتورها
-                </div>
-                <div class="nav-item" onclick="showSection('employees', this)">
-                    <span style="font-size: 1.3rem;">👷</span> کارمندان
-                </div>
-                <div class="nav-item" onclick="showSection('busyHours', this)">
-                    <span style="font-size: 1.3rem;">🔥</span> ساعات شلوغ
-                </div>
-                <div class="nav-item" onclick="showSection('activityLog', this)">
-                    <span style="font-size: 1.3rem;">📋</span> لاگ فعالیت
-                </div>
-                <div class="nav-item" onclick="showSection('notifications', this)">
-                    <span style="font-size: 1.3rem;">🔔</span> اعلان‌ها <span id="notifBadge" style="background:#ef4444; color:white; border-radius:50%; padding:2px 7px; font-size:0.7rem; display:none;">0</span>
-                </div>
-                <div class="nav-item" onclick="showSection('advancedSearch', this)">
-                    <span style="font-size: 1.3rem;">🔍</span> جستجو
-                </div>
-                <div class="nav-item" onclick="showSection('waiting', this)">
-                    <span style="font-size: 1.3rem;">⏳</span> لیست انتظار <span id="waitingBadge" style="background:#f59e0b; color:white; border-radius:50%; padding:2px 7px; font-size:0.7rem; display:none;">0</span>
-                </div>
-                <div class="nav-item" onclick="showSection('events', this)">
-                    <span style="font-size: 1.3rem;">🏆</span> رویدادها
-                </div>
-                <div class="nav-item" onclick="showSection('branches', this)">
-                    <span style="font-size: 1.3rem;">🏪</span> شعبه‌ها
-                </div>
-                <div class="nav-item" onclick="showSection('shifts', this)">
-                    <span style="font-size: 1.3rem;">📅</span> شیفت‌ها
-                </div>
-                <div class="nav-item" onclick="showSection('insights', this)">
-                    <span style="font-size: 1.3rem;">📈</span> تحلیل و پیش‌بینی
-                </div>
-                <div class="nav-item" onclick="showSection('tools', this)">
-                    <span style="font-size: 1.3rem;">🧰</span> ابزارها
-                </div>
-                <div class="nav-item" onclick="showSection('phonebook', this)">
-                    <span style="font-size: 1.3rem;">📒</span> دفترچه تلفن
+
+                <div class="nav-group" data-group="settings">
+                    <div class="nav-group-head" onclick="toggleSettingsMenu(this)" id="navSettings">
+                        <span class="nav-group-icon">&#9881;</span><span class="nav-group-title">تنظیمات</span><span class="nav-group-arrow" id="settingsArrow">&#9666;</span>
+                    </div>
+                    <div class="settings-submenu nav-group-body" id="settingsSubmenu">
+                        <button class="settings-sub-item" onclick="showSection('settings', document.getElementById('navSettings'))">&#127912; تم و صدا</button>
+                        <button class="settings-sub-item" onclick="showSection('stationHours', document.getElementById('navSettings'))">&#128421; کارکرد ایستگاه</button>
+                        <button class="settings-sub-item" onclick="showSection('backup', document.getElementById('navSettings'))">&#128190; بکاپ‌گیری</button>
+                        <button class="settings-sub-item" id="settingsSubLicense" onclick="showSection('license', document.getElementById('navSettings'))">&#128273; لایسنس</button>
+                    </div>
                 </div>
                 <div class="nav-item" onclick="showSection('finance', this)">
                     <span style="font-size: 1.3rem;">💰</span> مالی
@@ -145,7 +210,7 @@
                 <span id="operatorNameDisplay">👤 مدیر</span>
                 <button class="glass-btn" style="padding:4px 10px; font-size:0.7rem;" onclick="logoutOperator()">خروج</button>
             </div>
-            <div style="padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <div class="sidebar-date" style="padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
                 <div class="glass" style="padding: 16px; text-align: center;">
                     <p style="font-size: 0.8rem; color: rgba(255,255,255,0.5); margin-bottom: 8px;">تاریخ امروز</p>
                     <p id="currentDate" style="font-size: 1.1rem; font-weight: 700;"></p>
@@ -265,6 +330,27 @@
                 <div class="glass" style="padding: 24px;" id="reportContent">
                     <p style="text-align: center; color: rgba(255,255,255,0.5); padding: 40px;">نوع گزارش را انتخاب کنید</p>
                 </div>
+                <!-- yearly + two-month comparison. renderYearlyChart() and
+                     compareMonths() in app.js were fully written but the markup
+                     never existed: renderYearlyChart() is called from
+                     renderStationHours() on every dashboard refresh and compareMonths()
+                     dereferenced null, so both threw. -->
+                <div class="glass" style="padding: 24px; margin-bottom: 16px;" id="yearlyChartContainer" style="display: none;">
+                    <h3 style="margin-bottom: 16px;">&#128202; درآمد سالانه</h3>
+                    <div id="yearlyChart" style="display: flex; align-items: flex-end; gap: 6px; height: 160px;"></div>
+                    <div id="yearlyLabels" style="display: flex; gap: 6px; margin-top: 8px;"></div>
+                </div>
+                <div class="glass" style="padding: 24px;">
+                    <h3 style="margin-bottom: 16px;">&#128200; مقایسه دو ماه</h3>
+                    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px;">
+                        <input type="month" id="compareMonth1" class="glass-input" style="max-width: 200px;">
+                        <input type="month" id="compareMonth2" class="glass-input" style="max-width: 200px;">
+                        <button class="glass-btn" onclick="compareMonths()" id="btnCompare">&#128200; مقایسه</button>
+                    </div>
+                    <div id="compareChartContainer" style="display: none;">
+                        <div id="compareChart" style="display: flex; gap: 16px;"></div>
+                    </div>
+                </div>
             </section>
 
             <!-- Income Section -->
@@ -317,10 +403,14 @@
 
             <!-- Customers Section -->
             <section id="customers-section" class="section" style="display: none;">
-                <h1 style="font-size: 1.8rem; font-weight: 900; margin-bottom: 24px;">&#128100; مشتریان و مخاطبین</h1>
+                <h1 style="font-size: 1.8rem; font-weight: 900;">&#128100; مشتریان و مخاطبین</h1>
                 <div class="glass" style="padding: 24px; margin-bottom: 20px;">
-                    <p style="color: rgba(255,255,255,0.6); margin-bottom:12px;">لیست مشتریانی که رزرو یا سشن داشته‌اند - برای ارسال گزارش PDF استفاده میشود</p>
+                    <p style="color:rgba(255,255,255,0.6); margin-bottom:12px;">دفترچهٔ مشتریان: کیف پول، رتبه، امتیاز وفاداری و عضویت</p>
                     <div id="customersList"></div>
+                </div>
+                <div class="glass" style="padding: 24px; margin-bottom: 20px;">
+                    <p style="color:rgba(255,255,255,0.6); margin-bottom:12px;">مخاطبانی که رزرو داشته‌اند - برای ارسال گزارش PDF استفاده میشود</p>
+                    <div id="customerRosterList"></div>
                 </div>
                 <div class="glass" style="padding: 24px;">
                     <h3 style="margin-bottom:16px;">&#128203; ارسال گروهی گزارش</h3>
@@ -1210,8 +1300,7 @@
                         <span style="font-size:0.75rem; color:rgba(255,255,255,0.5);">فرمول: 1,000,000 + (ظرفیت-3)×200,000</span>
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <button class="glass-btn glass-btn-success" onclick="generateLicenseUI()">⚙️ ساخت لایسنس</button>
-                        <button class="glass-btn" onclick="copyLastLicense()">📋 کپی آخرین لایسنس</button>
+                        <p style="font-size:0.8rem;color:rgba(255,255,255,0.5);text-align:center;">&#128274; ساخت لایسنس فقط با ابزار فروشنده انجام می‌شود.</p>
                     </div>
                     <div id="genResult" style="margin-top:12px; display:none; background:rgba(0,0,0,0.3); border-radius:12px; padding:14px; font-family:monospace; letter-spacing:1px; text-align:center; font-size:1.05rem; font-weight:800; direction:ltr;"></div>
                 </div>
@@ -1248,7 +1337,8 @@
                 <input type="number" id="newClientTimer" value="0" min="0" placeholder="مثال: 60 برای یک ساعت">
             </div>
             <div style="display: flex; gap: 12px; justify-content: center;">
-                <button class="glass-btn" onclick="addClient()">&#9989; ثبت</button>
+                <p id="newClientCapHint" style="display:none; width:100%; text-align:center; font-size:0.8rem; color:#fbbf24; margin-bottom:8px;"></p>
+                <button class="glass-btn" onclick="addClient()" id="addClientSubmitBtn">&#9989; ثبت</button>
                 <button class="glass-btn glass-btn-danger" onclick="closeModal('addClientModal')">&#10060; انصراف</button>
             </div>
         </div>
@@ -1704,6 +1794,9 @@
                     <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="permExpenses"> هزینه</label>
                     <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="permCustomers"> مشتریان</label>
                     <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="permBackup"> بکاپ</label>
+                    <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="permTariffs"> تعرفه‌ها</label>
+                    <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="permEmployees"> کارمندان و شیفت</label>
+                    <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" id="permOperators"> مدیریت مغازه (شعبه/ابزار/اپراتورها)</label>
                 </div>
             </div>
             <div style="display:flex; gap:10px; justify-content:center;">

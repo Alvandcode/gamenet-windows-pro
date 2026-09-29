@@ -104,19 +104,34 @@ window.saveShiftFromModal = function(){
 };
 
 /* ---- 8. stock alert ---- */
+function lowStockThreshold(){
+  /* parseInt() could not read Persian digits, so a threshold typed as "۵۰"
+   * silently became the default 5. Negative and NaN values are rejected too. */
+  var raw = null;
+  try { raw = localStorage.getItem('alvand_lowStockThreshold'); } catch(e){}
+  var th = Math.floor((window.toNum ? window.toNum(raw, 5) : parseInt(raw, 10) || 5));
+  if (!isFinite(th) || th < 0) th = 5;
+  return th;
+}
 window.setLowStockThreshold = function(v){
-  try{ localStorage.setItem('alvand_lowStockThreshold', String(v)); }catch(e){}
-  toast('آستانه هشدار: '+v,'success');
+  /* the caller may pass the raw input string, including Persian digits */
+  var n = Math.floor((window.toNum ? window.toNum(v, NaN) : parseInt(v, 10)));
+  if (!isFinite(n) || n < 0){ toast('آستانه نامعتبر است','error'); return; }
+  try{ localStorage.setItem('alvand_lowStockThreshold', String(n)); }catch(e){}
+  toast('آستانه هشدار: '+n,'success');
 };
 window.checkLowStock = function(){
-  var th = parseInt(localStorage.getItem('alvand_lowStockThreshold')) || 5;
+  var th = lowStockThreshold();
   var svc = sp('alvand_services', []);
-  var out = svc.filter(function(s){ return s.stock === 0; });
-  var low = svc.filter(function(s){ return s.stock > 0 && s.stock <= th; });
+  /* stock can arrive as a string from a restored backup: "0" !== 0 used to
+   * hide a sold-out item from the warning list */
+  function stockOf(s){ return Math.max(0, Math.floor(window.toNum ? window.toNum(s && s.stock, 0) : (Number(s && s.stock) || 0))); }
+  var out = svc.filter(function(s){ return stockOf(s) === 0; });
+  var low = svc.filter(function(s){ var q = stockOf(s); return q > 0 && q <= th; });
   if (out.length || low.length){
     var msg = '';
     if (out.length) msg += 'تمام شده: '+out.map(function(s){return s.name;}).join(',')+' | ';
-    if (low.length) msg += 'کم موجودی: '+low.map(function(s){return s.name+'('+s.stock+')';}).join(',');
+    if (low.length) msg += 'کم موجودی: '+low.map(function(s){return s.name+'('+stockOf(s)+')';}).join(',');
     toast(msg,'warning');
   }
   return {outOfStock: out, lowItems: low};
@@ -128,7 +143,7 @@ window.renderStockAlerts = function(){
   if (!r.outOfStock.length && !r.lowItems.length){ c.innerHTML = '<p style="text-align:center;color:#22c55e">تمام موجودی‌ها کافی است</p>'; return; }
   c.innerHTML =
     r.outOfStock.map(function(s){ return '<div class="glass" style="padding:8px;margin-bottom:6px;border-left:3px solid #ef4444"><b>'+esc(s.name)+'</b> تمام شده</div>'; }).join('') +
-    r.lowItems.map(function(s){ return '<div class="glass" style="padding:8px;margin-bottom:6px;border-left:3px solid #f59e0b"><b>'+esc(s.name)+'</b> موجودی: '+s.stock+'</div>'; }).join('');
+    r.lowItems.map(function(s){ return '<div class="glass" style="padding:8px;margin-bottom:6px;border-left:3px solid #f59e0b"><b>'+esc(s.name)+'</b> موجودی: '+stockOf(s)+'</div>'; }).join('');
 };
 
 /* ---- 9. monthly compare ---- */
@@ -139,15 +154,17 @@ window.generateMonthlyComparison = function(){
   var tm = bucket(now.getMonth(), now.getFullYear());
   var lmD = new Date(now.getFullYear(), now.getMonth()-1, 1);
   var lm = bucket(lmD.getMonth(), lmD.getFullYear());
-  function sum(a){ return a.reduce(function(s,x){ return s+x.cost; },0); }
+  /* cost can be a string (restored backup) -> s+x.cost concatenated the sum
+   * with a number and produced garbage like "012500". Coerce first. */
+  function sum(a){ return a.reduce(function(s,x){ return s + (window.toNum ? window.toNum(x && x.cost, 0) : (Number(x && x.cost) || 0)); },0); }
   var ti = sum(tm), li = sum(lm);
   var chg = li > 0 ? ((ti-li)/li*100).toFixed(1) : '0';
   var c = document.getElementById('monthlyComparisonContent');
   if (!c) return;
   var col = parseFloat(chg) >= 0 ? '#22c55e' : '#ef4444';
   c.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
-    + '<div class="glass" style="padding:16px"><h4>این ماه</h4><p style="font-size:1.4rem;font-weight:900;color:#22c55e">'+ti.toLocaleString()+'</p><p>'+tm.length+' سشن</p></div>'
-    + '<div class="glass" style="padding:16px"><h4>ماه قبل</h4><p style="font-size:1.4rem;font-weight:900">'+li.toLocaleString()+'</p><p>'+lm.length+' سشن</p></div></div>'
+    + '<div class="glass" style="padding:16px"><h4>این ماه</h4><p style="font-size:1.4rem;font-weight:900;color:#22c55e">'+ti.toLocaleString('fa-IR')+'</p><p>'+tm.length+' سشن</p></div>'
+    + '<div class="glass" style="padding:16px"><h4>ماه قبل</h4><p style="font-size:1.4rem;font-weight:900">'+li.toLocaleString('fa-IR')+'</p><p>'+lm.length+' سشن</p></div></div>'
     + '<div class="glass" style="padding:16px;margin-top:12px;text-align:center"><p>تغییر: <b style="color:'+col+'">'+chg+'%</b></p></div>';
 };
 
@@ -158,14 +175,20 @@ window.renderForecast = function(){
   var ss = window.sessions || [];
   if (!ss.length){ c.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.5)">داده‌ای نیست</p>'; return; }
   var days = {};
-  ss.forEach(function(s){ var k = new Date(s.date).toDateString(); days[k] = (days[k]||0)+s.cost; });
-  var vals = Object.keys(days).map(function(k){ return days[k]; });
+  ss.forEach(function(s){
+    var k = window.localDayKey(s.date);
+    if (!k) return;                                   // skip broken dates
+    days[k] = (days[k]||0) + (window.toNum ? window.toNum(s.cost, 0) : (Number(s.cost) || 0));
+  });
+  /* sort by date: Object key order is insertion order, so the "last 7 days"
+   * used whatever order the sessions happened to be saved in */
+  var vals = Object.keys(days).sort().map(function(k){ return days[k]; });
   var avg = vals.reduce(function(a,b){ return a+b; },0)/vals.length;
   var last7 = vals.slice(-7);
   var avg7 = last7.length ? last7.reduce(function(a,b){ return a+b; },0)/last7.length : avg;
   c.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">'
-    + '<div class="glass" style="padding:16px;text-align:center"><p>میانگین روزانه</p><b>'+Math.round(avg).toLocaleString()+'</b></div>'
-    + '<div class="glass" style="padding:16px;text-align:center"><p>میانگین ۷ روز اخیر</p><b>'+Math.round(avg7).toLocaleString()+'</b></div>'
-    + '<div class="glass" style="padding:16px;text-align:center"><p>پیش‌بینی ۳۰ روز آینده</p><b style="color:#818cf8">'+Math.round(avg7*30).toLocaleString()+'</b></div></div>';
+    + '<div class="glass" style="padding:16px;text-align:center"><p>میانگین روزانه</p><b>'+Math.round(avg).toLocaleString('fa-IR')+'</b></div>'
+    + '<div class="glass" style="padding:16px;text-align:center"><p>میانگین ۷ روز اخیر</p><b>'+Math.round(avg7).toLocaleString('fa-IR')+'</b></div>'
+    + '<div class="glass" style="padding:16px;text-align:center"><p>پیش‌بینی ۳۰ روز آینده</p><b style="color:#818cf8">'+Math.round(avg7*30).toLocaleString('fa-IR')+'</b></div></div>';
 };
 })();

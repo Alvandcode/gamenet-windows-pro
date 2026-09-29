@@ -13,15 +13,29 @@
 
         * { font-family: 'Vazirmatn', sans-serif; box-sizing: border-box; margin: 0; padding: 0; }
 
+        /* ---- Canvas background lives on the ROOT element ----
+           The page background must never be painted on <body>: UI zoom scales
+           the body box, so a body-painted gradient stops mid-viewport and leaves
+           a hard seam (looks like a frozen background image). The root element
+           always covers the whole canvas, zoomed or not. */
+        :root {
+            --app-bg: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            background: var(--app-bg);
+            background-attachment: fixed;
+            min-height: 100%;
+        }
         body {
-            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-            min-height: 100vh;
+            background: transparent;
+            /* divide by the UI zoom so the page is exactly one viewport tall at
+               any zoom level (otherwise zooming in adds a phantom scrollbar) */
+            min-height: calc(100vh / var(--ui-zoom, 1));
             color: #e2e8f0;
             overflow-x: hidden;
         }
 
         .bg-particles {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+            width: 100%; height: 100%;
             pointer-events: none; z-index: 0;
         }
         .particle {
@@ -104,6 +118,83 @@
             transform: translateX(5px);
         }
         .nav-item.active { background: rgba(99,102,241,0.25); }
+
+        /* ---------- Sidebar groups (collapsible) ----------
+           The sidebar used to be one flat list of ~30 items, which made closely
+           related features (money / customers / tools) hard to tell apart.
+           Items are now nested in labelled, collapsible groups. */
+        .nav-group { margin-bottom: 4px; }
+        .nav-group-head {
+            display: flex; align-items: center; gap: 8px;
+            padding: 5px 12px; margin-bottom: 4px;
+            border-radius: 12px; cursor: pointer; user-select: none;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            font-size: 0.72rem; font-weight: 800; line-height: 1.5;
+            color: rgba(255,255,255,0.75);
+            transition: background 0.25s, border-color 0.25s, color 0.25s;
+        }
+        .nav-group-head:hover { background: rgba(99,102,241,0.14); border-color: rgba(99,102,241,0.3); color: #e2e8f0; }
+        .nav-group.has-active > .nav-group-head {
+            background: rgba(99,102,241,0.18); border-color: rgba(99,102,241,0.35); color: #fff;
+        }
+        .nav-group-icon { font-size: 0.95rem; }
+        .nav-group-title { flex: 1; }
+        .nav-group-arrow { font-size: 0.7rem; opacity: 0.7; transition: transform 0.25s; display: inline-block; }
+        .nav-group.open > .nav-group-head .nav-group-arrow { transform: rotate(-90deg); }
+        .nav-group-count {
+            font-size: 0.62rem; font-weight: 800; padding: 1px 7px; border-radius: 50px;
+            background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8);
+        }
+        .nav-group-body { display: none; }
+        .nav-group.open > .nav-group-body { display: block; }
+        .nav-group-body .nav-item { padding: 6px 16px; font-size: 0.8rem; line-height: 1.25; margin-bottom: 2px; }
+        .nav-group-body .nav-item:last-child { margin-bottom: 0; }
+        /* compact sidebar header/date blocks so all 8 groups fit without scrolling */
+        .sidebar-brand { margin-bottom: 18px !important; padding-bottom: 14px !important; }
+        .sidebar-date { padding-top: 12px !important; }
+        .sidebar-date .glass { padding: 10px 12px !important; }
+        .sidebar-date p { margin: 0 !important; line-height: 1.5; }
+        /* whole group is unavailable to the current operator */
+        .nav-group.group-all-locked > .nav-group-head { opacity: 0.4; }
+        .nav-group.group-all-locked > .nav-group-head .nav-group-count { display: none; }
+        body.theme-roshan .nav-group-head { background: rgba(255,255,255,0.5); border-color: rgba(120,90,20,0.18); color: #4a422f; }
+        body.theme-roshan .nav-group-head:hover { background: rgba(255,255,255,0.8); color: #2a2519; }
+        body.theme-arctic .nav-group-head { color: #00404a; }
+        /* quick-action buttons need dark text on the light themes */
+        body.theme-roshan .qa-btn, body.theme-arctic .qa-btn {
+            background: rgba(255,255,255,0.7); border-color: rgba(90,75,45,0.25); color: #3f3a2a;
+        }
+        body.theme-roshan .qa-btn.qa-start { background: rgba(34,197,94,0.25); color: #14532d; }
+        body.theme-roshan .qa-btn.qa-pause { background: rgba(245,158,11,0.28); color: #78350f; }
+        body.theme-roshan .qa-btn.qa-stop  { background: rgba(239,68,68,0.22); color: #7f1d1d; }
+        body.theme-roshan .qa-state { color: #14532d !important; }
+
+        /* ---------- Dashboard quick actions ---------- */
+        .active-row { cursor: pointer; }
+        .active-row.clickable:hover { border-right-color: #fff !important; }
+        .qa-bar { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+        .qa-btn {
+            flex: 1; min-width: 64px; padding: 6px 8px; font-size: 0.72rem; font-weight: 800;
+            border-radius: 10px; border: 1px solid rgba(255,255,255,0.16);
+            background: rgba(255,255,255,0.07); color: #e2e8f0; cursor: pointer;
+            transition: filter 0.2s, transform 0.1s; font-family: inherit; white-space: nowrap;
+        }
+        .qa-btn:hover { filter: brightness(1.25); }
+        .qa-btn:active { transform: scale(0.96); }
+        .qa-btn.qa-start { background: rgba(34,197,94,0.22); border-color: rgba(34,197,94,0.5); color: #86efac; }
+        .qa-btn.qa-pause { background: rgba(245,158,11,0.22); border-color: rgba(245,158,11,0.5); color: #fcd34d; }
+        .qa-btn.qa-stop  { background: rgba(239,68,68,0.22); border-color: rgba(239,68,68,0.5); color: #fca5a5; }
+        .qa-state { font-size: 0.68rem; font-weight: 800; padding: 2px 8px; border-radius: 50px; white-space: nowrap; }
+        /* flash a client card after jumping to it from the dashboard */
+        .client-card.flash-focus {
+            animation: focusFlash 2.2s ease-out;
+            border-color: var(--active-accent) !important;
+        }
+        @keyframes focusFlash {
+            0%, 60% { box-shadow: 0 0 0 4px var(--active-accent), 0 0 40px -6px var(--active-accent) !important; }
+            100% { box-shadow: none; }
+        }
 
         .client-card {
             transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
@@ -311,7 +402,7 @@
             aside.glass {
                 position: fixed !important;
                 top: 0 !important; right: -100% !important;
-                width: 280px !important; height: 100vh !important;
+                width: 280px !important; height: calc(100vh / var(--ui-zoom, 1)) !important;
                 margin: 0 !important; z-index: 99 !important;
                 border-radius: 0 !important;
                 background: #1e1b4b !important;
@@ -479,27 +570,31 @@
 
         /* ========== PHASE 3: 20 THEMES + LIGHTS + ALARM ========== */
         /* Themes - CSS variables per theme class on body */
-        body.theme-ocean { background: linear-gradient(135deg, #001f3f 0%, #003366 50%, #00509d 100%); }
-        body.theme-forest { background: linear-gradient(135deg, #0d1b0d 0%, #1a3a1a 50%, #2d5a2d 100%); }
-        body.theme-sunset { background: linear-gradient(135deg, #4a0e0e 0%, #8b2500 50%, #ff6b35 100%); }
-        body.theme-neon { background: linear-gradient(135deg, #0f0c29 0%, #ff00cc 50%, #333399 100%); }
-        body.theme-gold { background: linear-gradient(135deg, #3a2a00 0%, #b8860b 45%, #ffd700 70%, #ffec9e 100%); }
-        body.theme-cyber { background: linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #0f3460 100%); }
-        body.theme-candy { background: linear-gradient(135deg, #ff6b9d 0%, #c44dff 50%, #6a82fb 100%); }
-        body.theme-arctic { background: linear-gradient(135deg, #e0f7fa 0%, #80deea 50%, #00838f 100%); color:#004d40; }
-        body.theme-volcano { background: linear-gradient(135deg, #1a0000 0%, #4a0000 50%, #8b0000 100%); }
-        body.theme-midnight { background: linear-gradient(135deg, #000000 0%, #0f0f0f 50%, #1a1a1a 100%); }
-        body.theme-emerald { background: linear-gradient(135deg, #004d40 0%, #00796b 50%, #00bfa5 100%); }
-        body.theme-royal { background: linear-gradient(135deg, #1a0033 0%, #4a148c 50%, #7c4dff 100%); }
-        body.theme-fire { background: linear-gradient(135deg, #ff3d00 0%, #ff6d00 50%, #ff9e00 100%); }
-        body.theme-ice { background: linear-gradient(135deg, #0d47a1 0%, #1976d2 50%, #64b5f6 100%); }
-        body.theme-matrix { background: linear-gradient(135deg, #001100 0%, #003300 50%, #00ff00 100%); }
-        body.theme-luxury { background: linear-gradient(135deg, #212121 0%, #424242 50%, #bdbdbd 100%); }
-        body.theme-retro { background: linear-gradient(135deg, #3e2723 0%, #5d4037 50%, #8d6e63 100%); }
-        body.theme-galaxy { background: linear-gradient(135deg, #0b0c2a 0%, #1a1a40 50%, #4a148c 100%); }
-        body.theme-desert { background: linear-gradient(135deg, #3e2723 0%, #bf360c 50%, #ffab40 100%); }
-        body.theme-club { background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); } /* default */
-        body.theme-roshan { background: linear-gradient(135deg, #fffdf5 0%, #f9edd2 45%, #ecd9ac 100%); color:#3f3a2a; }
+        :root.theme-ocean { --app-bg: linear-gradient(135deg, #001f3f 0%, #003366 50%, #00509d 100%); }
+        :root.theme-forest { --app-bg: linear-gradient(135deg, #0d1b0d 0%, #1a3a1a 50%, #2d5a2d 100%); }
+        :root.theme-sunset { --app-bg: linear-gradient(135deg, #4a0e0e 0%, #8b2500 50%, #ff6b35 100%); }
+        :root.theme-neon { --app-bg: linear-gradient(135deg, #0f0c29 0%, #ff00cc 50%, #333399 100%); }
+        :root.theme-gold { --app-bg: linear-gradient(135deg, #3a2a00 0%, #b8860b 45%, #ffd700 70%, #ffec9e 100%); }
+        :root.theme-cyber { --app-bg: linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #0f3460 100%); }
+        :root.theme-candy { --app-bg: linear-gradient(135deg, #ff6b9d 0%, #c44dff 50%, #6a82fb 100%); }
+        :root.theme-arctic { --app-bg: linear-gradient(135deg, #e0f7fa 0%, #80deea 50%, #00838f 100%); }
+
+        body.theme-arctic { color:#004d40; }
+        :root.theme-volcano { --app-bg: linear-gradient(135deg, #1a0000 0%, #4a0000 50%, #8b0000 100%); }
+        :root.theme-midnight { --app-bg: linear-gradient(135deg, #000000 0%, #0f0f0f 50%, #1a1a1a 100%); }
+        :root.theme-emerald { --app-bg: linear-gradient(135deg, #004d40 0%, #00796b 50%, #00bfa5 100%); }
+        :root.theme-royal { --app-bg: linear-gradient(135deg, #1a0033 0%, #4a148c 50%, #7c4dff 100%); }
+        :root.theme-fire { --app-bg: linear-gradient(135deg, #ff3d00 0%, #ff6d00 50%, #ff9e00 100%); }
+        :root.theme-ice { --app-bg: linear-gradient(135deg, #0d47a1 0%, #1976d2 50%, #64b5f6 100%); }
+        :root.theme-matrix { --app-bg: linear-gradient(135deg, #001100 0%, #003300 50%, #00ff00 100%); }
+        :root.theme-luxury { --app-bg: linear-gradient(135deg, #212121 0%, #424242 50%, #bdbdbd 100%); }
+        :root.theme-retro { --app-bg: linear-gradient(135deg, #3e2723 0%, #5d4037 50%, #8d6e63 100%); }
+        :root.theme-galaxy { --app-bg: linear-gradient(135deg, #0b0c2a 0%, #1a1a40 50%, #4a148c 100%); }
+        :root.theme-desert { --app-bg: linear-gradient(135deg, #3e2723 0%, #bf360c 50%, #ffab40 100%); }
+        :root.theme-club { --app-bg: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); } /* default */
+        :root.theme-roshan { --app-bg: linear-gradient(135deg, #fffdf5 0%, #f9edd2 45%, #ecd9ac 100%); }
+
+        body.theme-roshan { color:#3f3a2a; }
 
         /* Light theme readability: glass turns milky, muted white texts turn warm gray */
         body.theme-roshan .glass { background: rgba(255,255,255,0.6); border-color: rgba(120,90,20,0.2); box-shadow: 0 8px 32px rgba(120,90,20,0.12); }

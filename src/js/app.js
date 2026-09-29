@@ -1,4 +1,40 @@
 
+    // ========== Cross-module state bridge ==========
+    /* app.js runs inside one big IIFE, so its `customers` / `sessions` / ...
+     * are invisible to the other renderer scripts. Five modules read them as
+     * window.customers / window.sessions and never found anything, which
+     * silently disabled: the phonebook account panel, membership + history +
+     * attendance + the activity log, the waiting list, the busy-hours report,
+     * the forecast, the customer portal and "encrypt customers backup"
+     * (it encrypted an empty array). Arrow-function accessors close over the
+     * IIFE scope, so these stay live after the arrays are replaced by
+     * loadData()/restoreBackup(), and the setters accept writes.
+     * sessions/reservations live here too and are read the same way. */
+    function publishState(name, get, set){
+        if (Object.prototype.hasOwnProperty.call(window, name)) return;
+        try {
+            Object.defineProperty(window, name, {
+                configurable: true, enumerable: true, get: get, set: set
+            });
+        } catch(e){ /* already taken by another module */ }
+    }
+    publishState('clients',          () => clients,          v => { clients = v; });
+    publishState('stationTypes',    () => stationTypes,    v => { stationTypes = v; });
+    publishState('tariffs',          () => tariffs,          v => { tariffs = v; });
+    publishState('services',         () => services,         v => { services = v; });
+    publishState('expenses',         () => expenses,         v => { expenses = v; });
+    publishState('tariffSchedules',  () => tariffSchedules,  v => { tariffSchedules = v; });
+    publishState('sales',            () => sales,            v => { sales = v; });
+    publishState('clientServiceMap', () => clientServiceMap, v => { clientServiceMap = v; });
+    publishState('sessions',         () => sessions,         v => { sessions = v; });
+    publishState('reservations',     () => reservations,     v => { reservations = v; });
+    publishState('customers',        () => customers,        v => { customers = v; });
+    publishState('operators',        () => operators,        v => { operators = v; });
+    publishState('currentOperator',  () => currentOperator,  v => { currentOperator = v; });
+    publishState('walletHistory',    () => walletHistory,    v => { walletHistory = v; });
+    publishState('activeLicense',    () => activeLicense,    v => { activeLicense = v; });
+    publishState('allLicenses',      () => allLicenses,      v => { allLicenses = v; });
+
     // Data Store - enhanced
     let clients = safeParse(localStorage.getItem('alvand_clients')) || [];
     let tariffs = safeParse(localStorage.getItem('alvand_tariffs')) || { single: 15000, double: 25000, extra: 8000 };
@@ -28,30 +64,52 @@
     // License system
     let activeLicense = safeParse(localStorage.getItem('alvand_license')||'null');
     let allLicenses = safeParse(localStorage.getItem('alvand_allLicenses')||'[]') || [];
-    let lastGeneratedLicense = '';
     // ===== Firebase Config (FIXED: no hardcoded secrets; see config.example.json) =====
-    const firebaseConfig = (window.APP_CONFIG && window.APP_CONFIG.firebase && window.APP_CONFIG.firebase.apiKey)
-        ? window.APP_CONFIG.firebase
-        : { apiKey: '', authDomain: '', databaseURL: '', projectId: '', appId: '' };
+    /* The Firebase config can arrive late (config.js loads it) and the SDK
+     * itself is a `defer` CDN tag, so both may still be missing when app.js
+     * runs. Read them lazily on every call instead of deciding once at load. */
+    function fbConfig(){
+        const c = window.APP_CONFIG && window.APP_CONFIG.firebase;
+        return (c && c.apiKey) ? c : null;
+    }
     let firebaseReady = false;
     function ensureFirebase(){
         try{
-            if(!firebaseConfig.apiKey) { firebaseReady = false; return false; }
-            if(typeof firebase === 'undefined') { firebaseReady = false; return false; }
-            if(firebase.apps && firebase.apps.length) { firebaseReady = true; return true; }
-            firebase.initializeApp(firebaseConfig);
+            const cfg = fbConfig();
+            if(!cfg){ firebaseReady = false; return false; }
+            if(typeof firebase === 'undefined'){ firebaseReady = false; return false; }
+            if(firebase.apps && firebase.apps.length){ firebaseReady = true; return true; }
+            firebase.initializeApp(cfg);
             firebaseReady = true; return true;
         }catch(e){ console.log('firebase init fail', e); firebaseReady = false; return false; }
     }
     try { ensureFirebase(); } catch(e){ firebaseReady = false; }
     try { window.ensureFirebase = ensureFirebase; } catch(_e){}
-    function firebaseKey(k){ return k.replace(/[^A-Z0-9]/gi,'_'); }
+    function firebaseKey(k){ return String(k==null?'':k).replace(/[^A-Z0-9]/gi,'_'); }
     function updateFirebaseStatus(){
         let el=document.getElementById('firebaseStatus');
         if(!el) return;
-        if(!firebaseReady){ el.textContent='حالت محلی (سرور تنظیم نشده)'; el.style.color='#f59e0b'; return; }
+        ensureFirebase();
+        if(!firebaseReady){
+            el.textContent = window.__configLoadFailed
+                ? 'حالت محلی (فایل تنظیمات سرور پیدا نشد)'
+                : (fbConfig() ? 'در انتظار بارگذاری کتابخانه...' : 'حالت محلی (سرور تنظیم نشده)');
+            el.style.color='#f59e0b'; return;
+        }
         el.textContent='متصل به سرور ✅'; el.style.color='#22c55e';
     }
+    // the CDN SDK tags are deferred: keep trying for a while, then give up
+    try {
+        if (fbConfig() && typeof window.__fbRetry === 'undefined') {
+            window.__fbRetry = true;
+            let _n = 0;
+            const _iv = setInterval(function(){
+                _n++;
+                if (ensureFirebase()) { clearInterval(_iv); updateFirebaseStatus(); }
+                else if (_n > 60) { clearInterval(_iv); updateFirebaseStatus(); }
+            }, 400);
+        }
+    } catch(e){}
     let roundingMode = localStorage.getItem('alvand_rounding') || 'none';
     let stationTypes = safeParse(localStorage.getItem('alvand_stationTypes')) || null;
     if(!stationTypes || !stationTypes.length){
@@ -69,6 +127,10 @@
     let sessions = safeParse(localStorage.getItem('alvand_sessions')) || [];
     let reservations = safeParse(localStorage.getItem('alvand_reservations')) || [];
     let currentTimeClient = null;
+    // new-features.js reads window.currentTimeClient to show "who is playing
+    // right now" in the customer portal / POS; it was undefined, so the portal
+    // always looked idle.
+    publishState('currentTimeClient', () => currentTimeClient, v => { currentTimeClient = v; });
     let timerInterval = null;
     let currentFilter = 'all';
     let currentPdfBlob = null;
@@ -78,26 +140,15 @@
     let alarmInterval = null;
 
     // ===== NEW FEATURES: Phase 1-3 Data Stores =====
-    // Membership Plans
-    let membershipPlans = safeParse(localStorage.getItem('alvand_membershipPlans')) || [
-        {id:1, name:'پایه', type:'monthly', price:500000, hours:20, discount:5, description:'۲۰ ساعت بازی در ماه'},
-        {id:2, name:'نقره‌ای', type:'monthly', price:900000, hours:40, discount:10, description:'۴۰ ساعت بازی در ماه'},
-        {id:3, name:'طلایی', type:'monthly', price:1500000, hours:80, discount:15, description:'۸۰ ساعت بازی در ماه'},
-        {id:4, name:'پایه سالانه', type:'yearly', price:5000000, hours:240, discount:10, description:'۲۴۰ ساعت بازی در سال'},
-        {id:5, name:'طلایی سالانه', type:'yearly', price:12000000, hours:720, discount:20, description:'۷۲۰ ساعت بازی در سال'}
-    ];
-    let customerMemberships = safeParse(localStorage.getItem('alvand_customerMemberships')) || [];
-    // Game History per customer
-    let gameHistory = safeParse(localStorage.getItem('alvand_gameHistory')) || [];
-    // Hourly usage data (hour -> count) for busy hours report
-    let hourlyUsage = safeParse(localStorage.getItem('alvand_hourlyUsage')) || {};
-    // Notifications queue
-    let notifications = safeParse(localStorage.getItem('alvand_notifications')) || [];
-    // Activity Log
-    let activityLog = safeParse(localStorage.getItem('alvand_activityLog')) || [];
-    // Employee attendance
-    let employees = safeParse(localStorage.getItem('alvand_employees')) || [];
-    let attendance = safeParse(localStorage.getItem('alvand_attendance')) || [];
+    // These 8 stores are OWNED BY new-features.js (membershipPlans,
+    // customerMemberships, gameHistory, hourlyUsage, notifications,
+    // activityLog, employees, attendance).
+    // app.js used to declare its own copies of the same arrays and rewrite them
+    // from saveData() every 15s, which silently wiped whatever new-features.js
+    // had just written (activity log, notifications, game history, employee
+    // records, membership plans...). app.js never read them, so the duplicates
+    // are gone - new-features.js is the single source of truth and persists each
+    // store itself. Do NOT re-add them here.
 
     // Migration for old clients
     clients.forEach(c=>{
@@ -110,446 +161,6 @@
 
     
 
-    // ========== PHASE 1 FUNCTIONS ==========
-    function changeClientTariff(idx, val){
-        clients[idx].tariff = val;
-        saveData();
-        renderClients();
-        showToast('تعرفه تغییر کرد','success');
-    }
-    function openAmountModal(idx){
-        // merged into time modal: amount section lives inside مدیریت زمان
-        openTimeModal(idx);
-    }
-    function calculateDurationFromAmount(amount){
-        if(!amount) amount = parseInt(document.getElementById('amountInput').value)||0;
-        else document.getElementById('amountInput').value = amount;
-        if(amount<=0){ showToast('مبلغ وارد کن','error'); return; }
-        if(currentTimeClient===null) return;
-        let c = clients[currentTimeClient];
-        let dur = calculateDurationFromAmountRaw(amount, c.tariff, c.extra, c.stationType);
-        document.getElementById('amountResult').style.display='block';
-        document.getElementById('amountResultText').textContent = formatTime(dur) + '  ('+Math.round(dur/60)+' دقیقه)';
-        window._calcDur = dur;
-    }
-    document.getElementById('amountInput')?.addEventListener('input', function(){ if(this.value) calculateDurationFromAmount(parseInt(this.value)); });
-    function applyAmountDuration(){
-        if(!window._calcDur) { showToast('اول مبلغ را وارد کن','error'); return; }
-        if(currentTimeClient===null) return;
-        let c=clients[currentTimeClient];
-        if(!c){ currentTimeClient=null; return; }
-        c.timerDuration = Math.ceil(window._calcDur/60);
-        c.notified=false;
-        saveData();
-        renderClients();
-        try{ updateTimeDisplay(); updateTimerStatusText(); }catch(e){}
-        showToast('مدت '+c.timerDuration+' دقیقه تنظیم شد','success');
-    }
-
-    // Buffet
-    function renderServices(){
-        let grid=document.getElementById('servicesGrid');
-        if(!grid) return;
-        let filtered = serviceFilter==='all' ? services : services.filter(s=>s.category===serviceFilter);
-        if(filtered.length===0) grid.innerHTML='<p style="text-align:center; color:rgba(255,255,255,0.5); padding:20px;">خدمتی ثبت نشده</p>';
-        else grid.innerHTML = filtered.map(s=>`
-            <div class="glass service-card" style="padding:16px;">
-                <div style="display:flex; justify-content:space-between; align-items:start;">
-                    <div>
-                        <h4 style="font-weight:800;">${escapeHtml(s.name)} <span style="font-size:0.7rem; padding:2px 6px; border-radius:50px; background:${s.category==='buffet'?'rgba(245,158,11,0.15)':'rgba(99,102,241,0.15)'}; color:${s.category==='buffet'?'#fbbf24':'#818cf8'};">${s.category==='buffet'?'بوفه':'خدمات'}</span></h4>
-                        <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">خرید: ${s.cost.toLocaleString()} - فروش: ${s.price.toLocaleString()}</p>
-                        <p class="profit-badge" style="display:inline-block; margin-top:6px;">سود: ${(s.price-s.cost).toLocaleString()} تومان</p>
-                    </div>
-                    <span class="${s.stock<10?'stock-low':'stock-ok'}" style="font-size:0.85rem;">موجودی: ${s.stock}</span>
-                </div>
-                <div style="display:flex; gap:6px; margin-top:12px;">
-                    <button class="glass-btn" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="editService(${s.id})">✏️ ویرایش</button>
-                    <button class="glass-btn glass-btn-danger" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="deleteService(${s.id})">🗑️ حذف</button>
-                </div>
-            </div>
-        `).join('');
-        updateBuffetStats();
-    }
-    function filterServices(f){ serviceFilter=f; renderServices(); }
-    function openServiceModal(){
-        document.getElementById('serviceId').value='';
-        document.getElementById('serviceName').value='';
-        document.getElementById('servicePrice').value='';
-        document.getElementById('serviceCost').value='';
-        document.getElementById('serviceStock').value='50';
-        document.getElementById('serviceModal').classList.add('show');
-    }
-    function editService(id){
-        let s=services.find(x=>x.id===id);
-        if(!s) return;
-        document.getElementById('serviceId').value=s.id;
-        document.getElementById('serviceName').value=s.name;
-        document.getElementById('servicePrice').value=s.price;
-        document.getElementById('serviceCost').value=s.cost;
-        document.getElementById('serviceStock').value=s.stock;
-        document.getElementById('serviceCategory').value=s.category;
-        document.getElementById('serviceModal').classList.add('show');
-    }
-    function saveService(){
-        let id=document.getElementById('serviceId').value;
-        let name=document.getElementById('serviceName').value.trim();
-        let price=parseInt(document.getElementById('servicePrice').value)||0;
-        let cost=parseInt(document.getElementById('serviceCost').value)||0;
-        let stock=parseInt(document.getElementById('serviceStock').value)||0;
-        let category=document.getElementById('serviceCategory').value;
-        if(!name||!price){ showToast('نام و قیمت الزامی','error'); return; }
-        if(id){
-            let s=services.find(x=>x.id===parseInt(id));
-            Object.assign(s,{name,price,cost,stock,category});
-        } else {
-            services.push({id:Date.now(), name,price,cost,stock,category});
-        }
-        saveServices();
-        closeModal('serviceModal');
-        renderServices();
-        showToast('خدمت ذخیره شد','success');
-    }
-    function deleteService(id){
-        if(!confirm('حذف شود؟')) return;
-        services=services.filter(s=>s.id!==id);
-        saveServices(); renderServices(); showToast('حذف شد','success');
-    }
-    function updateBuffetStats(){
-        let today=new Date().toDateString();
-        let todaySales=sales.filter(s=> new Date(s.date).toDateString()===today);
-        let income=todaySales.reduce((sum,s)=>sum+s.price*s.qty,0);
-        let profit=todaySales.reduce((sum,s)=>sum+s.profit,0);
-        let low=services.filter(s=>s.stock<10).length;
-        let el1=document.getElementById('buffetIncomeToday'); if(el1) el1.textContent=income.toLocaleString()+' تومان';
-        let el2=document.getElementById('buffetProfitToday'); if(el2) el2.textContent=profit.toLocaleString()+' تومان';
-        let el3=document.getElementById('lowStockCount'); if(el3) el3.textContent=low+' قلم';
-        // sales list
-        let list=document.getElementById('buffetSalesList');
-        if(list){
-            if(todaySales.length===0) list.innerHTML='<p style="text-align:center; color:rgba(255,255,255,0.4); padding:20px;">فروشی امروز نداشته‌اید</p>';
-            else list.innerHTML=todaySales.slice(-10).reverse().map(s=>`<div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem;"><span>${escapeHtml(s.name)} x${s.qty}</span><span style="color:#22c55e;">${(s.price*s.qty).toLocaleString()} تومان</span></div>`).join('');
-        }
-    }
-    function openAddServiceToClient(idx){
-        let c=clients[idx];
-        currentTimeClient=idx;
-        document.getElementById('svcClientName').textContent=c.name;
-        let list=document.getElementById('svcListForClient');
-        list.innerHTML=services.map(s=>`
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border-radius:12px; padding:10px 12px;">
-                <div>
-                    <p style="font-weight:700; font-size:0.9rem;">${escapeHtml(s.name)} <span style="font-size:0.7rem; color:rgba(255,255,255,0.5);">موجودی:${s.stock}</span></p>
-                    <p style="font-size:0.8rem; color:#22c55e;">${s.price.toLocaleString()} تومان</p>
-                </div>
-                <div style="display:flex; gap:6px; align-items:center;">
-                    <button class="glass-btn glass-btn-danger" style="padding:4px 8px; font-size:0.8rem;" onclick="addServiceToClientQty(${s.id}, -1)">-</button>
-                    <span id="svcQty-${s.id}" style="min-width:24px; text-align:center; font-weight:800;">${((clientServiceMap[c.id]||[]).find(x=>x.serviceId===s.id)?.qty||0)}</span>
-                    <button class="glass-btn glass-btn-success" style="padding:4px 8px; font-size:0.8rem;" onclick="addServiceToClientQty(${s.id}, 1)">+</button>
-                </div>
-            </div>
-        `).join('');
-        updateSvcSelected();
-        document.getElementById('addServiceToClientModal').classList.add('show');
-    }
-    function addServiceToClientQty(serviceId, delta){
-        if(currentTimeClient===null) return;
-        let c=clients[currentTimeClient];
-        let arr=clientServiceMap[c.id]||[];
-        let it=arr.find(x=>x.serviceId===serviceId);
-        let s=services.find(x=>x.id===serviceId);
-        if(!it && delta>0){
-            if(s.stock<=0){ showToast('موجودی کافی نیست','error'); return; }
-            arr.push({serviceId, qty:1});
-        } else if(it){
-            it.qty+=delta;
-            if(it.qty<=0) arr=arr.filter(x=>x.serviceId!==serviceId);
-            if(delta>0 && s.stock < it.qty){ showToast('موجودی کم','error'); it.qty=s.stock; }
-        }
-        clientServiceMap[c.id]=arr;
-        saveClientServiceMap();
-        document.getElementById('svcQty-'+serviceId).textContent = arr.find(x=>x.serviceId===serviceId)?.qty||0;
-        updateSvcSelected();
-        renderClients();
-    }
-    function updateSvcSelected(){
-        if(currentTimeClient===null) return;
-        let c=clients[currentTimeClient];
-        let arr=clientServiceMap[c.id]||[];
-        let total=arr.reduce((sum,it)=>{ let s=services.find(x=>x.id===it.serviceId); return sum+(s? s.price*it.qty:0); },0);
-        document.getElementById('svcTotalForClient').textContent=total.toLocaleString()+' تومان';
-        let sel=document.getElementById('svcSelectedList');
-        if(arr.length===0) sel.innerHTML='<p style="color:rgba(255,255,255,0.4); font-size:0.8rem;">چیزی انتخاب نشده</p>';
-        else sel.innerHTML=arr.map(it=>{ let s=services.find(x=>x.id===it.serviceId); return `<span style="display:inline-block; background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); border-radius:50px; padding:4px 10px; margin:4px; font-size:0.75rem;">${escapeHtml(s.name)} x${it.qty}</span>`; }).join('');
-    }
-
-    // Expenses
-    function renderExpenses(){
-        let list=document.getElementById('expensesList');
-        if(!list) return;
-        if(expenses.length===0) list.innerHTML='<p style="text-align:center; color:rgba(255,255,255,0.4); padding:20px;">هزینه‌ای ثبت نشده</p>';
-        else list.innerHTML=expenses.slice().reverse().map(e=>`
-            <div class="glass expense-row" style="padding:14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <div>
-                    <p style="font-weight:700;">${escapeHtml(e.title)} <span style="font-size:0.7rem; padding:2px 6px; border-radius:50px; background:rgba(255,255,255,0.08);">${e.category}</span></p>
-                    <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">${new Date(e.date).toLocaleDateString('fa-IR')}</p>
-                </div>
-                <div style="text-align:left;">
-                    <p style="font-weight:800; color:#ef4444;">${e.amount.toLocaleString()} تومان</p>
-                    <div style="display:flex; gap:6px; margin-top:4px;">
-                        <button class="glass-btn" style="padding:4px 8px; font-size:0.7rem;" onclick="editExpense(${e.id})">✏️</button>
-                        <button class="glass-btn glass-btn-danger" style="padding:4px 8px; font-size:0.7rem;" onclick="deleteExpense(${e.id})">🗑️</button>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-    }
-    function openExpenseModal(){
-        document.getElementById('expenseId').value='';
-        document.getElementById('expenseTitle').value='';
-        document.getElementById('expenseAmount').value='';
-        document.getElementById('expenseDate').valueAsDate=new Date();
-        document.getElementById('expenseModal').classList.add('show');
-    }
-    function editExpense(id){
-        let e=expenses.find(x=>x.id===id);
-        if(!e) return;
-        document.getElementById('expenseId').value=e.id;
-        document.getElementById('expenseTitle').value=e.title;
-        document.getElementById('expenseAmount').value=e.amount;
-        document.getElementById('expenseCategory').value=e.category;
-        document.getElementById('expenseDate').value=e.date;
-        document.getElementById('expenseModal').classList.add('show');
-    }
-    function saveExpense(){
-        let id=document.getElementById('expenseId').value;
-        let title=document.getElementById('expenseTitle').value.trim();
-        let amount=parseInt(document.getElementById('expenseAmount').value)||0;
-        let category=document.getElementById('expenseCategory').value;
-        let date=document.getElementById('expenseDate').value;
-        if(!title||!amount||!date){ showToast('همه فیلدها','error'); return; }
-        if(id){
-            let e=expenses.find(x=>x.id===parseInt(id));
-            Object.assign(e,{title,amount,category,date});
-        } else {
-            expenses.push({id:Date.now(), title,amount,category,date});
-        }
-        saveExpenses();
-        closeModal('expenseModal');
-        renderExpenses(); updateExpenseStats(); updateCashCardStats();
-        showToast('هزینه ثبت شد','success');
-    }
-    function deleteExpense(id){
-        if(!confirm('حذف شود؟')) return;
-        expenses=expenses.filter(e=>e.id!==id);
-        saveExpenses(); renderExpenses(); updateExpenseStats();
-        showToast('حذف شد','success');
-    }
-    function updateExpenseStats(){
-        let today=new Date().toDateString();
-        let todayExp=expenses.filter(e=> new Date(e.date).toDateString()===today).reduce((s,e)=>s+e.amount,0);
-        let month=new Date().getMonth();
-        let monthExp=expenses.filter(e=> new Date(e.date).getMonth()===month).reduce((s,e)=>s+e.amount,0);
-        let todayIncome=sessions.filter(s=> new Date(s.date).toDateString()===today).reduce((s,x)=>s+(x.cost||0),0);
-        let buffetToday=sales.filter(s=> new Date(s.date).toDateString()===today).reduce((s,x)=>s+x.price*x.qty,0);
-        todayIncome+=buffetToday;
-        let el1=document.getElementById('expenseToday'); if(el1) el1.textContent=todayExp.toLocaleString()+' تومان';
-        let el2=document.getElementById('expenseMonth'); if(el2) el2.textContent=monthExp.toLocaleString()+' تومان';
-        let el3=document.getElementById('netProfitToday'); if(el3) el3.textContent=(todayIncome - todayExp).toLocaleString()+' تومان';
-        if(el3) el3.style.color = (todayIncome - todayExp)>=0 ? '#22c55e':'#ef4444';
-    }
-    function updateCashCardStats(){
-        let today=new Date().toDateString();
-        let pays=safeParse(localStorage.getItem('alvand_payments')||'[]');
-        let cash=pays.filter(p=> new Date(p.date).toDateString()===today && p.method==='cash').reduce((s,p)=>s+p.amount,0);
-        let card=pays.filter(p=> new Date(p.date).toDateString()===today && p.method==='card').reduce((s,p)=>s+p.amount,0);
-        let el1=document.getElementById('cashToday'); if(el1) el1.textContent=cash.toLocaleString()+' تومان';
-        let el2=document.getElementById('cardToday'); if(el2) el2.textContent=card.toLocaleString()+' تومان';
-        let el3=document.getElementById('totalCashCardToday'); if(el3) el3.textContent=(cash+card).toLocaleString()+' تومان';
-    }
-
-    // Tariff Schedule
-    function renderTariffSchedules(){
-        let list=document.getElementById('tariffSchedulesList');
-        if(!list) return;
-        if(tariffSchedules.length===0) list.innerHTML='<div class="glass" style="padding:20px; text-align:center; color:rgba(255,255,255,0.5);">بازه‌ای ثبت نشده - تعرفه ثابت استفاده میشود</div>';
-        else list.innerHTML=tariffSchedules.map(ts=>`
-            <div class="glass ${isTariffActive(ts)?'tariff-active':''}" style="padding:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                <div>
-                    <h4 style="font-weight:800;">${escapeHtml(ts.name)} <span style="font-size:0.8rem; color:#818cf8;">${ts.start} تا ${ts.end}</span> ${isTariffActive(ts)?'<span style="background:#22c55e; color:white; padding:2px 8px; border-radius:50px; font-size:0.7rem;">فعال الان</span>':''}</h4>
-                    <p style="font-size:0.85rem; color:rgba(255,255,255,0.6);">تک:${ts.single.toLocaleString()} دو:${ts.double.toLocaleString()} اضافه:${ts.extra.toLocaleString()}</p>
-                    ${(ts.prices && Object.keys(ts.prices).filter(k=>ts.prices[k]>0).length) ? `<div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">`+Object.keys(ts.prices).filter(k=>ts.prices[k]>0).map(tid=>{ let st=getStationType(tid); return `<span class="tariff-badge tariff-extra">${st?st.icon+' '+st.name:tid}: ${(ts.prices[tid]||0).toLocaleString()}</span>`; }).join('')+`</div>` : ''}
-                </div>
-                <div style="display:flex; gap:6px;">
-                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="editTariffSchedule(${ts.id})">✏️</button>
-                    <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteTariffSchedule(${ts.id})">🗑️</button>
-                </div>
-            </div>
-        `).join('');
-    }
-    function isTariffActive(ts){
-        let now=new Date(); let cur=now.getHours()*60+now.getMinutes();
-        let s=ts.start.split(':').map(Number); let e=ts.end.split(':').map(Number);
-        let sMin=s[0]*60+s[1]; let eMin=e[0]*60+e[1];
-        if(sMin<=eMin) return cur>=sMin && cur<eMin;
-        else return cur>=sMin || cur<eMin;
-    }
-    function openTariffScheduleModal(){
-        document.getElementById('tariffScheduleId').value='';
-        document.getElementById('tsName').value='';
-        try{renderTsTypePrices(null);}catch(e){}
-        document.getElementById('tariffScheduleModal').classList.add('show');
-    }
-    function editTariffSchedule(id){
-        let ts=tariffSchedules.find(x=>x.id===id);
-        if(!ts) return;
-        document.getElementById('tariffScheduleId').value=ts.id;
-        document.getElementById('tsName').value=ts.name;
-        document.getElementById('tsStart').value=ts.start;
-        document.getElementById('tsEnd').value=ts.end;
-        document.getElementById('tsSingle').value=ts.single;
-        document.getElementById('tsDouble').value=ts.double;
-        document.getElementById('tsExtra').value=ts.extra;
-        try{renderTsTypePrices(ts.id);}catch(e){}
-        document.getElementById('tariffScheduleModal').classList.add('show');
-    }
-    function saveTariffSchedule(){
-        let id=document.getElementById('tariffScheduleId').value;
-        let name=document.getElementById('tsName').value.trim()||'بدون نام';
-        let start=document.getElementById('tsStart').value;
-        let end=document.getElementById('tsEnd').value;
-        let single=parseInt(document.getElementById('tsSingle').value)||0;
-        let double=parseInt(document.getElementById('tsDouble').value)||0;
-        let extra=parseInt(document.getElementById('tsExtra').value)||0;
-        let prices={};
-        document.querySelectorAll('#tsTypePrices input').forEach(inp=>{ prices[inp.dataset.type]=parseInt(inp.value)||0; });
-        if(!start||!end){ showToast('ساعت وارد کن','error'); return; }
-        if(id){
-            let ts=tariffSchedules.find(x=>x.id===parseInt(id));
-            Object.assign(ts,{name,start,end,single,double,extra,prices});
-        } else {
-            tariffSchedules.push({id:Date.now(), name,start,end,single,double,extra,prices});
-        }
-        saveTariffSchedules();
-        closeModal('tariffScheduleModal');
-        renderTariffSchedules(); updateActiveTariffDisplay();
-        showToast('تعرفه ساعتی ذخیره شد','success');
-    }
-    function deleteTariffSchedule(id){
-        if(!confirm('حذف شود؟')) return;
-        tariffSchedules=tariffSchedules.filter(x=>x.id!==id);
-        saveTariffSchedules(); renderTariffSchedules(); updateActiveTariffDisplay();
-    }
-    function clearTariffSchedules(){
-        if(!confirm('همه بازه‌ها حذف شوند؟')) return;
-        tariffSchedules=[]; saveTariffSchedules(); renderTariffSchedules();
-    }
-    function updateActiveTariffDisplay(){
-        let now=new Date();
-        let el1=document.getElementById('currentHourDisplay'); if(el1) el1.textContent=now.toLocaleTimeString('fa-IR');
-        let active=getActiveTariff();
-        let el2=document.getElementById('activeTariffDisplay');
-        if(!el2) return;
-        if(active) el2.textContent=active.name+' - تک:'+active.single.toLocaleString()+' دو:'+active.double.toLocaleString();
-        else el2.textContent='تعرفه عادی - تک:'+tariffs.single.toLocaleString()+' دو:'+tariffs.double.toLocaleString();
-    }
-
-    // Backup
-    function toggleAutoBackup(v){
-        localStorage.setItem('alvand_backupEnabled', v?'1':'0');
-        showToast(v?'بکاپ خودکار فعال شد':'بکاپ غیرفعال','success');
-    }
-    function loadRoundingMode(){
-        let el=document.getElementById('roundingMode'); if(el) el.value=roundingMode;
-        let tog=document.getElementById('autoBackupToggle'); if(tog) tog.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
-        let bt=document.getElementById('backupTimeInput'); if(bt) bt.value=localStorage.getItem('alvand_backupTime')||'23:59';
-        let tog2=document.getElementById('autoBackupToggle2'); if(tog2) tog2.checked = localStorage.getItem('alvand_backupEnabled')!=='0';
-        let atk=document.getElementById('agentTokenInput'); if(atk) atk.value=agentToken();
-    }
-    function setRoundingMode(v){ roundingMode=v; localStorage.setItem('alvand_rounding',v); showToast('رند: '+v,'success'); }
-    function updateBackupDisplay(){
-        let last=localStorage.getItem('alvand_lastBackup');
-        let txt = last ? new Date(parseInt(last)).toLocaleString('fa-IR') : 'هرگز';
-        let el=document.getElementById('lastBackupTime');
-        if(el) el.textContent = txt;
-        let el2=document.getElementById('lastBackupTimeSettings');
-        if(el2) el2.textContent = txt;
-    }
-    function createBackup(){
-        let data={
-            clients, tariffs, sessions, reservations, services, expenses, tariffSchedules, sales, clientServiceMap, stationTypes,
-            payments: safeParse(localStorage.getItem('alvand_payments')||'[]'),
-            roundingMode, date: new Date().toISOString()
-        };
-        localStorage.setItem('alvand_backup', JSON.stringify(data));
-        localStorage.setItem('alvand_lastBackup', Date.now().toString());
-        updateBackupDisplay();
-        showToast('بکاپ ذخیره شد','success');
-    }
-    function downloadBackupFile(){
-        let data=localStorage.getItem('alvand_backup');
-        if(!data){ createBackup(); data=localStorage.getItem('alvand_backup'); }
-        let blob=new Blob([data], {type:'application/json'});
-        let url=URL.createObjectURL(blob);
-        let a=document.createElement('a'); a.href=url; a.download='gamenet-backup-'+new Date().toISOString().slice(0,10)+'.json'; a.click();
-        URL.revokeObjectURL(url);
-        showToast('فایل بکاپ دانلود شد','success');
-    }
-    function restoreBackup(input){
-        let file=input.files[0];
-        if(!file) return;
-        let reader=new FileReader();
-        reader.onload=function(e){
-            try{
-                let data=safeParse(e.target.result);
-                if(data.clients) localStorage.setItem('alvand_clients', JSON.stringify(data.clients));
-                if(data.tariffs) localStorage.setItem('alvand_tariffs', JSON.stringify(data.tariffs));
-                if(data.sessions) localStorage.setItem('alvand_sessions', JSON.stringify(data.sessions));
-                if(data.reservations) localStorage.setItem('alvand_reservations', JSON.stringify(data.reservations));
-                if(data.services) localStorage.setItem('alvand_services', JSON.stringify(data.services));
-                if(data.expenses) localStorage.setItem('alvand_expenses', JSON.stringify(data.expenses));
-                if(data.tariffSchedules) localStorage.setItem('alvand_tariffSchedules', JSON.stringify(data.tariffSchedules));
-                if(data.sales) localStorage.setItem('alvand_sales', JSON.stringify(data.sales));
-                if(data.clientServiceMap) localStorage.setItem('alvand_clientServiceMap', JSON.stringify(data.clientServiceMap));
-                if(data.stationTypes && data.stationTypes.length){ stationTypes=data.stationTypes; localStorage.setItem('alvand_stationTypes', JSON.stringify(stationTypes)); }
-                if(data.payments) localStorage.setItem('alvand_payments', JSON.stringify(data.payments));
-                if(data.roundingMode) localStorage.setItem('alvand_rounding', data.roundingMode);
-                showToast('بازگردانی شد - صفحه رفرش میشود','success');
-                setTimeout(()=> location.reload(), 1500);
-            }catch(err){ showToast('فایل خراب','error'); }
-        };
-        reader.readAsText(file);
-    }
-    function checkAutoBackup(){
-        if(localStorage.getItem('alvand_backupEnabled')==='0') return;
-        let last=parseInt(localStorage.getItem('alvand_lastBackup')||'0');
-        let now=Date.now();
-        if(now - last > 24*3600*1000){
-            createBackup();
-        }
-        try{
-            let t=localStorage.getItem('alvand_backupTime')||'23:59';
-            let parts=t.split(':'); let hh=parseInt(parts[0]); if(isNaN(hh)) hh=23; let mm=parseInt(parts[1]); if(isNaN(mm)) mm=59;
-            let d=new Date(); d.setHours(hh,mm,0,0);
-            let todayStr=new Date().toDateString();
-            if(Date.now()>=d.getTime() && localStorage.getItem('alvand_backupDay')!==todayStr){
-                createBackup();
-                localStorage.setItem('alvand_backupDay', todayStr);
-            }
-        }catch(e){}
-        updateBackupDisplay();
-    }
-    function toggleAutoBackup2(v){
-        localStorage.setItem('alvand_backupEnabled', v?'1':'0');
-        let tog=document.getElementById('autoBackupToggle'); if(tog) tog.checked=v;
-        showToast(v?'بکاپ خودکار فعال شد':'بکاپ غیرفعال','success');
-    }
-    function setBackupTime(v){
-        localStorage.setItem('alvand_backupTime', v||'23:59');
-        showToast('ساعت بکاپ: '+(v||'23:59'),'success');
-    }
-
-
-    
     // ========== PHASE 2: Customers, Wallet, Rank, Birthday, Operators ==========
     function getRank(hours){
         if(hours>=200) return {name:'💎 الماس', cls:'rank-diamond', discount:25};
@@ -597,12 +208,12 @@
     function applyPerms(){
         if(!currentOperator || currentOperator.role==='admin'){
             document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('operator-locked'));
-            let navOp=document.getElementById('navOperators'); if(navOp) navOp.style.display='flex';
+            document.querySelectorAll('.nav-group').forEach(el=>el.classList.remove('group-all-locked'));
+            let navOp=document.getElementById('navOperators'); if(navOp) navOp.style.display='';
             let subLic=document.getElementById('settingsSubLicense'); if(subLic) subLic.style.display='';
             return;
         }
         // lock nav
-        let map={clients:'clients', buffet:'buffet', reservations:'reservations', reports:'reports', income:'income', expenses:'expenses', customers:'customers', backup:'backup', operators:'operators', tariffSchedule:'tariffs'};
         document.querySelectorAll('.nav-item').forEach(el=>{
             let sec=el.getAttribute('onclick')?.match(/showSection\('([^']+)'/);
             if(sec){
@@ -611,10 +222,18 @@
                 else el.classList.remove('operator-locked');
             }
         });
+        // a group whose every child is locked is useless -> grey the header out
+        document.querySelectorAll('.nav-group').forEach(g=>{
+            const items=g.querySelectorAll('.nav-item');
+            if(!items.length){ g.classList.remove('group-all-locked'); return; }
+            let locked=0; items.forEach(i=>{ if(i.classList.contains('operator-locked')) locked++; });
+            g.classList.toggle('group-all-locked', locked>0 && locked===items.length);
+        });
         let navOp=document.getElementById('navOperators'); if(navOp) navOp.style.display='none';
         let subLic2=document.getElementById('settingsSubLicense'); if(subLic2) subLic2.style.display = hasPerm('license') ? '' : 'none';
     }
     function openOperatorModal(){
+        if(!requirePerm('operators','مدیریت اپراتورها')) return;
         if(currentOperator?.role!=='admin'){ showToast('فقط مدیر','error'); return; }
         document.getElementById('opId').value='';
         document.getElementById('opUser').value='';
@@ -638,6 +257,9 @@
         document.getElementById('permExpenses').checked=!!p.expenses;
         document.getElementById('permCustomers').checked=!!p.customers;
         document.getElementById('permBackup').checked=!!p.backup;
+        document.getElementById('permTariffs').checked=!!p.tariffs;
+        document.getElementById('permEmployees').checked=!!p.employees;
+        document.getElementById('permOperators').checked=!!p.operators;
         document.getElementById('operatorModal').classList.add('show');
     }
     function saveOperator(){
@@ -655,29 +277,53 @@
             expenses:document.getElementById('permExpenses').checked,
             customers:document.getElementById('permCustomers').checked,
             backup:document.getElementById('permBackup').checked,
-            operators:false, tariffs:true
+            tariffs:!!(document.getElementById('permTariffs')||{}).checked,
+            employees:!!(document.getElementById('permEmployees')||{}).checked,
+            operators:!!(document.getElementById('permOperators')||{}).checked
         };
         if(id){
-            let op=operators.find(x=>x.id===parseInt(id));
+            let op=operators.find(x=>String(x.id)===String(id));
+            if(!op){ showToast('اپراتور پیدا نشد','error'); return; }
+            // demoting the last admin would lock the shop out
+            if(op.role==='admin' && role!=='admin' && operators.filter(x=>x.role==='admin').length<=1){
+                showToast('آخرین مدیر را نمی‌توان به اپراتور تغییر داد','error'); return;
+            }
             Object.assign(op,{username,password,role,perms});
         } else {
             if(operators.find(x=>x.username===username)){ showToast('نام تکراری','error'); return; }
             operators.push({id:Date.now(), username,password,role,perms});
         }
-        localStorage.setItem('alvand_operators', JSON.stringify(operators));
+        try{ localStorage.setItem('alvand_operators', JSON.stringify(operators)); }catch(e){}
         closeModal('operatorModal');
         renderOperators();
         showToast('اپراتور ذخیره شد','success');
     }
     function deleteOperator(id){
-        if(id===1){ showToast('مدیر اصلی حذف نمیشود','error'); return; }
-        if(!confirm('حذف شود؟')) return;
-        operators=operators.filter(x=>x.id!==id);
-        localStorage.setItem('alvand_operators', JSON.stringify(operators));
+        if(!requirePerm('operators','حذف اپراتور')) return;
+        const target = operators.find(x=>String(x.id)===String(id));
+        if(!target){ showToast('اپراتور پیدا نشد','error'); return; }
+        if(target.role==='admin'){
+            // Never remove or demote the last admin: that locks the shop out of
+            // its own data with no way back in.
+            const admins = operators.filter(x=>x.role==='admin');
+            if(admins.length<=1){ showToast('آخرین مدیر را نمی‌توان حذف کرد','error'); return; }
+            if(!confirm('این کاربر مدیر است. حذف شود؟')) return;
+        } else {
+            if(!confirm('حذف شود؟')) return;
+        }
+        operators=operators.filter(x=>String(x.id)!==String(id));
+        // keep at least one admin
+        if(!operators.some(x=>x.role==='admin') && operators.length){
+            operators[0].role='admin';
+            showToast('نقش '+operators[0].username+' به مدیر تغییر کرد','warning');
+        }
+        try{ localStorage.setItem('alvand_operators', JSON.stringify(operators)); }catch(e){}
         renderOperators();
+        showToast('اپراتور حذف شد','success');
     }
     function getAdminOp(){
-        return operators.find(x=>x.role==='admin') || operators.find(x=>x.id===1) || operators[0] || null;
+        const admins = operators.filter(x=>x.role==='admin');
+        return admins[0] || operators.find(x=>x.id===1) || operators[0] || null;
     }
     function syncAdminCredCard(){
         // Only admins may see/use the credential card in Settings
@@ -693,6 +339,7 @@
         if(nu && document.activeElement!==nu) nu.value = adm? adm.username : '';
     }
     async function changeAdminCredentials(){
+        if(!requirePerm('operators','تغییر رمز مدیر')) return;
         if(!currentOperator || currentOperator.role!=='admin'){ showToast('فقط مدیر','error'); return; }
         const adm=getAdminOp();
         if(!adm){ showToast('حساب مدیر پیدا نشد','error'); return; }
@@ -732,8 +379,8 @@
                     <p style="font-size:0.75rem; color:rgba(255,255,255,0.5);">رمز: ••••</p>
                 </div>
                 <div style="display:flex; gap:6px;">
-                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="editOperator(${op.id})">✏️</button>
-                    <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteOperator(${op.id})">🗑️</button>
+                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="editOperator(${numId(op.id)})">✏️</button>
+                    <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteOperator(${numId(op.id)})">🗑️</button>
                 </div>
             </div>
         `).join('');
@@ -761,26 +408,43 @@
                     <div>
                         <h4 style="font-weight:800;">${escapeHtml(c.name)} ${isBirthday?'<span class="birthday-badge">🎂 تولد این ماه! 10% تخفیف</span>':''}</h4>
                         <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">📞 ${escapeHtml(c.phone||'-')} | 🎂 ${c.birthday||'-'} | ✉️ ${escapeHtml(c.email||'-')}</p>
-                        <p style="font-size:0.75rem; margin-top:4px;"><span class="${rank.cls}" style="padding:2px 8px; border-radius:50px; font-size:0.7rem; font-weight:800;">${rank.name}</span> <span style="color:#22c55e;">${rank.discount}% تخفیف</span> | 🕒 ${Math.floor(c.totalHours||0)}h | 💰 ${ (c.totalSpent||0).toLocaleString()} تومان</p>
+                        <p style="font-size:0.75rem; margin-top:4px;"><span class="${rank.cls}" style="padding:2px 8px; border-radius:50px; font-size:0.7rem; font-weight:800;">${rank.name}</span> <span style="color:#22c55e;">${rank.discount}% تخفیف</span> | 🕒 ${Math.floor(c.totalHours||0)}h | 💰 ${ (c.totalSpent||0).toLocaleString('fa-IR')} تومان</p>
                     </div>
                     <div style="text-align:left;">
                         <p style="font-size:0.75rem; color:rgba(255,255,255,0.5);">کیف پول</p>
-                        <p style="font-weight:900; color:${(c.wallet||0)<0?'#ef4444':'#22c55e'};">${(c.wallet||0).toLocaleString()} تومان</p>
-                        ${(c.debt||0)>0?`<p style="font-size:0.7rem; color:#ef4444;">بدهی: ${c.debt.toLocaleString()}</p>`:''}
+                        <p style="font-weight:900; color:${(c.wallet||0)<0?'#ef4444':'#22c55e'};">${(c.wallet||0).toLocaleString('fa-IR')} تومان</p>
+                        ${(c.debt||0)>0?`<p style="font-size:0.7rem; color:#ef4444;">بدهی: ${c.debt.toLocaleString('fa-IR')}</p>`:''}
                     </div>
                 </div>
                 <div style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap;">
-                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="openCustomerModal(${c.id})">✏️ ویرایش</button>
-                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem; background:rgba(34,197,94,0.15);" onclick="quickCharge(${c.id})">💰 شارژ</button>
-                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="openShareModalForCustomer('${c.name.replace(/'/g,"\'")}','${escapeHtml(c.phone)}','${escapeHtml(c.email)}')">📤 ارسال</button>
-                    <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteCustomer(${c.id})">🗑️</button>
+                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="openCustomerModal(${numId(c.id)})">✏️ ویرایش</button>
+                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem; background:rgba(34,197,94,0.15);" onclick="quickCharge(${numId(c.id)})">💰 شارژ</button>
+                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" data-cust-name="${escapeHtml(c.name)}" data-cust-phone="${escapeHtml(c.phone||'')}" data-cust-email="${escapeHtml(c.email||'')}" onclick="sendReportToCustomerFromNode(this)">📤 ارسال</button>
+                    <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteCustomer(${numId(c.id)})">🗑️</button>
                 </div>
             </div>`;
         }).join('') + `</div>`;
     }
     // Override old renderCustomers
-    function renderCustomers(){ renderCustomersEnhanced(); renderOperators(); }
+    /** Customers section = the customer DATABASE (wallet / rank / loyalty) plus the
+        reservation roster and the operators list. Single definition on purpose:
+        a second renderCustomers() used to shadow this one and hide the database. */
+    function renderCustomers(){
+        if(!requirePerm('customers','مشتریان')) return;
+        try{ renderCustomersEnhanced(); }catch(e){}
+        try{ renderCustomerRoster(); }catch(e){}
+        try{ renderOperators(); }catch(e){}
+    }
+    // Roster button -> share modal, without building an inline JS string out of
+    // user data (that was a stored-XSS hole: escapeHtml does not make a value
+    // safe inside onclick="fn('...')").
+    function sendReportToCustomerFromNode(node){
+        if(!node) return;
+        try{ openShareModalForCustomer(node.getAttribute('data-cust-name')||'', node.getAttribute('data-cust-phone')||'', node.getAttribute('data-cust-email')||''); }
+        catch(e){ showToast('ارسال گزارش ممکن نشد','error'); }
+    }
     function openCustomerModal(id=null){
+        if(!requirePerm('customers','مشتریان')) return;
         if(id){
             let c=customers.find(x=>x.id===id);
             if(!c) return;
@@ -790,13 +454,13 @@
             document.getElementById('custEmail').value=c.email||'';
             document.getElementById('custSocial').value=c.telegram||'';
             document.getElementById('custBirthday').value=c.birthday||'';
-            document.getElementById('custWalletDisplay').textContent=(c.wallet||0).toLocaleString()+' تومان';
+            document.getElementById('custWalletDisplay').textContent=(c.wallet||0).toLocaleString('fa-IR')+' تومان';
             document.getElementById('custHoursDisplay').textContent=Math.floor(c.totalHours||0)+'h';
             let rank=getRank(c.totalHours||0);
             document.getElementById('custRankDisplay').innerHTML='<span class="'+rank.cls+'" style="padding:2px 8px; border-radius:50px; font-size:0.7rem;">'+rank.name+'</span>';
             // history
             let hist=walletHistory.filter(h=>h.customerId===c.id).slice(-8).reverse();
-            document.getElementById('custHistory').innerHTML = hist.length? hist.map(h=>`<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);"><span>${new Date(h.date).toLocaleDateString('fa-IR')} ${h.action}</span><span style="color:${h.amount>0?'#22c55e':'#ef4444'};">${h.amount.toLocaleString()}</span></div>`).join('') : '<p style="color:rgba(255,255,255,0.4); text-align:center;">تاریخچه‌ای نیست</p>';
+            document.getElementById('custHistory').innerHTML = hist.length? hist.map(h=>`<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);"><span>${new Date(h.date).toLocaleDateString('fa-IR')} ${h.action}</span><span style="color:${h.amount>0?'#22c55e':'#ef4444'};">${h.amount.toLocaleString('fa-IR')}</span></div>`).join('') : '<p style="color:rgba(255,255,255,0.4); text-align:center;">تاریخچه‌ای نیست</p>';
         } else {
             document.getElementById('custId').value='';
             document.getElementById('custName').value='';
@@ -831,6 +495,7 @@
         showToast('مشتری ذخیره شد','success');
     }
     function deleteCustomer(id){
+        if(!requirePerm('customers','حذف مشتری')) return;
         if(!confirm('حذف شود؟')) return;
         customers=customers.filter(c=>c.id!==id);
         localStorage.setItem('alvand_customers', JSON.stringify(customers));
@@ -838,6 +503,7 @@
         showToast('حذف شد','success');
     }
     function quickCharge(id){
+        if(!requirePerm('customers','شارژ کیف پول')) return;
         let c=customers.find(x=>x.id===id);
         if(!c) return;
         window._chargeId=id;
@@ -848,7 +514,7 @@
     }
     function submitCharge(){
         let id=window._chargeId;
-        let amount=parseInt(document.getElementById('chargeAmount').value);
+        let amount=parseFaNumber(document.getElementById('chargeAmount').value, 0);
         if(!amount||amount<=0){ showToast('مبلغ معتبر وارد کن','error'); return; }
         let c=customers.find(x=>x.id===id);
         if(!c) return;
@@ -861,35 +527,62 @@
         showToast('شارژ شد','success');
     }
     function doWalletAction(){
+        if(!requirePerm('customers','کیف پول')) return;
         let id=parseInt(document.getElementById('custId').value);
         if(!id){ showToast('اول مشتری را ذخیره کن','error'); return; }
-        let amount=parseInt(document.getElementById('walletAmount').value)||0;
+        let raw=document.getElementById('walletAmount').value;
+        let amount=(typeof parseFaNumber==='function')? parseFaNumber(raw,NaN) : (parseInt(raw)||0);
+        if(!isFinite(amount) || amount<=0){ showToast('مبلغ وارد کن','error'); return; }
+        amount=Math.floor(amount);
         let action=document.getElementById('walletAction').value;
-        if(!amount){ showToast('مبلغ وارد کن','error'); return; }
         let c=customers.find(x=>x.id===id);
-        if(action==='charge'){ c.wallet=(c.wallet||0)+amount; }
-        else if(action==='deduct'){ c.wallet=(c.wallet||0)-amount; }
-        else if(action==='debt'){ c.debt=(c.debt||0)+amount; c.wallet=(c.wallet||0)-amount; }
-        else if(action==='payDebt'){ c.debt=Math.max(0,(c.debt||0)-amount); c.wallet=(c.wallet||0)+amount; }
-        walletHistory.push({customerId:id, amount: action==='deduct'||action==='debt' ? -amount : amount, action, date:new Date().toISOString()});
+        if(!c){ showToast('مشتری پیدا نشد','error'); return; }
+        const wallet0=Number(c.wallet)||0, debt0=Number(c.debt)||0;
+        let delta=0;
+        if(action==='charge'){ c.wallet=wallet0+amount; delta=amount; }
+        else if(action==='deduct'){
+            if(amount>wallet0){ showToast('موجودی کیف پول کافی نیست','error'); return; }
+            c.wallet=wallet0-amount; delta=-amount;
+        }
+        else if(action==='debt'){
+            if(amount>wallet0){ showToast('موجودی کیف پول کافی نیست','error'); return; }
+            c.debt=debt0+amount; c.wallet=wallet0-amount; delta=-amount;
+        }
+        else if(action==='payDebt'){
+            // Only what is actually owed may be paid back: the old code clamped
+            // the debt to 0 but still credited the FULL amount to the wallet,
+            // which handed the customer free money on every overpayment.
+            if(debt0<=0){ showToast('این مشتری بدهی ندارد','error'); return; }
+            const paid=Math.min(amount, debt0);
+            if(paid<amount) showToast('فقط '+(paid).toLocaleString('fa-IR')+' تومان از بدهی کسر شد','warning');
+            c.debt=debt0-paid; c.wallet=wallet0+paid; delta=paid;
+        }
+        else { showToast('عملیات نامعتبر','error'); return; }
+        walletHistory.push({customerId:id, amount: delta, action, date:new Date().toISOString()});
         localStorage.setItem('alvand_customers', JSON.stringify(customers));
         localStorage.setItem('alvand_walletHistory', JSON.stringify(walletHistory));
-        localStorage.setItem('alvand_theme', currentTheme);
-        localStorage.setItem('alvand_alarmSound', alarmSound);
-        localStorage.setItem('alvand_alarmRepeat', alarmRepeat.toString());
-        document.getElementById('custWalletDisplay').textContent=(c.wallet||0).toLocaleString()+' تومان';
+        document.getElementById('custWalletDisplay').textContent=(c.wallet||0).toLocaleString('fa-IR')+' تومان';
         document.getElementById('walletAmount').value='';
         renderCustomersEnhanced();
         showToast('انجام شد','success');
     }
+    /** True only on the customer's actual birthday (day+month), not for the whole
+     *  month. A birthday field holds a YYYY-MM-DD string, which JS parses as UTC
+     *  midnight, so the day is compared in UTC to stay stable across timezones. */
+    function isBirthdayToday(birthday){
+        if(!birthday) return false;
+        const m=String(birthday).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if(!m) return false;
+        const now=new Date();
+        return (parseInt(m[2],10)-1)===now.getUTCMonth() && parseInt(m[3],10)===now.getUTCDate();
+    }
     function checkBirthdays(){
         let now=new Date();
-        let month=now.getMonth();
-        let todays=customers.filter(c=> c.birthday && new Date(c.birthday).getMonth()===month);
+        let todays=(customers||[]).filter(c=> isBirthdayToday(c.birthday));
         if(todays.length>0){
             // show once per day
             let last=localStorage.getItem('alvand_birthdayShown');
-            let todayStr=now.toDateString();
+            let todayStr=localDayKey(now);
             if(last!==todayStr){
                 showToast('🎂 امروز تولد '+todays.map(c=>c.name).join('، ')+' هست! 10% تخفیف بده','warning');
                 localStorage.setItem('alvand_birthdayShown', todayStr);
@@ -902,12 +595,35 @@
     }
     // Enhance confirmPayment to handle wallet and rank
     let origConfirmPayment = confirmPayment;
+    /** Normalised name match. The old code used String.includes() both ways,
+     *  so customer "علی" matched client "علی رضایی" and the discount/wallet of
+     *  the wrong person was applied. Now it is an exact match after trimming,
+     *  spaces and ZWNJ, with a phone match as a secondary. */
+    function normPersonName(s){
+        return String(s==null?'':s)
+            .replace(/[\u200c\u200d\u064a]/g, m => (m==='\u064a'?'ی':''))
+            .replace(/\s+/g,' ')
+            .trim()
+            .toLowerCase();
+    }
+    function findCustomerForPayment(pp){
+        if(!pp) return null;
+        const want = normPersonName(pp.clientName);
+        const wantPhone = String(pp.phone||'').replace(/[^0-9]/g,'');
+        if(!want && !wantPhone) return null;
+        let byName=null, byPhone=null;
+        for(const c of (customers||[])){
+            if(!c) continue;
+            if(!byName && want && normPersonName(c.name)===want) byName=c;
+            const cp=String(c.phone||'').replace(/[^0-9]/g,'');
+            if(!byPhone && wantPhone && cp && (cp===wantPhone || cp.slice(-10)===wantPhone.slice(-10))) byPhone=c;
+            if(byName && byPhone) break;
+        }
+        return byName || byPhone || null;
+    }
     confirmPayment = function(){
         // check if customer selected for discount
         if(pendingPayment){
-            // find customer by name if exists
-            let cust=customers.find(c=> pendingPayment.clientName.includes(c.name) || c.name.includes(pendingPayment.clientName) || c.phone===pendingPayment.phone);
-            // if not found try to find by pending customer
             // package bundle replaces hourly game pricing (overage beyond minutes billed hourly)
             if(pendingPayment.package && pendingPayment.package.price>0){
                 let pkg=pendingPayment.package;
@@ -915,7 +631,7 @@
                 let overCost=0;
                 if(overSec>0){
                     try{
-                        let cc=clients[pendingPayment.clientIdx];
+                        let cc=clients.find(function(x){ return x && x.id===pendingPayment.clientId; }) || clients[pendingPayment.clientIdx];
                         let rate=cc? getTariffForClient(cc) : tariffs.single;
                         overCost=Math.round(overSec/3600*rate);
                     }catch(e){}
@@ -924,62 +640,45 @@
                 pendingPayment.total = applyRounding(pendingPayment.baseTotal);
                 showToast('🎁 پکیج '+pkg.name+' اعمال شد','success');
             }
-            // apply rank discount
+            let cust=findCustomerForPayment(pendingPayment);
             if(cust){
+                const baseTotal = pendingPayment.total;
+                // apply rank discount
                 let rank=getRank(cust.totalHours||0);
                 if(rank.discount>0){
                     let disc=Math.round(pendingPayment.total * rank.discount/100);
                     pendingPayment.total -= disc;
-                    showToast('🏆 تخفیف '+rank.name+' '+rank.discount+'% : -'+disc.toLocaleString(),'success');
+                    showToast('🏆 تخفیف '+rank.name+' '+rank.discount+'% : -'+disc.toLocaleString('fa-IR'),'success');
                 }
-                // birthday discount
-                if(cust.birthday && new Date(cust.birthday).getMonth()===new Date().getMonth()){
+                // birthday discount (only on the exact birthday month+day)
+                if(cust.birthday && isBirthdayToday(cust.birthday)){
                     let bDisc=Math.round(pendingPayment.total*0.10);
                     pendingPayment.total -= bDisc;
-                    showToast('🎂 تخفیف تولد 10% : -'+bDisc.toLocaleString(),'success');
+                    showToast('🎂 تخفیف تولد 10% : -'+bDisc.toLocaleString('fa-IR'),'success');
                 }
-                // membership discount: only the extra beyond rank discount
-                try{
-                    if(window.getActiveMembership){
-                        let mem=getActiveMembership(cust.id);
-                        if(mem && (mem.discount||0)>rank.discount){
-                            let mDisc=Math.round(pendingPayment.total*(mem.discount-rank.discount)/100);
-                            pendingPayment.total -= mDisc;
-                            showToast('🎫 تخفیف عضویت '+mem.planName+' : -'+mDisc.toLocaleString(),'success');
-                        }
-                    }
-                }catch(e){}
-                // coupon discount
-                if(pendingPayment.couponCode && window.validateCoupon && window.couponDiscount){
-                    let vr=validateCoupon(pendingPayment.couponCode);
-                    if(vr.ok){
-                        let amt=couponDiscount(vr.coupon, pendingPayment.total);
-                        pendingPayment.total -= amt;
-                        pendingPayment.couponAmount = amt;
-                        if(window.useCoupon){ try{useCoupon(pendingPayment.couponCode);}catch(e){} }
-                        showToast('🏷️ کوپن '+vr.coupon.code+' : -'+amt.toLocaleString(),'success');
-                    } else {
-                        showToast('کوپن نامعتبر شد: '+vr.error,'warning');
-                        pendingPayment.couponCode='';
-                    }
+                // reflect the discount in the payment modal so the number on
+                // screen is the number that will be charged
+                if(pendingPayment.total !== baseTotal){
+                    pendingPayment.discount = baseTotal - pendingPayment.total;
+                    try{
+                        const tEl=document.getElementById('payTotal');
+                        if(tEl) tEl.textContent = pendingPayment.total.toLocaleString('fa-IR') + ' تومان';
+                        const info=document.getElementById('payRoundingInfo');
+                        if(info) info.innerHTML = 'تخفیف اعمال‌شده: <b style="color:#22c55e">-'+(pendingPayment.discount).toLocaleString('fa-IR')+'</b> تومان (مبلغ اصلی: '+baseTotal.toLocaleString('fa-IR')+')';
+                    }catch(_e){}
                 }
-                // VAT tax (0 = off)
-                try{
-                    if(window.taxAmount){
-                        let tx=taxAmount(pendingPayment.total);
-                        if(tx>0){ pendingPayment.total += tx; pendingPayment.tax = tx; }
-                    }
-                }catch(e){}
                 // try wallet payment
-                if(cust.wallet && cust.wallet >= pendingPayment.total){
-                    if(confirm('کیف پول '+cust.name+' موجودی کافی دارد ('+cust.wallet.toLocaleString()+') از کیف پول کسر شود؟')){
+                if(cust.wallet > 0 && cust.wallet >= pendingPayment.total){
+                    if(confirm('کیف پول '+cust.name+' موجودی کافی دارد ('+cust.wallet.toLocaleString('fa-IR')+') از کیف پول کسر شود؟')){
                         cust.wallet -= pendingPayment.total;
                         walletHistory.push({customerId:cust.id, amount:-pendingPayment.total, action:'پرداخت بازی', date:new Date().toISOString()});
+                        pendingPayment.walletPaid = true;
                         showToast('از کیف پول کسر شد','success');
                     }
                 }
                 // update customer stats
-                cust.totalHours = (cust.totalHours||0) + (pendingPayment.duration/3600);
+                const dur=Number(pendingPayment.duration);
+                cust.totalHours = (cust.totalHours||0) + (isFinite(dur) ? dur/3600 : 0);
                 cust.totalSpent = (cust.totalSpent||0) + pendingPayment.total;
                 localStorage.setItem('alvand_customers', JSON.stringify(customers));
                 localStorage.setItem('alvand_walletHistory', JSON.stringify(walletHistory));
@@ -1027,26 +726,73 @@
         currentTheme=id;
         document.body.className = document.body.className.replace(/theme-\w+/g,'').trim();
         document.body.classList.add('theme-'+id);
+        // The page background is painted on the ROOT element (see main.css): with UI
+        // zoom on <body> a body-painted gradient used to stop mid-window and left a
+        // hard seam. The theme class must therefore live on <html> as well, and the
+        // gradient is handed over through --app-bg so CSS keeps owning the paint.
+        try{
+            const root=document.documentElement;
+            root.className = root.className.replace(/theme-\w+/g,'').trim();
+            root.classList.add('theme-'+id);
+            const t=themes.find(x=>x.id===id);
+            if(t && t.bg) root.style.setProperty('--app-bg', t.bg);
+        }catch(e){}
         try{ document.documentElement.style.setProperty('--active-accent', getThemeAccent(id)); }catch(e){}
         localStorage.setItem('alvand_theme', id);
         renderThemeGrid();
+        // let zoom.js re-assert its own inline styles on the same element
+        try{ document.dispatchEvent(new CustomEvent('gamenet:theme', {detail:{theme:id}})); }catch(e){}
     }
     function loadLiteMode(){ try{ if(localStorage.getItem('alvand_lite')==='1') document.body.classList.add('lite'); }catch(e){} }
     function setLiteMode(v){ try{ localStorage.setItem('alvand_lite', v?'1':'0'); }catch(e){} try{ document.body.classList.toggle('lite', !!v); }catch(e){} try{ syncLiteUI(); }catch(e){} }
     function syncLiteUI(){ try{ const t=document.getElementById('liteModeToggle'); if(t) t.checked = localStorage.getItem('alvand_lite')==='1'; }catch(e){} }
-    function getDbSizeText(){
+    /* .length counts UTF-16 code units, not bytes, so a 5 MB database was
+     * reported as 2.5 MB. Count real UTF-8 bytes (key + value) and surface
+     * the quota: localStorage is ~5 MB per origin and once it is full every
+     * saveData() throws, i.e. the app silently stops persisting. */
+    function utf8Len(str){
+        let n=0;
+        for(let i=0;i<str.length;i++){
+            const c=str.charCodeAt(i);
+            if(c<0x80) n+=1; else if(c<0x800) n+=2;
+            else if(c>=0xD800 && c<=0xDBFF && i+1<str.length && str.charCodeAt(i+1)>=0xDC00 && str.charCodeAt(i+1)<=0xDFFF){ n+=4; i++; }
+            else n+=3;
+        }
+        return n;
+    }
+    function getDbSizeBytes(){
         try{
             let bytes=0;
             for(let i=0;i<localStorage.length;i++){
                 const k=localStorage.key(i);
-                if(k && k.indexOf('alvand_')===0) bytes+=((localStorage.getItem(k))||'').length;
+                if(k && k.indexOf('alvand_')===0) bytes+=utf8Len(k)+utf8Len(localStorage.getItem(k)||'');
             }
-            if(bytes>=1048576) return (bytes/1048576).toFixed(2)+' مگابایت';
-            return Math.max(1,Math.round(bytes/1024))+' کیلوبایت';
-        }catch(e){ return '-'; }
+            return bytes;
+        }catch(e){ return 0; }
     }
-    function updateDbSizeText(){ try{ const el=document.getElementById('dbSizeText'); if(el) el.textContent=getDbSizeText(); }catch(e){} }
+    function getDbSizeText(){
+        const bytes=getDbSizeBytes();
+        if(!bytes) return '0 کیلوبایت';
+        if(bytes>=1048576) return (bytes/1048576).toFixed(2)+' مگابایت';
+        return (bytes/1024).toFixed(1)+' کیلوبایت';
+    }
+    function updateDbSizeText(){
+        try{
+            const el=document.getElementById('dbSizeText');
+            if(!el) return;
+            const bytes=getDbSizeBytes();
+            el.textContent=getDbSizeText();
+            el.title=bytes.toLocaleString('fa-IR')+' بایت';
+            const warn = bytes > 4*1024*1024;   // ~4 MB of the usual 5 MB quota
+            el.style.color = warn ? '#ef4444' : '';
+            if(warn && !el.dataset.warned){
+                el.dataset.warned='1';
+                showToast('حجم داده به بسیر است. از بخش هاششت سریس داده استفاده کنید،','error');
+            } else if(!warn){ delete el.dataset.warned; }
+        }catch(e){}
+    }
     function pruneOldSessions(){
+        if(!requirePerm('backup','پاکسازی داده‌ها')) return;
         const daysEl=document.getElementById('pruneDays');
         const days=Math.max(30, (typeof parseFaNumber==='function')? parseFaNumber(daysEl&&daysEl.value,365) : (parseInt(daysEl&&daysEl.value)||365));
         const cutoff=Date.now()-days*86400000;
@@ -1075,7 +821,7 @@
         let grid=document.getElementById('themeGrid');
         if(!grid) return;
         grid.innerHTML=themes.map(t=>`
-            <div class="theme-card ${t.id===currentTheme?'active':''}" style="background:${t.bg};" onclick="applyTheme('${t.id}')">
+            <div class="theme-card ${t.id===currentTheme?'active':''}" style="background:${t.bg};" onclick="applyTheme('${escapeHtml(jsStr(t.id))}')">
                 <span>${escapeHtml(t.name)}</span>
             </div>
         `).join('');
@@ -1084,18 +830,32 @@
         let s1=document.getElementById('alarmSoundSelect'); if(s1) s1.value=alarmSound;
         let s2=document.getElementById('alarmRepeat'); if(s2) s2.value=alarmRepeat.toString();
     }
+    /* the two <input type="month"> pickers start empty, so the user had to
+     * remember the YYYY-MM format with no hint */
+    function initCompareMonths(){
+        try{
+            const a=document.getElementById('compareMonth1'), b=document.getElementById('compareMonth2');
+            if(!a||!b) return;
+            const now=new Date();
+            const key=d=>d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2);
+            if(!a.value) a.value=key(new Date(now.getFullYear(), now.getMonth()-1, 1));
+            if(!b.value) b.value=key(now);
+        }catch(e){}
+    }
     function renderStationHours(){
         let container=document.getElementById('stationHoursList');
         if(!container) return;
-        let todayStr=new Date().toDateString();
+        let todayStr=localDayKey(new Date());
         let stats=clients.map(c=>{
-            let todaySessions=sessions.filter(s=> s.clientId===c.id && new Date(s.date).toDateString()===todayStr);
+            let todaySessions=sessions.filter(s=> s.clientId===c.id && isSameDay(s.date, todayStr));
             let sessHours=todaySessions.reduce((sum,s)=>sum+s.duration/3600,0);
             let currentHours= c.status==='online' ? (c.elapsed||0)/3600 : 0;
             let total=sessHours + currentHours;
             return {name:c.name, hours:total, status:c.status};
         }).sort((a,b)=> b.hours - a.hours);
         let maxHours=Math.max(...stats.map(s=>s.hours), 1);
+        // the bar used a hardcoded 8h divisor, so maxHours was dead code
+        const barScale=Math.max(maxHours, 8);
         let totalAll=stats.reduce((s,x)=>s+x.hours,0);
         let avg=stats.length? totalAll/stats.length:0;
         let most=stats[0];
@@ -1103,7 +863,7 @@
             <div class="glass" style="padding:16px; display:flex; justify-content:space-between; align-items:center; ${st.hours>6?'border-color:rgba(34,197,94,0.3);':''}">
                 <div style="flex:1;">
                     <p style="font-weight:800;">${escapeHtml(st.name)} <span style="font-size:0.7rem; padding:2px 6px; border-radius:50px; background:${st.status==='online'?'#22c55e':st.status==='paused'?'#f59e0b':'#64748b'}; color:white;">${st.status==='online'?'فعال':st.status==='paused'?'متوقف':'آفلاین'}</span></p>
-                    <div class="hours-bar"><div class="hours-fill" style="width:${Math.min(100,(st.hours/8)*100)}%;"></div></div>
+                    <div class="hours-bar"><div class="hours-fill" style="width:${Math.min(100,(st.hours/barScale)*100)}%;"></div></div>
                     <p style="font-size:0.75rem; color:rgba(255,255,255,0.5); margin-top:4px;">${st.hours.toFixed(2)} ساعت امروز</p>
                 </div>
                 <div style="text-align:left; margin-right:12px;">
@@ -1122,14 +882,15 @@
         let cont=document.getElementById('yearlyChartContainer');
         let chart=document.getElementById('yearlyChart');
         let labels=document.getElementById('yearlyLabels');
-        if(!chart||!labels) return;
-        // show if reports section visible or always prepare
+        if(!chart||!labels||!cont) return;   // markup may be absent in an older build
+        const num=v=>(typeof toNum==='function')? toNum(v,0) : (Number(v)||0);
         let now=new Date();
         let months=[];
         for(let i=0;i<12;i++){
             let m=new Date(now.getFullYear(), i, 1);
-            let inc=sessions.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===now.getFullYear() && d.getMonth()===i; }).reduce((sum,s)=>sum+(s.cost||0),0);
-            let buff=sales.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===now.getFullYear() && d.getMonth()===i; }).reduce((sum,s)=>sum+s.price*s.qty,0);
+            let inMonth=d=>d.getFullYear()===now.getFullYear() && d.getMonth()===i;
+            let inc=sessions.filter(s=>inMonth(new Date(s.date))).reduce((sum,s)=>sum+num(s.cost),0);
+            let buff=sales.filter(s=>inMonth(new Date(s.date))).reduce((sum,s)=>sum+num(s.price)*num(s.qty),0);
             inc+=buff;
             months.push({label:m.toLocaleDateString('fa-IR',{month:'short'}), inc});
         }
@@ -1144,8 +905,9 @@
         cont.style.display='block';
     }
     function compareMonths(){
-        let m1=document.getElementById('compareMonth1').value;
-        let m2=document.getElementById('compareMonth2').value;
+        const el1=document.getElementById('compareMonth1'), el2=document.getElementById('compareMonth2');
+        if(!el1||!el2){ showToast('ابزار مقایسه آمادنیست','error'); return; }
+        let m1=el1.value, m2=el2.value;
         if(!m1||!m2){ showToast('دو ماه انتخاب کن','error'); return; }
         let d1=new Date(m1+'-01'); let d2=new Date(m2+'-01');
         let inc1=sessions.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d1.getFullYear() && d.getMonth()===d1.getMonth(); }).reduce((sum,s)=>sum+(s.cost||0),0) + sales.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d1.getFullYear() && d.getMonth()===d1.getMonth(); }).reduce((sum,s)=>sum+s.price*s.qty,0);
@@ -1155,40 +917,41 @@
         let max=Math.max(inc1,inc2,exp1,exp2,1);
         let cont=document.getElementById('compareChartContainer');
         let chart=document.getElementById('compareChart');
+        if(!cont||!chart){ showToast('ابزار نمایش در حال نیست','error'); return; }
         cont.style.display='block';
         chart.innerHTML=`
             <div style="flex:1; text-align:center;">
                 <h4 style="margin-bottom:8px;">${m1}</h4>
                 <div style="background:rgba(99,102,241,0.15); border-radius:12px; padding:12px; margin-bottom:8px;">
                     <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">درآمد</p>
-                    <p style="font-weight:900; color:#22c55e;">${inc1.toLocaleString()}</p>
+                    <p style="font-weight:900; color:#22c55e;">${inc1.toLocaleString('fa-IR')}</p>
                     <div class="hours-bar"><div class="hours-fill" style="width:${(inc1/max)*100}%; background:linear-gradient(90deg, #6366f1, #22c55e);"></div></div>
                 </div>
                 <div style="background:rgba(239,68,68,0.12); border-radius:12px; padding:12px;">
                     <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">هزینه</p>
-                    <p style="font-weight:900; color:#ef4444;">${exp1.toLocaleString()}</p>
+                    <p style="font-weight:900; color:#ef4444;">${exp1.toLocaleString('fa-IR')}</p>
                     <div class="hours-bar"><div class="hours-fill" style="width:${(exp1/max)*100}%; background:linear-gradient(90deg, #ef4444, #f59e0b);"></div></div>
                 </div>
-                <p style="margin-top:8px; font-weight:800; color:${inc1-exp1>=0?'#22c55e':'#ef4444'};">سود: ${(inc1-exp1).toLocaleString()}</p>
+                <p style="margin-top:8px; font-weight:800; color:${inc1-exp1>=0?'#22c55e':'#ef4444'};">سود: ${(inc1-exp1).toLocaleString('fa-IR')}</p>
             </div>
             <div style="flex:1; text-align:center;">
                 <h4 style="margin-bottom:8px;">${m2}</h4>
                 <div style="background:rgba(99,102,241,0.15); border-radius:12px; padding:12px; margin-bottom:8px;">
                     <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">درآمد</p>
-                    <p style="font-weight:900; color:#22c55e;">${inc2.toLocaleString()}</p>
+                    <p style="font-weight:900; color:#22c55e;">${inc2.toLocaleString('fa-IR')}</p>
                     <div class="hours-bar"><div class="hours-fill" style="width:${(inc2/max)*100}%; background:linear-gradient(90deg, #6366f1, #22c55e);"></div></div>
                 </div>
                 <div style="background:rgba(239,68,68,0.12); border-radius:12px; padding:12px;">
                     <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">هزینه</p>
-                    <p style="font-weight:900; color:#ef4444;">${exp2.toLocaleString()}</p>
+                    <p style="font-weight:900; color:#ef4444;">${exp2.toLocaleString('fa-IR')}</p>
                     <div class="hours-bar"><div class="hours-fill" style="width:${(exp2/max)*100}%; background:linear-gradient(90deg, #ef4444, #f59e0b);"></div></div>
                 </div>
-                <p style="margin-top:8px; font-weight:800; color:${inc2-exp2>=0?'#22c55e':'#ef4444'};">سود: ${(inc2-exp2).toLocaleString()}</p>
+                <p style="margin-top:8px; font-weight:800; color:${inc2-exp2>=0?'#22c55e':'#ef4444'};">سود: ${(inc2-exp2).toLocaleString('fa-IR')}</p>
             </div>
         `;
         // also show diff
         let diff=inc2-inc1;
-        showToast((diff>=0?'📈 رشد ':'📉 افت ')+Math.abs(diff).toLocaleString()+' تومان','success');
+        showToast((diff>=0?'📈 رشد ':'📉 افت ')+Math.abs(diff).toLocaleString('fa-IR')+' تومان','success');
     }
     // Override generateReport to handle yearly
     let origGenerateReport = generateReport;
@@ -1204,7 +967,7 @@
             let html=`<h3 style="text-align:center; margin-bottom:16px;">گزارش سالانه ${now.getFullYear()}</h3>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
                 <div class="glass" style="padding:16px; text-align:center;"><p style="color:rgba(255,255,255,0.5);">تعداد سشن</p><p style="font-size:1.5rem; font-weight:900; color:#818cf8;">${filtered.length}</p></div>
-                <div class="glass" style="padding:16px; text-align:center;"><p style="color:rgba(255,255,255,0.5);">درآمد کل سال</p><p style="font-size:1.5rem; font-weight:900; color:#22c55e;">${total.toLocaleString()} تومان</p></div>
+                <div class="glass" style="padding:16px; text-align:center;"><p style="color:rgba(255,255,255,0.5);">درآمد کل سال</p><p style="font-size:1.5rem; font-weight:900; color:#22c55e;">${total.toLocaleString('fa-IR')} تومان</p></div>
             </div>`;
             document.getElementById('reportContent').innerHTML=html;
             renderYearlyChart();
@@ -1215,26 +978,22 @@
 
     
     // ========== LICENSE SYSTEM ==========
-    function licSecret(){ return ['ALV','AND','-20','26'].join('') + '-PRO'; }
-    function licHash(str){
-        let h1=0xdeadbeef, h2=0x41c6ce57;
-        for(let i=0;i<str.length;i++){ let ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
-        h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
-        h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
-        return (h2>>>0).toString(36).toUpperCase() + (h1>>>0).toString(36).toUpperCase();
-    }
+    // The old forgeable scheme (licSecret/licHash/makeLicenseKey) is GONE from
+    // the app: shipping a symmetric secret plus its hash function let anyone
+    // mint licenses. Issuance lives only in the seller tool; the app verifies
+    // RSA signatures (see src/js/license.js).
     function licPrice(cap){
         cap=parseInt(cap)||3;
         if(cap<=3) return 1000000;
         return 1000000 + (cap-3)*200000;
     }
     function updateGenPrice(){
-        let cap=parseInt(document.getElementById('genCapacity').value)||3;
-        document.getElementById('genPrice').textContent=licPrice(cap).toLocaleString()+' تومان';
+        let cap=parseFaNumber(document.getElementById('genCapacity').value, 3)||3;
+        document.getElementById('genPrice').textContent=licPrice(cap).toLocaleString('fa-IR')+' تومان';
     }
-    function makeLicenseKey(capacity, months){
-        // DISABLED FOR SECURITY: licenses are issued ONLY by the seller tool (license-tools/).
-        // The app verifies RSA signatures; it must never mint keys (old scheme was forgeable).
+    /** Kept only so the old (hidden) issuance panel can never mint a key even if
+     *  someone re-enables it in devtools. Always returns null. */
+    function makeLicenseKey(){
         try { showToast('ساخت لایسنس فقط با ابزار فروشنده انجام می‌شود','error'); } catch(_e){}
         return null;
     }
@@ -1258,22 +1017,35 @@
         }
         return id;
     }
+    /* Network probes. The old version leaked its abort timers and reused the
+     * already-aborted controller for the fallback request, so once the first
+     * fetch timed out the second one failed instantly and checkInternet()
+     * always answered "offline" (which then skipped the device registration and
+     * made the update check useless). Each request now gets its own controller
+     * and the timer is always cleared. */
+    async function fetchWithTimeout(url, ms, opts){
+        const ctl=new AbortController();
+        const t=setTimeout(function(){ try{ ctl.abort(); }catch(e){} }, ms||6000);
+        try{
+            const o=Object.assign({}, opts||{});
+            o.signal=ctl.signal;
+            return await fetch(url, o);
+        } finally { clearTimeout(t); }
+    }
     async function getIP(){
         try{
-            let ctl=new AbortController(); setTimeout(()=>ctl.abort(),6000);
-            let r=await fetch('https://api.ipify.org?format=json',{signal:ctl.signal});
-            let j=await r.json();
-            return j.ip||'unknown';
+            const r=await fetchWithTimeout('https://api.ipify.org?format=json', 6000);
+            const j=await r.json();
+            return (j && j.ip) ? j.ip : 'unknown';
         }catch(e){ return 'unknown'; }
     }
     async function checkInternet(){
-        if(!navigator.onLine) return false;
+        if(navigator && navigator.onLine===false) return false;
         try{
-            let ctl=new AbortController(); setTimeout(()=>ctl.abort(),5000);
-            await fetch('https://api.ipify.org?format=json',{signal:ctl.signal, mode:'cors'});
+            await fetchWithTimeout('https://api.ipify.org?format=json', 5000, {mode:'cors'});
             return true;
         }catch(e){
-            try{ await fetch('https://alvandcode.github.io/',{mode:'no-cors', signal:ctl.signal}); return true; }catch(e2){ return false; }
+            try{ await fetchWithTimeout('https://alvandcode.github.io/', 5000, {mode:'no-cors'}); return true; }catch(e2){ return false; }
         }
     }
     async function initLicenseGate(){
@@ -1370,7 +1142,7 @@
         localDevs.forEach(d=>{ if(devKey(d)) known.add(devKey(d)); });
         const already=serverDevs.concat(localDevs).some(d=>devKey(d)===String(fp));
         if(!already){ known.add(String(fp)); }
-        if(!already && known.size>p.maxDev){ licCapacityError(); return; }
+        if(!already && known.size>=p.maxDev){ licCapacityError(); return; }
         // revoked on server?
         try { const meta=await fbLoadLicenseMeta(p.id); if(meta&&meta.revoked){ if(err){ err.textContent='این لایسنس توسط فروشنده باطل شده.'; err.style.display='block'; } return; } } catch(_e){}
         try{ ip=await getIP(); }catch(_e){}
@@ -1425,6 +1197,7 @@
         }catch(_e){}
     }
     function deactivateLicense(){
+        if(!requirePerm('license','غیرفعال‌سازی لایسنس')) return;
         if(!confirm('لایسنس این دستگاه غیرفعال شود؟ (برای آزادسازی کامل ظرفیت، فروشنده هم باید در پنل تأیید کند)')) return;
         try{
             const st=window.__licState;
@@ -1450,8 +1223,7 @@
         return;
     }
     function copyLastLicense(){
-        if(!lastGeneratedLicense){ showToast('اول بساز','error'); return; }
-        navigator.clipboard.writeText(lastGeneratedLicense).then(()=>showToast('کپی شد','success'));
+        showToast('ساخت لایسنس در برنامه انجام نمی‌شود','error');
     }
     function renderLicenseSection(){
         let info=document.getElementById('activeLicenseInfo');
@@ -1465,7 +1237,7 @@
                 const dl=window.LicVerify? window.LicVerify.daysLeft(p) : null;
                 const dlTxt=(dl===null)? '' : (' | ⏳ '+dl+' روز مانده');
                 const actDate=activeLicense.activatedAt? new Date(activeLicense.activatedAt).toLocaleDateString('fa-IR') : '-';
-                info.innerHTML=`🔑 <span style="font-family:monospace; direction:ltr;">${escapeHtml(p.id)}</span><br>👤 ${escapeHtml(p.customer||'-')} | 📞 ${escapeHtml(p.phone||'-')}<br>👥 ظرفیت: <b>${used} از ${p.maxDev} دستگاه</b> | 📅 ${expTxt}${dlTxt}<br>🚀 فعال‌سازی: <b>${actDate}</b>`;
+                info.innerHTML=`🔑 <span style="font-family:monospace; direction:ltr;">${escapeHtml(p.id)}</span><br>👤 ${escapeHtml(p.customer||'-')} | 📞 ${escapeHtml(p.phone||'-')}<br>👥 فعال‌سازی: <b>${used} از ${p.maxDev} دستگاه</b> | 🖥️ دستگاه: <b>${clients.length} از ${p.cap}</b> | 📅 ${expTxt}${dlTxt}<br>🚀 فعال‌سازی: <b>${actDate}</b>`;
                 const fill=document.getElementById('licenseSlotFill'); if(fill) fill.style.width=Math.min(100,(used/Math.max(1,p.maxDev))*100)+'%';
                 const stx=document.getElementById('licenseSlotText'); if(stx) stx.textContent=`استفاده شده: ${used} از ${p.maxDev}`;
                 const adl=document.getElementById('activeDevicesList'); if(adl) adl.innerHTML=(rec?.devices||[]).map(d=>{ const f=String((d&&(d.fp||d.id))||''); return `<span class="device-pill">🖥️ ${escapeHtml(f.slice(0,12))}… | ${escapeHtml(d.ip||'')}</span>`; }).join('');
@@ -1487,8 +1259,8 @@
                     <div><p style="font-family:monospace; direction:ltr; font-weight:800;">${escapeHtml(l.keyId)}</p>
                     <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">${escapeHtml(l.customer||'-')} | 📞 ${escapeHtml(l.phone||'-')} | ${l.capacity} کاربره | ${(l.devices||[]).length}/${l.maxDev||l.capacity} دستگاه</p></div>
                     <div style="display:flex; gap:6px;">
-                        <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="copyLicense(${realIdx})">📋</button>
-                        <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteLicense(${realIdx})">🗑️</button>
+                        <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="copyLicense(${numId(realIdx)})">📋</button>
+                        <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteLicense(${numId(realIdx)})">🗑️</button>
                     </div>
                 </div>`;
             }).join('') + legacy.map(()=>{
@@ -1513,33 +1285,12 @@
 
     
     // ========== Firebase License Sync ==========
-    async function fbSaveLicense(rec){
-        if(!firebaseReady) return;
-        try{
-            await firebase.database().ref('licenses/'+firebaseKey(rec.key)).set({
-                capacity: rec.capacity, months: rec.months, expiry: rec.expiry||null,
-                price: rec.price||licPrice(rec.capacity), customer: rec.customer||'', phone: rec.phone||'',
-                createdAt: rec.createdAt, devices: arrayToObj(rec.devices)
-            });
-        }catch(e){ console.log('fb save fail', e); }
-    }
-    function arrayToObj(arr){
-        let o={}; (arr||[]).forEach(d=>{ o[d.id.replace(/[^A-Za-z0-9]/g,'_')]={id:d.id, ip:d.ip, date:d.date}; });
-        return o;
-    }
-    function objToArray(o){
-        if(!o) return [];
-        return Object.values(o);
-    }
-    async function fbLoadLicense(key){
-        if(!firebaseReady) return null;
-        try{
-            let snap=await firebase.database().ref('licenses/'+firebaseKey(key)).once('value');
-            let v=snap.val();
-            if(!v) return null;
-            return {key, capacity:v.capacity, months:v.months, expiry:v.expiry, price:v.price, customer:v.customer, phone:v.phone||'', createdAt:v.createdAt, devices:objToArray(v.devices)};
-        }catch(e){ console.log('fb load fail', e); return null; }
-    }
+    /* fbSaveLicense / fbLoadLicense / arrayToObj / objToArray are intentionally
+     * absent: the client is not allowed to write license records any more (see
+     * database.rules.json) and the only live sync is the activation ping below.
+     * The old pair keyed records by rec.key (the raw token) while the read path
+     * used the license id, so a revoke written to one key was invisible in the
+     * other. */
     // ========== Signed-license server sync (audit + revoke + capacity) ==========
     // Clients may only CREATE their own activation ping (see database.rules.json).
     // Full license records are NEVER written by clients anymore (old flaw).
@@ -1570,14 +1321,90 @@
 
     
     // ========== Update System v1.8 ==========
-    const APP_VERSION = "1.8.1";
+    // Single source of truth: config.js sets window.APP_VERSION (and the build
+    // pipeline keeps it in sync with package.json). This used to be a second
+    // hardcoded copy, so bumping one place left the update check and the
+    // "current version" label stuck on the old number.
+    const APP_VERSION = (typeof window.APP_VERSION === 'string' && window.APP_VERSION) ? window.APP_VERSION : '1.8.1';
     let latestRelease = null;
     function toggleSettingsMenu(el){
-        let sub=document.getElementById('settingsSubmenu');
-        let arrow=document.getElementById('settingsArrow');
-        let isOpen=sub.classList.toggle('open');
-        if(arrow) arrow.textContent = isOpen ? '▼' : '◀';
+        // The settings block is a normal sidebar group now: same open/close logic,
+        // kept under its own function name because the nav markup calls it.
+        // Closed -> just open it; already open -> jump to the settings page.
+        const g=document.querySelector('.nav-group[data-group="settings"]');
+        if(g && !g.classList.contains('open')){ setNavGroupOpen('settings', true); return; }
         showSection('settings', el||document.getElementById('navSettings'));
+    }
+    // ---------- Sidebar groups ----------
+    // The sidebar is one flat list of ~28 entries; related features (money,
+    // customers, tools...) were impossible to tell apart. Items are grouped and
+    // collapsible, the open/closed state is remembered per install.
+    const NAV_GROUP_KEY = 'alvand_navGroups';
+    function loadNavGroupState(){
+        try{ return safeParse(localStorage.getItem(NAV_GROUP_KEY)||'null') || {}; }catch(e){ return {}; }
+    }
+    function saveNavGroupState(){
+        const open={};
+        document.querySelectorAll('.nav-group').forEach(g=>{
+            const k=g.getAttribute('data-group'); if(!k) return;
+            if(g.classList.contains('open')) open[k]=1;
+        });
+        try{ localStorage.setItem(NAV_GROUP_KEY, JSON.stringify(open)); }catch(e){}
+    }
+    function setNavGroupOpen(id, open, persist){
+        const g=document.querySelector('.nav-group[data-group="'+id+'"]');
+        if(!g) return false;
+        g.classList.toggle('open', !!open);
+        if(persist!==false) saveNavGroupState();
+        return true;
+    }
+    function toggleNavGroup(id){
+        const g=document.querySelector('.nav-group[data-group="'+id+'"]');
+        if(!g) return;
+        setNavGroupOpen(id, !g.classList.contains('open'));
+    }
+    function restoreNavGroups(){
+        const state=loadNavGroupState();
+        // first ever run: only the daily-ops group starts open
+        const known=Object.keys(state).length>0;
+        document.querySelectorAll('.nav-group').forEach(g=>{
+            const k=g.getAttribute('data-group'); if(!k) return;
+            setNavGroupOpen(k, known ? !!state[k] : (k==='ops'), false);
+        });
+        syncNavGroupBadges();
+        saveNavGroupState();
+    }
+    /** Open the group that owns <section> and mark the group as "has active item". */
+    function expandNavGroupForSection(section){
+        if(!section) return;
+        document.querySelectorAll('.nav-group').forEach(g=>g.classList.remove('has-active'));
+        // matches both .nav-item entries and the .settings-sub-item buttons
+        const item=document.querySelector('[onclick*="showSection(\'' + section + '\'"]');
+        if(!item) return;
+        const group=item.closest('.nav-group');
+        if(!group) return;
+        if(!group.classList.contains('open')) setNavGroupOpen(group.getAttribute('data-group'), true, false);
+        group.classList.add('has-active');
+    }
+    /** Show a red dot on group headers that own a section with pending items. */
+    function syncNavGroupBadges(){
+        document.querySelectorAll('.nav-group').forEach(g=>{
+            let head=g.querySelector('.nav-group-head'); if(!head) return;
+            let cnt=head.querySelector('.nav-group-count');
+            let pending=0;
+            g.querySelectorAll('.nav-item').forEach(it=>{
+                const b=it.querySelector('span[id$="Badge"]');
+                if(b && b.style.display!=='none' && b.textContent && b.textContent!=='0') pending++;
+            });
+            if(pending>0){
+                if(!cnt){ cnt=document.createElement('span'); cnt.className='nav-group-count'; head.appendChild(cnt); }
+                cnt.textContent=String(pending);
+                head.style.color='#fca5a5';
+            } else {
+                if(cnt) cnt.remove();
+                head.style.color='';
+            }
+        });
     }
     function parseVer(v){
         v=String(v||'').replace(/^v/i,'').split('.').map(x=>parseInt(x)||0);
@@ -1626,9 +1453,12 @@
             return;
         }
         try{
-            let r=await fetch('https://api.github.com/repos/Alvandcode/gamenet-windows-pro/releases/latest');
+            /* a hung GitHub request left the button spinning forever, and every
+             * field of the response is remote-controlled data */
+            let r=await fetchWithTimeout('https://api.github.com/repos/Alvandcode/gamenet-windows-pro/releases/latest', 10000, {headers:{'Accept':'application/vnd.github+json'}});
             if(!r.ok) throw new Error('http '+r.status);
             let j=await r.json();
+            if(!j || typeof j.tag_name!=='string') throw new Error('bad payload');
             latestRelease=j;
             let relVer=releaseAppVersion(j) || String(j.tag_name||'').replace(/^v/i,'');
             window._relVer=relVer;
@@ -1640,8 +1470,10 @@
                 if(manual) showToast('به‌روزی ✅','success');
             }
         }catch(e){
+            // 403 = unauthenticated GitHub rate limit, not a network problem
+            const rate=/403/.test(String(e && e.message));
             updateUpdateUI('error');
-            if(manual) showToast('خطا در بررسی آپدیت','error');
+            if(manual) showToast(rate ? 'تلارد متند زیاده شده، کمبی بعدً تحدید کن' : 'خطا در بررسی آپدیت', rate?'warning':'error');
         }
     }
     function updateUpdateUI(state){
@@ -1653,12 +1485,14 @@
         let notes=document.getElementById('updateNotes');
         if(!st||!btn) return;
         if(state==='checking'){ st.textContent='⏳ در حال بررسی...'; st.style.color='#f59e0b'; btn.disabled=true; }
-        else if(state==='offline'){ st.textContent='⛔ آفلاین - برای بررسی وصل شو'; st.style.color='#ef4444'; btn.disabled=true; }
-        else if(state==='error'){ st.textContent='⚠️ خطا در بررسی - بعدا دوباره امتحان کن'; st.style.color='#ef4444'; btn.disabled=true; }
+        else if(state==='offline'){ st.textContent='⛔ آفلاین - برای بررسی وصل شو'; st.style.color='#ef4444'; btn.disabled=false; }
+        else if(state==='error'){ st.textContent='⚠️ خطا در بررسی - بعدا دوباره امتحان کن'; st.style.color='#ef4444'; btn.disabled=false; }
         else if(state==='latest'){ st.textContent='✅ به‌روزی - نسخه '+APP_VERSION; st.style.color='#22c55e'; btn.disabled=true; if(notes) notes.style.display='none'; }
         else if(state==='available'){
-            let tag=window._relVer || (latestRelease? latestRelease.tag_name : '');
-            st.innerHTML='🎉 نسخه جدید <b>'+tag+'</b> منتشر شده!'; st.style.color='#22c55e'; btn.disabled=false;
+            /* tag_name comes from the GitHub API: remote data must never be
+             * injected with innerHTML */
+            let tag=String(window._relVer || (latestRelease? latestRelease.tag_name : '')).slice(0,40);
+            st.textContent='🎉 نسخه جدید '+tag+' منتشر شده!'; st.style.color='#22c55e'; btn.disabled=false;
             if(notes && latestRelease && latestRelease.body){ let cn=cleanNotes(latestRelease.body); notes.textContent=cn; notes.style.display=cn?'block':'none'; }
         }
         else { st.textContent='هنوز بررسی نشده - برای بررسی به اینترنت وصل شو'; st.style.color='rgba(255,255,255,0.5)'; btn.disabled=true; }
@@ -2012,14 +1846,51 @@
         "ارسالی ثبت نشده": {en:"No sends logged", ar:"لا توجد إرسالات مسجلة"}
     };
     const I18N_KEYS = Object.keys(I18N).sort((a,b)=>b.length-a.length);
-    const _i18nOrig = new WeakMap();
+    /* Translation works by remembering the Persian source text of every text
+     * node and swapping it back and forth. Two problems with the old version:
+     *  - a node whose text is set later (a live timer, a price, a client name)
+     *    kept the FIRST value it ever had, so switching back to Persian restored
+     *    a stale snapshot and wiped the live numbers;
+     *  - the MutationObserver walked the whole document on every change, and the
+     *    app mutates the DOM once per second, i.e. a full tree walk per second.
+     * A node is now only treated as "translatable" when its current text equals
+     * the last text we produced for it; anything else is new content and is
+     * re-captured. */
+    const _i18nOrig = new WeakMap();   // node -> last text WE wrote
+    const _i18nSource = new WeakMap(); // node -> its Persian source text
+    const _i18nTracked = new WeakSet();
+    function i18nTranslateText(src, lang){
+        if(lang==='fa' || !src) return src;
+        let txt = src;
+        for(const k of I18N_KEYS){
+            if(txt.indexOf(k) < 0) continue;
+            const rep = I18N[k][lang];
+            if(rep) txt = txt.split(k).join(rep);
+        }
+        return txt;
+    }
     function translateNodeText(node){
-        let orig = _i18nOrig.get(node);
-        if(orig === undefined){ orig = node.nodeValue; _i18nOrig.set(node, orig); }
-        if(appLang==='fa'){ if(node.nodeValue!==orig) node.nodeValue=orig; return; }
-        let txt = orig;
-        for(let k of I18N_KEYS){ if(txt.includes(k)){ txt = txt.split(k).join(I18N[k][appLang]||k); } }
-        if(txt!==node.nodeValue) node.nodeValue=txt;
+        if(!node || !node.nodeValue) return;
+        const cur = node.nodeValue;
+        const last = _i18nOrig.get(node);
+        let src;
+        if(last === undefined || cur === last){
+            // untouched by us, or already what we wrote: translate from source
+            src = _i18nSource.get(node);
+            if(src === undefined) src = cur;
+        } else {
+            // the app just wrote new content - that is the new source text
+            src = cur;
+        }
+        _i18nSource.set(node, src);
+        _i18nTracked.add(node);
+        const out = i18nTranslateText(src, appLang);
+        if(out !== cur){
+            _i18nOrig.set(node, out);
+            node.nodeValue = out;
+        } else {
+            _i18nOrig.set(node, out);
+        }
     }
     function translateRoot(root){
         try{
@@ -2034,11 +1905,11 @@
                 if(!n.nodeValue || !n.nodeValue.trim()) continue;
                 nodes.push(n);
             }
-            nodes.forEach(translateNodeText);
-            root.querySelectorAll && root.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(el=>{
+            for(let i=0;i<nodes.length;i++) translateNodeText(nodes[i]);
+            const phs = root.querySelectorAll ? root.querySelectorAll('input[placeholder], textarea[placeholder]') : [];
+            phs.forEach(el=>{
                 if(el._phOrig===undefined) el._phOrig=el.getAttribute('placeholder')||'';
-                let ph=el._phOrig;
-                if(appLang!=='fa'){ for(let k of I18N_KEYS){ if(ph.includes(k)){ ph=ph.split(k).join(I18N[k][appLang]||k); } } }
+                const ph=i18nTranslateText(el._phOrig, appLang);
                 if(el.getAttribute('placeholder')!==ph) el.setAttribute('placeholder', ph);
             });
         }catch(e){}
@@ -2055,9 +1926,29 @@
         if(cur) cur.classList.add('active');
         if(!window._i18nObs){
             try{
-                window._i18nObs=new MutationObserver(()=>{
+                // Only newly ADDED subtrees need translating. Text changes inside
+                // an existing node are already Persian (the app writes Persian),
+                // so re-walking the whole document on every tick is pure waste.
+                let pending = [];
+                let flush = () => {
+                    _i18nTimer=null;
+                    const list=pending.splice(0, pending.length);
+                    for(let i=0;i<list.length;i++){
+                        const n=list[i];
+                        if(n && n.isConnected !== false) translateRoot(n);
+                    }
+                };
+                window._i18nObs=new MutationObserver((records)=>{
+                    for(const r of records){
+                        for(let i=0;i<r.addedNodes.length;i++){
+                            const n=r.addedNodes[i];
+                            if(n.nodeType===1) pending.push(n);
+                            else if(n.nodeType===3 && n.parentElement) pending.push(n.parentElement);
+                        }
+                    }
+                    if(!pending.length) return;
                     clearTimeout(_i18nTimer);
-                    _i18nTimer=setTimeout(()=>translateRoot(document.body), 250);
+                    _i18nTimer=setTimeout(flush, 250);
                 });
                 window._i18nObs.observe(document.body, {childList:true, subtree:true});
             }catch(e){}
@@ -2073,10 +1964,42 @@
     
     // NOTE: license issuance lives ONLY in license-tools/ (seller side).
     // There is intentionally no owner PIN / in-app minting in the customer app.
-    function licCapacityError(){
+    function licCapacityError(what){
         let err=document.getElementById('licenseError');
-        let msg='⛔ این لایسنس به حد نصاب فعال‌سازی رسیده است.<br>برای خرید لایسنس جدید با سازنده تماس بگیرید.<br><a href="https://github.com/Alvandcode/gamenet-windows-pro" target="_blank" style="color:#818cf8; text-decoration:underline;">🔗 تماس با سازنده در گیت‌هاب</a>';
+        let head = what==='stations'
+            ? '⛔ تعداد دستگاه‌های این لایسنس پر شده است.'
+            : '⛔ این لایسنس به حد نصاب فعال‌سازی رسیده است.';
+        let msg=head+'<br>برای خرید لایسنس جدید با سازنده تماس بگیرید.<br><a href="https://github.com/Alvandcode/gamenet-windows-pro" target="_blank" style="color:#818cf8; text-decoration:underline;">🔗 تماس با سازنده در گیت‌هاب</a>';
         if(err){ err.innerHTML=msg; err.style.display='block'; }
+    }
+
+    /** Paid station capacity. `cap` is what the customer actually bought
+     *  (licPrice() prices it), and it was never enforced anywhere: any license
+     *  allowed an unlimited number of clients. Checked before adding a station
+     *  and shown in the license panel. */
+    function licenseStationCap(){
+        const st=window.__licState;
+        if(!st || st.status!=='valid' || !st.payload) return null;   // local/dev mode
+        const cap=Number(st.payload.cap);
+        if(!isFinite(cap) || cap<=0) return null;
+        return Math.floor(cap);
+    }
+    function licenseStationsLeft(){
+        const cap=licenseStationCap();
+        if(cap===null) return null;
+        return Math.max(0, cap - clients.length);
+    }
+    function enforceStationCapacity(){
+        const cap=licenseStationCap();
+        if(cap===null) return true;
+        if(clients.length < cap) return true;
+        showToast('⛔ ظرفیت لایسنس پر است ('+clients.length+' از '+cap+' دستگاه)','error');
+        try{
+            showSection('license');
+            renderLicenseSection();
+        }catch(e){}
+        licCapacityError('stations');
+        return false;
     }
 
     
@@ -2093,8 +2016,8 @@
                 </div>
                 <label style="font-size:0.75rem; color:rgba(255,255,255,0.6);">تومان / ساعت (0 = تعرفه تک/دو نفره)</label>
                 <div style="display:flex; gap:6px; margin-top:6px;">
-                    <input type="number" value="${t.price}" onchange="saveStationTypePrice('${t.id}', this.value)" style="text-align:center; font-weight:800;">
-                    <button class="glass-btn glass-btn-danger" style="padding:8px 10px; font-size:0.75rem;" onclick="deleteStationType('${t.id}')">🗑️</button>
+                    <input type="number" value="${escapeHtml(String(t.price))}" onchange="saveStationTypePrice('${escapeHtml(jsStr(t.id))}', this.value)" style="text-align:center; font-weight:800;">
+                    <button class="glass-btn glass-btn-danger" style="padding:8px 10px; font-size:0.75rem;" onclick="deleteStationType('${escapeHtml(jsStr(t.id))}')">🗑️</button>
                 </div>
             </div>`;
         }).join('');
@@ -2107,6 +2030,7 @@
         showToast('تعرفه '+t.name+' ذخیره شد','success');
     }
     function addStationType(){
+        if(!requirePerm('tariffs','نوع دستگاه')) return;
         let name=document.getElementById('newTypeName').value.trim();
         let price=(typeof parseFaNumber==='function')? parseFaNumber(document.getElementById('newTypePrice').value,0) : (parseInt(document.getElementById('newTypePrice').value)||0);
         if(!name){ showToast('نام نوع را وارد کن','error'); return; }
@@ -2131,6 +2055,7 @@
         if(ok && cb){ try{cb();}catch(e){ showToast('خطا در انجام عملیات','error'); } }
     }
     function deleteStationType(id){
+        if(!requirePerm('tariffs','حذف نوع دستگاه')) return;
         let used=clients.filter(c=>c.stationType===id).length;
         if(used>0){ showToast('این نوع '+used+' دستگاه دارد، اول نوع آنها را عوض کن','error'); return; }
         askConfirm('حذف شود؟', function(){
@@ -2159,12 +2084,16 @@
     function fillClientTypeSelect(){
         let sel=document.getElementById('newClientType');
         if(!sel) return;
-        sel.innerHTML=stationTypes.map(t=>`<option value="${t.id}">${t.icon} ${escapeHtml(t.name)} - ${t.price>0? t.price.toLocaleString()+' تومان' : 'تعرفه پایه'}</option>`).join('');
+        /* the per-hour price lives on the station type (that is the "tariff
+         * simplification" the product went through): getTariffForClient()
+         * prefers stationType.price and only falls back to tariffs.single /
+         * tariffs.double when a type has no price of its own. */
+        sel.innerHTML=stationTypes.map(t=>`<option value="${t.id}">${t.icon} ${escapeHtml(t.name)} - ${t.price>0? t.price.toLocaleString('fa-IR')+' تومان' : 'تعرفه پایه'}</option>`).join('');
     }
     function renderTypeFilter(){
         let bar=document.getElementById('typeFilterBar');
         if(!bar) return;
-        let btn=(id,label)=>`<button class="glass-btn ${clientTypeFilter===id?'glass-btn-success':''}" style="padding:8px 14px; font-size:0.8rem;" onclick="filterClientsByType('${id}')">${label}</button>`;
+        let btn=(id,label)=>`<button class="glass-btn ${clientTypeFilter===id?'glass-btn-success':''}" style="padding:8px 14px; font-size:0.8rem;" onclick="filterClientsByType('${escapeHtml(jsStr(id))}')">${label}</button>`;
         bar.innerHTML=btn('','همه ('+clients.length+')')+stationTypes.map(t=>{
             let n=clients.filter(c=>(c.stationType||'none')===t.id).length;
             return btn(t.id, t.icon+' '+t.name+' ('+n+')');
@@ -2195,7 +2124,7 @@
         box.innerHTML='<h3 style="margin-bottom:12px;">🖥️ درآمد بر اساس نوع دستگاه</h3><div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap:12px;">'+keys.map(k=>`
             <div class="glass" style="padding:16px; text-align:center;">
                 <p style="color:rgba(255,255,255,0.6); font-size:0.85rem; margin-bottom:6px;">${k}</p>
-                <p style="font-weight:900; color:#22c55e;">${map[k].total.toLocaleString()} تومان</p>
+                <p style="font-weight:900; color:#22c55e;">${map[k].total.toLocaleString('fa-IR')} تومان</p>
                 <p style="font-size:0.75rem; color:rgba(255,255,255,0.4);">${map[k].count} سشن</p>
             </div>`).join('')+'</div>';
     }
@@ -2230,12 +2159,30 @@
         try{ await agentFetch(c.ip, '/shutdown?sec=10'); showToast('⏻ دستور خاموش فرستاده شد','success'); }
         catch(e){ c.online=false; saveData(); renderClients(); showToast('ایجنت جواب نداد','error'); }
     }
+    /* One dead machine used to stall the whole sweep: the loop awaited
+     * agentFetch() sequentially, so every unreachable PC blocked the status
+     * refresh for a full timeout, one after another. Poll in parallel with a
+     * bounded pool and treat any failure as "offline". */
+    const AGENT_POLL_CONCURRENCY=6;
+    async function agentPollOne(c){
+        if(!c.ip) return false;
+        try{
+            const s=await agentFetch(c.ip, '/status');
+            const on=!!(s&&s.ok);
+            if(c.online!==on){ c.online=on; return true; }
+        }catch(e){
+            if(c.online!==false){ c.online=false; return true; }
+        }
+        return false;
+    }
     async function agentPoll(){
         let changed=false;
-        for(let c of clients){
-            if(!c.ip) continue;
-            try{ const s=await agentFetch(c.ip, '/status'); const on=!!(s&&s.ok); if(c.online!==on){ c.online=on; changed=true; } }
-            catch(e){ if(c.online!==false){ c.online=false; changed=true; } }
+        const targets=clients.filter(c=>!!c.ip);
+        if(!targets.length) return;
+        for(let i=0;i<targets.length;i+=AGENT_POLL_CONCURRENCY){
+            const batch=targets.slice(i, i+AGENT_POLL_CONCURRENCY);
+            const results=await Promise.allSettled(batch.map(agentPollOne));
+            results.forEach(r=>{ if(r.status==='fulfilled' && r.value) changed=true; });
         }
         if(changed){ saveData(); renderClients(); }
     }
@@ -2258,7 +2205,11 @@
         loadTariffs();
         loadRoundingMode();
         try{ loadLiteMode(); }catch(e){}
+        try{ initCompareMonths(); }catch(e){}
+        try{ renderYearlyChart(); }catch(e){}
         applyTheme(currentTheme);
+        try{ restoreNavGroups(); }catch(e){}
+        expandNavGroupForSection('dashboard');
         updateReservationBadge();
         setInterval(checkAutoBackup, 60000);
         setInterval(updateActiveTariffDisplay, 60000);
@@ -2325,15 +2276,75 @@
         let t=document.getElementById('currentTime'); if(t) t.textContent = now.toLocaleTimeString('fa-IR');
     }
 
+    /* Permission map. Sections marked `true` are always reachable; every other
+       section is gated on a permission checkbox. The old code did
+       `if(!key) return true`, so any section missing from this map (membership,
+       events, phonebook, tools, insights, shifts, branches, employees,
+       notifications, gameHistory, activityLog, waiting, advancedSearch,
+       busyHours...) was wide open to any operator. Unknown sections now fail
+       CLOSED, and the list below covers every section that exists in index.html. */
+    const PERM_MAP = {
+        dashboard: true,
+        clients: 'clients',
+        buffet: 'buffet',
+        reservations: 'reservations',
+        reports: 'reports',
+        income: 'income',
+        expenses: 'expenses',
+        customers: 'customers',
+        backup: 'backup',
+        operators: 'operators',
+        tariffs: 'tariffs',
+        tariffSchedule: 'tariffs',
+        // grouped extras - reuse the closest existing permission
+        stationHours: 'reports',
+        settings: true,
+        license: 'operators',
+        membership: 'customers',
+        phonebook: 'customers',
+        events: 'customers',
+        gameHistory: 'customers',
+        branches: 'operators',
+        shifts: 'employees',
+        employees: 'employees',
+        activityLog: 'operators',
+        notifications: true,
+        busyHours: 'reports',
+        // Finance + Operations pages (added with finance.js / ops.js). Without
+        // these two entries the fail-closed rule above locked BOTH pages: the nav
+        // item and every hasPerm('finance'|'ops') call returned false.
+        finance: 'reports',      // P&L, handover, tax, debt reminders = money read
+        ops: 'clients',          // packages, coupons, deposits (amanat), maintenance
+        insights: 'reports',
+        tools: 'operators',
+        advancedSearch: true,
+        waiting: 'clients',
+    };
     function hasPerm(section){
         if(!currentOperator) return true;
         if(currentOperator.role==='admin') return true;
-        let p=currentOperator.perms||{};
-        let map={dashboard:true, clients:'clients', buffet:'buffet', reservations:'reservations', reports:'reports', income:'income', expenses:'expenses', customers:'customers', backup:'backup', operators:'operators', tariffSchedule:'tariffs', tariffs:'tariffs', license:'operators', stationHours:true, settings:true};
-        let key=map[section];
+        if(!section) return false;
+        const p=currentOperator.perms||{};
+        // A fresh operator record predating the perms refactor: only the
+        // sections that never needed a permission stay reachable.
+        if(!p || typeof p!=='object') return PERM_MAP[section]===true;
+        const key=PERM_MAP[section];
         if(key===true) return true;
-        if(!key) return true;
+        if(key===undefined) return false;          // fail closed
         return !!p[key];
+    }
+    /* Guard for every state-changing action. Previously permissions were only
+     * checked in showSection(), so hiding a nav item was the ONLY protection:
+     * any operator could still call deleteClient(), createBackup(), changeAdmin
+     * Credentials() and the rest from the console or a stale bookmarked action.
+     * Admin bypasses; an admin with no operator record (clean dev install) is
+     * allowed so the app never dead-ends. */
+    function requirePerm(section, actionLabel){
+        try{
+            if(hasPerm(section)) return true;
+            showToast('⛔ دسترسی ندارید' + (actionLabel? ' ('+actionLabel+')':'') + ' - اپراتور','error');
+        }catch(e){}
+        return false;
     }
     function showSection(section, el) {
         if(!hasPerm(section)){
@@ -2344,7 +2355,12 @@
         let sec=document.getElementById(section + '-section');
         if(sec) sec.style.display = 'block';
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        if (el) el.classList.add('active');
+        // no explicit element (programmatic jump, e.g. from the dashboard) ->
+        // highlight the sidebar entry that owns this section
+        if (!el) el = document.querySelector('.nav-item[onclick*="showSection(\'' + section + '\'"]')
+                  || document.getElementById('navSettings');
+        if (el && el.classList) el.classList.add('active');
+        expandNavGroupForSection(section);
         if (window.innerWidth <= 768) closeSidebar();
 
         if (section === 'dashboard') { updateStats(); renderActiveClients(); renderWeeklyChart(); }
@@ -2375,10 +2391,6 @@
         if (section === 'insights') { try{generateMonthlyComparison();}catch(e){} try{renderForecast();}catch(e){} try{renderSurveyStats();}catch(e){} try{renderStockAlerts();}catch(e){} }
         if (section === 'tools') { try{renderPOSConfig();}catch(e){} try{renderSecurityPanel();}catch(e){} try{renderCustomerPortal();}catch(e){} try{fillToolsCustomerSelects();}catch(e){} }
         if (section === 'phonebook') { try{renderPhonebook();}catch(e){} try{renderSmsConfig();}catch(e){} try{renderSmsLog();}catch(e){} }
-        if (section === 'finance') { try{renderFinance();}catch(e){} }
-        if (section === 'ops') { try{renderOpsSection();}catch(e){} }
-        if (section === 'tariffSchedule') { try{renderHolidays();}catch(e){} }
-        if (section === 'backup') { try{renderTgBackup();}catch(e){} }
     }
     function fillToolsCustomerSelects(){
         var opts = customers.map(function(c){ return '<option value="'+c.id+'">'+escapeHtml(c.name)+'</option>'; }).join('');
@@ -2386,11 +2398,36 @@
         var q=document.getElementById('qrCustomerSelect'); if(q) q.innerHTML='<option value="">انتخاب مشتری...</option>'+opts;
     }
 
+    /* Toasts. There was a single #toast node: a second toast reused it and the
+     * first one's 3.5s timer then removed the "show" class from the NEWER
+     * message, so toasts vanished early (or stacked invisibly). Each toast now
+     * gets its own node, the queue is bounded, and a repeated identical message
+     * is debounced instead of spamming. */
+    const _toastHistory = new Map();
     function showToast(msg, type='success'){
-        let toast=document.getElementById('toast');
-        toast.textContent=msg;
-        toast.className='toast show toast-'+type;
-        setTimeout(()=>toast.classList.remove('show'),3500);
+        try{
+            const host = document.getElementById('toast') ? document.getElementById('toast').parentElement : document.body;
+            if(!host) return;
+            const text = String(msg == null ? '' : msg);
+            // debounce identical repeats (the 1s tick can repeat the same warning)
+            const last = _toastHistory.get(text) || 0;
+            const now = Date.now();
+            if (now - last < 2500) return;
+            _toastHistory.set(text, now);
+            if (_toastHistory.size > 60) _toastHistory.clear();
+
+            const el = document.createElement('div');
+            el.className = 'toast show toast-' + (type || 'success');
+            el.setAttribute('role', 'status');
+            el.textContent = text;
+            const container = document.getElementById('toast');
+            if(container && container.classList.contains('toast')) container.parentElement.insertBefore(el, container);
+            else host.appendChild(el);
+            // keep the DOM small
+            const live = document.querySelectorAll('body > .toast.show, body > div > .toast.show');
+            if (live.length > 4) live[0].remove();
+            setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>{ try{ el.remove(); }catch(e){} }, 400); }, 3500);
+        }catch(e){}
     }
 
     // ========== Client Management ==========
@@ -2429,7 +2466,7 @@
             }
 
             return `
-                <div class="glass client-card ${isReserved?'reserved-card':''} ${c.status==='online'?'client-card-active':''} ${timerEnabled && remainingSec<=300 && c.status==='online' ? 'shake':''}" style="padding: 24px; position: relative; overflow: hidden;">
+                <div class="glass client-card ${isReserved?'reserved-card':''} ${c.status==='online'?'client-card-active':''} ${timerEnabled && remainingSec<=300 && c.status==='online' ? 'shake':''}" data-cid="${c.id}" style="padding: 24px; position: relative; overflow: hidden;">
                     <div class="client-status-bar" style="position: absolute; top: 0; left: 0; right: 0; height: 10px; background: ${statusColor}; box-shadow: 0 2px 14px ${statusColor};"></div>
                     ${isReserved? `<div style="position:absolute; top:10px; left:12px;" class="reservation-badge">🔒 رزرو: ${escapeHtml(reserved.customerName)} - ${reserved.startTime} (${reserved.duration}د)</div>`:''}
                     <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px; margin-top:${isReserved?'22px':'0'};">
@@ -2438,9 +2475,9 @@
                             <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
                             <span class="tariff-badge ${tariffClass}">${tariffLabel}</span>
                             <span style="display:inline-flex; align-items:center; gap:4px; vertical-align:middle;" title="نفر اضافه — از لحظه تغییر حساب می‌شود">
-                                <button class="glass-btn" style="padding:2px 9px; font-size:0.8rem; font-weight:900;" title="کم کردن نفر اضافه" onclick="changeClientExtra(${i},-1)">−</button>
+                                <button class="glass-btn" style="padding:2px 9px; font-size:0.8rem; font-weight:900;" title="کم کردن نفر اضافه" onclick="changeClientExtra(${numId(i)},-1)">−</button>
                                 <span class="tariff-badge tariff-extra">+${c.extra||0} نفر</span>
-                                <button class="glass-btn" style="padding:2px 9px; font-size:0.8rem; font-weight:900;" title="اضافه کردن نفر (از این لحظه حساب می‌شود)" onclick="changeClientExtra(${i},1)">+</button>
+                                <button class="glass-btn" style="padding:2px 9px; font-size:0.8rem; font-weight:900;" title="اضافه کردن نفر (از این لحظه حساب می‌شود)" onclick="changeClientExtra(${numId(i)},1)">+</button>
                             </span>
                             ${(()=>{ let st=getStationType(c.stationType); return st? `<span class="tariff-badge" style="background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.3);">${st.icon} ${escapeHtml(st.name)}</span>` : ''; })()}
                             ${timerEnabled? `<span class="tariff-badge" style="background:rgba(239,68,68,0.18); color:#fca5a5; border:1px solid rgba(239,68,68,0.3);">⏱️ ${c.timerDuration}د</span>`:''}
@@ -2457,7 +2494,7 @@
 
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 16px;">
                         <span style="color: rgba(255,255,255,0.6);">هزینه فعلی:</span>
-                        <span id="cliCost-${i}" style="font-weight: 900; color: #22c55e; font-size: 1.1rem;">${cost.toLocaleString()} تومان</span>
+                        <span id="cliCost-${i}" style="font-weight: 900; color: #22c55e; font-size: 1.1rem;">${cost.toLocaleString('fa-IR')} تومان</span>
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; background:rgba(99,102,241,0.08); border-radius:12px; padding:8px 12px;">
@@ -2476,33 +2513,33 @@
                         </select>
                     </div>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; background:rgba(6,182,214,0.06); border-radius:12px; padding:8px 12px;">
-                        <span style="font-size:0.75rem; color:rgba(255,255,255,0.6);">🌐 ${c.ip||'بدون IP'} <span class="status-dot ${c.online===true?'status-online':(c.online===false?'status-offline':'status-paused')}" title="${c.online===true?'متصل':(c.online===false?'قطع':'نامشخص')}"></span></span>
+                        <span style="font-size:0.75rem; color:rgba(255,255,255,0.6);">🌐 ${escapeHtml(c.ip||'بدون IP')} <span class="status-dot ${c.online===true?'status-online':(c.online===false?'status-offline':'status-paused')}" title="${c.online===true?'متصل':(c.online===false?'قطع':'نامشخص')}"></span></span>
                     </div>
                     ${(() => {
                         let svc = clientServiceMap[c.id]||[];
                         let svcCost = svc.reduce((sum, it)=>{ let s=services.find(x=>x.id===it.serviceId); return sum + (s? s.price*it.qty:0); },0);
-                        return svcCost>0? `<div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); border-radius:12px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:0.75rem; color:#fbbf24;">🍿 بوفه: ${svc.length} قلم</span><span style="font-weight:800; color:#fbbf24; font-size:0.85rem;">${svcCost.toLocaleString()} تومان</span></div>`:'';
+                        return svcCost>0? `<div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); border-radius:12px; padding:8px 12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:0.75rem; color:#fbbf24;">🍿 بوفه: ${svc.length} قلم</span><span style="font-weight:800; color:#fbbf24; font-size:0.85rem;">${svcCost.toLocaleString('fa-IR')} تومان</span></div>`:'';
                     })()}
                     ${c.status==='online'
-                        ? `<button class="glass-btn glass-btn-danger" style="width:100%; padding:12px; font-size:1rem; font-weight:900; margin-bottom:8px;" onclick="toggleClientTimer(${i})">■ پایان</button>`
-                        : `<button class="glass-btn glass-btn-success" style="width:100%; padding:12px; font-size:1rem; font-weight:900; margin-bottom:8px;" onclick="toggleClientTimer(${i})">▶ ${c.status==='paused'?'ادامه':'شروع'}</button>`}
-                    <button class="glass-btn" style="width:100%; padding:10px; font-size:0.85rem; margin-bottom:8px;" onclick="toggleClientMenu(${i})">⋯ بیشتر</button>
+                        ? `<button class="glass-btn glass-btn-danger" style="width:100%; padding:12px; font-size:1rem; font-weight:900; margin-bottom:8px;" onclick="toggleClientTimer(${numId(i)})">■ پایان</button>`
+                        : `<button class="glass-btn glass-btn-success" style="width:100%; padding:12px; font-size:1rem; font-weight:900; margin-bottom:8px;" onclick="toggleClientTimer(${numId(i)})">▶ ${c.status==='paused'?'ادامه':'شروع'}</button>`}
+                    <button class="glass-btn" style="width:100%; padding:10px; font-size:0.85rem; margin-bottom:8px;" onclick="toggleClientMenu(${numId(i)})">⋯ بیشتر</button>
                     <div id="clientMenu-${i}" style="display:none; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:10px; margin-bottom:8px;">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom:8px;">
-                            ${c.status==='online' ? `<button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="pauseClient(${i})">⏸ توقف موقت</button>` : ''}
-                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openTimeModal(${i})">&#9201; زمان / مبلغ</button>
-                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openReservationModal(${i})">&#128197; رزرو</button>
-                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openAddServiceToClient(${i})">🍿 بوفه</button>
-                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openShareModalForClient(${i})">📤 ارسال</button>
-                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="generatePdfForClient(${i})">📄 PDF</button>
+                            ${c.status==='online' ? `<button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="pauseClient(${numId(i)})">⏸ توقف موقت</button>` : ''}
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openTimeModal(${numId(i)})">&#9201; زمان / مبلغ</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openReservationModal(${numId(i)})">&#128197; رزرو</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openAddServiceToClient(${numId(i)})">🍿 بوفه</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openShareModalForClient(${numId(i)})">📤 ارسال</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="generatePdfForClient(${numId(i)})">📄 PDF</button>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom:8px;">
-                            <button class="glass-btn" style="padding: 8px 6px; font-size: 0.78rem;" title="باز کردن" onclick="agentCmd(${i},'unlock')">🔓</button>
-                            <button class="glass-btn" style="padding: 8px 6px; font-size: 0.78rem;" title="قفل" onclick="agentCmd(${i},'lock')">🔒</button>
-                            <button class="glass-btn" style="padding: 8px 6px; font-size: 0.78rem;" title="هشدار" onclick="agentCmd(${i},'warn')">⚠️</button>
-                            <button class="glass-btn glass-btn-danger" style="padding: 8px 6px; font-size: 0.78rem;" title="خاموش" onclick="agentShutdown(${i})">⏻</button>
+                            <button class="glass-btn" style="padding: 8px 6px; font-size: 0.78rem;" title="باز کردن" onclick="agentCmd(${numId(i)},'unlock')">🔓</button>
+                            <button class="glass-btn" style="padding: 8px 6px; font-size: 0.78rem;" title="قفل" onclick="agentCmd(${numId(i)},'lock')">🔒</button>
+                            <button class="glass-btn" style="padding: 8px 6px; font-size: 0.78rem;" title="هشدار" onclick="agentCmd(${numId(i)},'warn')">⚠️</button>
+                            <button class="glass-btn glass-btn-danger" style="padding: 8px 6px; font-size: 0.78rem;" title="خاموش" onclick="agentShutdown(${numId(i)})">⏻</button>
                         </div>
-                        <button class="glass-btn glass-btn-danger" style="width:100%; padding: 8px 10px; font-size: 0.78rem;" onclick="deleteClient(${i})">&#128465; حذف</button>
+                        <button class="glass-btn glass-btn-danger" style="width:100%; padding: 8px 10px; font-size: 0.78rem;" onclick="deleteClient(${numId(i)})">&#128465; حذف</button>
                     </div>
                 </div>
             `;
@@ -2544,7 +2581,7 @@
         for(let i=0;i<clients.length;i++){
             let c = clients[i];
             setLiveText('cliElapsed-'+i, formatTime(c.elapsed||0));
-            try{ setLiveText('cliCost-'+i, calculateCost(c).toLocaleString() + ' تومان'); }catch(e){}
+            try{ setLiveText('cliCost-'+i, calculateCost(c).toLocaleString('fa-IR') + ' تومان'); }catch(e){}
             if(c.timerDuration && c.timerDuration>0){
                 if(c.status==='online'){
                     let rem = Math.max(0, c.timerDuration*60 - (c.elapsed||0));
@@ -2563,6 +2600,14 @@
     }
 
     function openAddClientModal() {
+        const left = licenseStationsLeft();
+        const hint = document.getElementById('newClientCapHint');
+        if(hint){
+            hint.style.display = (left===null) ? 'none' : 'block';
+            hint.textContent = (left===null) ? '' : ('ظرفیت لایسنس: ' + clients.length + ' از ' + licenseStationCap() + ' دستگاه — ' + left + ' جای خالی');
+        }
+        const btnAdd = document.getElementById('addClientSubmitBtn');
+        if(btnAdd && left!==null) btnAdd.disabled = (left<=0);
         try{fillClientTypeSelect();}catch(e){}
         document.getElementById('addClientModal').classList.add('show');
     }
@@ -2573,14 +2618,17 @@
     }
 
     function addClient() {
+        if(!requirePerm('clients','افزودن دستگاه')) return;
         const name = document.getElementById('newClientName').value.trim();
         const ip = (document.getElementById('newClientIP') && document.getElementById('newClientIP').value.trim()) || '';
         const tariffEl = document.getElementById('newClientTariff');
         const tariff = (tariffEl && tariffEl.value) || 'single';
         const extra = (typeof parseFaNumber==='function')? parseFaNumber(document.getElementById('newClientExtra').value,0) : (parseInt(document.getElementById('newClientExtra').value) || 0);
-        const timerMin = parseInt(document.getElementById('newClientTimer')?.value) || 0;
+        const timerMin = (typeof parseFaNumber==='function')? parseFaNumber(document.getElementById('newClientTimer')?.value,0) : (parseInt(document.getElementById('newClientTimer')?.value) || 0);
 
         if (!name) { showToast('لطفاً نام کلاینت را وارد کنید','error'); return; }
+        // paid capacity: never let the shop exceed the number of stations it bought
+        if(!enforceStationCapacity()) return;
 
         clients.push({
             id: Date.now(),
@@ -2610,6 +2658,7 @@
     }
 
     function deleteClient(index) {
+        if(!requirePerm('clients','حذف دستگاه')) return;
         if (confirm('آیا از حذف این کلاینت اطمینان دارید؟')) {
             let cid=clients[index].id;
             clients.splice(index, 1);
@@ -2640,12 +2689,6 @@
         let _ipEl=document.getElementById('timeClientIP');
         if(_ipEl){ _ipEl.value=c.ip||''; _ipEl.onchange=()=>{ c.ip=_ipEl.value.trim(); saveData(); renderClients(); }; }
         document.getElementById('timeModal').classList.add('show');
-        // reset embedded amount section
-        try{
-            document.getElementById('amountInput').value='';
-            document.getElementById('amountResult').style.display='none';
-            window._calcDur=null;
-        }catch(e){}
         // show reservation warning if any
         let res=getActiveReservationForClient(c.id);
         let warn=document.getElementById('reservationWarning');
@@ -2723,7 +2766,7 @@
         showToast(mins? `تایمر ${mins} دقیقه تنظیم شد`:'تایمر لغو شد','success');
     }
     function setCustomTimer(){
-        let mins=parseInt(document.getElementById('timerDurationInput').value)||0;
+        let mins=parseFaNumber(document.getElementById('timerDurationInput').value, 0)||0;
         if(mins<=0){ showToast('زمان معتبر وارد کنید','error'); return;}
         setTimerPreset(mins);
         document.getElementById('timerDurationInput').value='';
@@ -2748,7 +2791,7 @@
         saveData();
         renderClients();
         updateStats();
-        c._warned5=false;
+        c._warned5=false; c._warned1=false; c._timeNotifSent=false;
         if(c.ip){ agentFetch(c.ip,'/unlock').then(()=>{ c.online=true; }).catch(()=>{ c.online=false; showToast('⚠️ ایجنت جواب نداد ولی تایمر شروع شد','warning'); }); }
         showToast(`تایمر ${escapeHtml(c.name)} شروع شد`,'success');
     }
@@ -2794,18 +2837,53 @@
         }
     }
 
+    /** Elapsed seconds of a client, derived safely from startTime.
+     *  A client can be left with status 'online' and startTime === null (old or
+     *  hand-edited backup). Math.floor((Date.now() - null)/1000) then yields
+     *  ~1.7e9 seconds and the bill explodes to billions of toman. Never trust
+     *  startTime blindly. */
+    function clientElapsed(c) {
+        if (!c) return 0;
+        let e = Number(c.elapsed);
+        if (!isFinite(e) || e < 0) e = 0;
+        if (c.status === 'online') {
+            const st = Number(c.startTime);
+            if (isFinite(st) && st > 0) {
+                const derived = Math.floor((Date.now() - st) / 1000);
+                // a derived value can never be smaller than what is already stored
+                if (isFinite(derived) && derived >= 0) e = Math.max(e, derived);
+            }
+        }
+        // hard sanity ceiling: 400 days, no shop runs a session for longer
+        if (e > 34560000) {
+            console.warn('[gamenet] implausible elapsed clamped for', c && c.name, e);
+            e = 34560000;
+        }
+        return Math.floor(e);
+    }
     function stopTimer() {
         if (currentTimeClient === null) return;
         const c = clients[currentTimeClient];
         if(!c){ currentTimeClient=null; return; }
         if (c.status === 'online') {
-            c.elapsed = Math.floor((Date.now() - c.startTime) / 1000);
+            const before = Number(c.elapsed) || 0;
+            c.elapsed = clientElapsed(c);
+            if (c.elapsed > before * 1000 + 3600) {
+                // the stored elapsed was missing/garbage: fall back to it and warn
+                c.elapsed = before;
+                showToast('⏱️ زمان این کلاینت نامعتبر بود - دستی بررسی کنید','error');
+            }
+            c.startTime = null;
+            c.status = 'paused';
+            saveData();
         }
         // calculate costs including buffet
         let gameCost = calculateCost(c);
         let buffetCost = 0;
         let svc = clientServiceMap[c.id]||[];
-        svc.forEach(it=>{ let s=services.find(x=>x.id===it.serviceId); if(s) buffetCost += s.price*it.qty; });
+        svc.forEach(it=>{ let s=services.find(x=>x.id===it.serviceId); if(s) buffetCost += (Number(s.price)||0)*(Number(it.qty)||0); });
+        if (gameCost < 0) gameCost = 0;
+        if (buffetCost < 0) buffetCost = 0;
         let total = applyRounding(gameCost + buffetCost);
         pendingPayment = {
             clientIdx: currentTimeClient,
@@ -2813,28 +2891,28 @@
             clientName: c.name,
             duration: c.elapsed,
             gameCost, buffetCost, total,
-            baseTotal: total,
-            couponCode: '', couponAmount: 0, tax: 0,
-            package: c.activePackage ? safeParse(JSON.stringify(c.activePackage)) : null,
             tariff: c.tariff, extra: c.extra,
             stationType: c.stationType||null,
-            services: safeParse(JSON.stringify(svc))
+            services: (Array.isArray(svc) ? svc : []).slice()
         };
         document.getElementById('paymentClientName').textContent = c.name + ' - ' + formatTime(c.elapsed);
         document.getElementById('payDuration').textContent = formatTime(c.elapsed);
-        document.getElementById('payGameCost').textContent = gameCost.toLocaleString() + ' تومان';
-        document.getElementById('payBuffetCost').textContent = buffetCost.toLocaleString() + ' تومان';
-        document.getElementById('payTotal').textContent = total.toLocaleString() + ' تومان';
+        document.getElementById('payGameCost').textContent = gameCost.toLocaleString('fa-IR') + ' تومان';
+        document.getElementById('payBuffetCost').textContent = buffetCost.toLocaleString('fa-IR') + ' تومان';
+        document.getElementById('payTotal').textContent = total.toLocaleString('fa-IR') + ' تومان';
         let roundingInfo = document.getElementById('payRoundingInfo');
-        if(roundingMode!=='none') roundingInfo.textContent = 'رند: '+roundingMode+' (اصلی: '+(gameCost+buffetCost).toLocaleString()+')';
+        if(roundingMode!=='none') roundingInfo.textContent = 'رند: '+roundingMode+' (اصلی: '+(gameCost+buffetCost).toLocaleString('fa-IR')+')';
         else roundingInfo.textContent = '';
         closeModal('timeModal');
         document.getElementById('paymentModal').classList.add('show');
     }
     function confirmPayment(){
         if(!pendingPayment) return;
-        let c = clients[pendingPayment.clientIdx];
-        if(!c){ pendingPayment=null; try{closeModal('paymentModal');}catch(e){} return; }
+        // Resolve by ID, not by the array index captured when the modal opened:
+        // if a client was deleted meanwhile the index now points at somebody
+        // else and the bill would be charged to the wrong station.
+        let c = clients.find(x => String(x.id) === String(pendingPayment.clientId));
+        if(!c){ pendingPayment=null; try{closeModal('paymentModal');}catch(e){} showToast('این کلاینت دیگر وجود ندارد','error'); return; }
         let method = document.getElementById('payMethod').value;
         let total = pendingPayment.total;
         // record session
@@ -2885,6 +2963,7 @@
         c.timerDuration=0;
         c.timerDurationSec=0;
         c._warned5=false;
+        c._warned1=false;
         c._timeNotifSent=false;
         try{ window._calcDur=null; }catch(e){}
         c.totalCost = (c.totalCost || 0) + total;
@@ -2900,32 +2979,53 @@
         updateBuffetStats();
         updateCashCardStats();
         updateExpenseStats();
-        showToast(`تسویه ${escapeHtml(pendingPayment.clientName)} - ${total.toLocaleString()} تومان (${method==='cash'?'نقد':method==='card'?'کارت':'نصف/نصف'})`,'success');
+        showToast(`تسویه ${escapeHtml(pendingPayment.clientName)} - ${total.toLocaleString('fa-IR')} تومان (${method==='cash'?'نقد':method==='card'?'کارت':'نصف/نصف'})`,'success');
         let idx=sessions.length-1;
         pendingPayment=null;
         setTimeout(()=> openShareModalForSession(idx), 600);
     }
 
     function resetTimer() {
+        if(!requirePerm('clients','ریست تایمر')) return;
         if (currentTimeClient === null) return;
         const c = clients[currentTimeClient];
         if(!c){ currentTimeClient=null; return; }
-        c.elapsed = 0;
-        c.extraSeconds=0;
-        c._lastElapsed=null;
-        c.startTime = null;
-        c.status = 'offline';
-        c.notified=false;
-        saveData();
-        updateTimeDisplay();
-        renderClients();
-        updateStats();
-        showToast('تایمر ریست شد','success');
+        /* Wiping elapsed/extraSeconds used to throw the played time away with no
+         * confirmation and no record: nothing was written to `sessions`, so the
+         * money silently vanished from the books. Confirm with the exact amount
+         * and keep the discarded time in a ledger so it can still be billed. */
+        const seconds = clientElapsed(c);
+        const money = calculateCost(c);
+        const doReset = () => {
+            if(seconds>0){
+                try{
+                    const led = safeParse(localStorage.getItem('alvand_discardedTime'))||[];
+                    led.push({clientId:c.id, clientName:c.name, seconds:seconds, cost:money, date:new Date().toISOString()});
+                    localStorage.setItem('alvand_discardedTime', JSON.stringify(led));
+                    logAct('clients', 'زمان تایمر '+c.name+': '+(seconds/60).toFixed(1)+' دقیقه / '+money.toLocaleString('fa-IR'));
+                }catch(e){}
+            }
+            c.elapsed = 0;
+            c.extraSeconds=0;
+            c._lastElapsed=null;
+            c.startTime = null;
+            c.status = 'offline';
+            c.notified=false;
+            saveData();
+            updateTimeDisplay();
+            renderClients();
+            updateStats();
+            showToast(seconds>0
+                ? 'تایمر صفر شد، '+money.toLocaleString('fa-IR')+'‌تومان در دفتر ثبت شد'
+                : 'تایمر ریست شد','success');
+        };
+        if(seconds<=0){ doReset(); return; }
+        askConfirm('تایمر «'+c.name+'» ریست شود؟ کل دقیقه بازی از دست حذر می‌شود حذر کانست و به صورت دفترثبار نکهده می‌شود.', doReset);
     }
 
     function addTime() {
         if (currentTimeClient === null) return;
-        const mins = parseInt(document.getElementById('timeAdjust').value) || 0;
+        const mins = parseFaNumber(document.getElementById('timeAdjust').value, 0) || 0;
         const c = clients[currentTimeClient];
         if(!c){ currentTimeClient=null; return; }
         c.elapsed = (c.elapsed || 0) + mins * 60;
@@ -2943,7 +3043,7 @@
 
     function subTime() {
         if (currentTimeClient === null) return;
-        const mins = parseInt(document.getElementById('timeAdjust').value) || 0;
+        const mins = parseFaNumber(document.getElementById('timeAdjust').value, 0) || 0;
         const c = clients[currentTimeClient];
         if(!c){ currentTimeClient=null; return; }
         c.elapsed = Math.max(0, (c.elapsed || 0) - mins * 60);
@@ -2983,13 +3083,18 @@
                         c.notified=true;
                         try{ saveData(); window._lastPersist=Date.now(); }catch(e){}
                         triggerAlarm(idx);
-                    } else if(remaining===300){ // 5 min warning
-                        showToast(`⏰ ${escapeHtml(c.name)}: 5 دقیقه تا پایان`,'warning');
-                        if(c.ip && !c._warned5){ c._warned5=true; agentFetch(c.ip,'/warn?msg='+encodeURIComponent(c.name+': 5 دقیقه تا پایان وقت')).catch(()=>{}); }
+                    } else if(remaining<=300 && !c._warned5){
+                        // was `remaining===300`: a delayed tick (background
+                        // throttling, a busy main process, a sleeping laptop)
+                        // jumps from 320 to 260 and the warning never fired.
+                        c._warned5 = true;
+                        showToast(`⏰ ${escapeHtml(c.name)}: کمتر از 5 دقیقه تا پایان`,'warning');
+                        if(c.ip) agentFetch(c.ip,'/warn?msg='+encodeURIComponent(c.name+': 5 دقیقه تا پایان وقت')).catch(()=>{});
                         if('Notification' in window && Notification.permission==='granted'){
-                            new Notification('هشدار زمان', {body: `${escapeHtml(c.name)}: 5 دقیقه باقی مانده`});
+                            try{ new Notification('هشدار زمان', {body: `${escapeHtml(c.name)}: 5 دقیقه باقی مانده`}); }catch(e){}
                         }
-                    } else if(remaining===60){
+                    } else if(remaining<=60 && !c._warned1){
+                        c._warned1 = true;
                         showToast(`⏰ ${escapeHtml(c.name)}: 1 دقیقه تا پایان`,'warning');
                     }
                 }
@@ -3024,7 +3129,7 @@
         alarmClientIndex=clientIdx;
         let c=clients[clientIdx];
         if(!c){ alarmClientIndex=null; return; }
-        document.getElementById('timerEndText').innerHTML=`کلاینت <b>${escapeHtml(c.name)}</b> به زمان تعیین شده (${c.timerDuration} دقیقه) رسید.<br>زمان سپری شده: <b>${formatTime(c.elapsed)}</b><br>هزینه فعلی: <b>${calculateCost(c).toLocaleString()} تومان</b>`;
+        document.getElementById('timerEndText').innerHTML=`کلاینت <b>${escapeHtml(c.name)}</b> به زمان تعیین شده (${c.timerDuration} دقیقه) رسید.<br>زمان سپری شده: <b>${formatTime(c.elapsed)}</b><br>هزینه فعلی: <b>${calculateCost(c).toLocaleString('fa-IR')} تومان</b>`;
         document.getElementById('timerEndModal').classList.add('show');
         // warning lights
         document.getElementById('warningBar')?.classList.add('show');
@@ -3073,6 +3178,10 @@
         stopTimer();
     }
     function playAlarmSound(){
+        // always silence whatever is playing first: the old code created a new
+        // AudioContext on every alarm and only closed the newest one, so a busy
+        // night leaked dozens of contexts until Chromium capped them and the
+        // alarm went silent.
         try{ stopAlarmSound(); }catch(e){}
         try{
             let reps = (parseInt(alarmRepeat)===0) ? 99999 : Math.max(1, parseInt(alarmRepeat)||3);
@@ -3080,15 +3189,19 @@
                 let audio=new Audio(customAlarmData);
                 audio.volume=0.8;
                 let count=0;
-                audio.onended=()=>{ count++; if(count<reps){ try{audio.currentTime=0; audio.play();}catch(e){} } };
+                audio.onended=()=>{ count++; if(count<reps && !window._alarmStopped){ try{audio.currentTime=0; audio.play();}catch(e){} } };
                 audio.play().catch(()=>{});
                 window._customAudio=audio;
                 return;
             }
             let AudioCtx=window.AudioContext||window.webkitAudioContext;
             if(!AudioCtx) return;
-            let ctx=new AudioCtx();
-            window._alarmCtx=ctx;
+            // reuse one context for the whole session instead of one per alarm
+            let ctx=window._alarmCtx;
+            if(!ctx || ctx.state==='closed'){
+                ctx=new AudioCtx();
+                window._alarmCtx=ctx;
+            }
             if(ctx.state==='suspended'){ ctx.resume().catch(()=>{}); }
             let freqMap={beep:880, bell:660, alarm:990, chime:523, game:440};
             let base=freqMap[alarmSound]||880;
@@ -3211,6 +3324,7 @@
     }
 
     function openReservationModal(prefillClientIdx=null){
+        if(!requirePerm('reservations','رزرو')) return;
         // populate clients dropdown
         let sel=document.getElementById('resClientId');
         sel.innerHTML = clients.map(c=> `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
@@ -3241,7 +3355,7 @@
         let cid=parseInt(document.getElementById('resClientId').value);
         let date=document.getElementById('resDate').value;
         let time=document.getElementById('resStartTime').value;
-        let dur=parseInt(document.getElementById('resDuration').value);
+        let dur=parseFaNumber(document.getElementById('resDuration').value, 0);
         let exId=document.getElementById('reservationId').value? parseInt(document.getElementById('reservationId').value):null;
         if(!cid || !date || !time) return;
         let conflict=checkReservationConflict(cid,date,time,dur,exId);
@@ -3260,7 +3374,7 @@
         let telegram=document.getElementById('resTelegram').value.trim();
         let date=document.getElementById('resDate').value;
         let startTime=document.getElementById('resStartTime').value;
-        let duration=parseInt(document.getElementById('resDuration').value);
+        let duration=parseFaNumber(document.getElementById('resDuration').value, 0);
         let notes=document.getElementById('resNotes').value.trim();
 
         if(!customerName){ showToast('نام مشتری الزامی است','error'); return; }
@@ -3313,6 +3427,7 @@
         document.getElementById('reservationModal').classList.add('show');
     }
     function deleteReservation(id){
+        if(!requirePerm('reservations','حذف رزرو')) return;
         if(!confirm('رزرو حذف شود؟')) return;
         reservations=reservations.filter(r=>r.id!==id);
         saveReservations();
@@ -3339,7 +3454,7 @@
             }
         });
         let now=new Date();
-        let todayStr=now.toISOString().slice(0,10);
+        let todayStr=localDayKey(now);
         let filtered=[...reservations].sort((a,b)=> new Date(a.date+'T'+a.startTime)-new Date(b.date+'T'+b.startTime));
         if(filter==='today') filtered=filtered.filter(r=>r.date===todayStr);
         else if(filter==='upcoming') filtered=filtered.filter(r=> new Date(r.date+'T'+r.startTime) >= now);
@@ -3371,18 +3486,23 @@
                     <span style="padding:6px 12px; border-radius:50px; background:${statusColor}22; color:${statusColor}; border:1px solid ${statusColor}44; font-size:0.75rem; font-weight:700;">${statusText}</span>
                 </div>
                 <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
-                    <button class="glass-btn" style="padding:8px 14px; font-size:0.8rem;" onclick="editReservation(${r.id})">✏️ ویرایش</button>
-                    <button class="glass-btn glass-btn-success" style="padding:8px 14px; font-size:0.8rem;" onclick="completeReservation(${r.id})">✅ تکمیل</button>
-                    <button class="glass-btn" style="padding:8px 14px; font-size:0.8rem;" onclick="openShareModalForReservation(${r.id})">📤 ارسال</button>
-                    <button class="glass-btn glass-btn-danger" style="padding:8px 14px; font-size:0.8rem;" onclick="deleteReservation(${r.id})">🗑️ حذف</button>
+                    <button class="glass-btn" style="padding:8px 14px; font-size:0.8rem;" onclick="editReservation(${numId(r.id)})">✏️ ویرایش</button>
+                    <button class="glass-btn glass-btn-success" style="padding:8px 14px; font-size:0.8rem;" onclick="completeReservation(${numId(r.id)})">✅ تکمیل</button>
+                    <button class="glass-btn" style="padding:8px 14px; font-size:0.8rem;" onclick="openShareModalForReservation(${numId(r.id)})">📤 ارسال</button>
+                    <button class="glass-btn glass-btn-danger" style="padding:8px 14px; font-size:0.8rem;" onclick="deleteReservation(${numId(r.id)})">🗑️ حذف</button>
                 </div>
             </div>`;
         }).join('');
     }
     function filterReservations(f){ renderReservations(f); }
 
-    function renderCustomers(){
-        let container=document.getElementById('customersList');
+    /* Roster built from reservations: a quick "who visited and send them the
+       report" list. It used to be called renderCustomers() and, because a later
+       declaration of the same name wins, it silently REPLACED the customer
+       database renderer - which made the whole customer/wallet/loyalty UI
+       unreachable. It now has its own name and its own container. */
+    function renderCustomerRoster(){
+        let container=document.getElementById('customerRosterList');
         if(!container) return;
         // collect unique customers from reservations + sessions
         let map=new Map();
@@ -3395,19 +3515,19 @@
             // sessions may not have customer info, skip
         });
         // also add from reservations
-        let customers=[...map.values()];
-        if(customers.length===0){
+        let roster=[...map.values()];
+        if(roster.length===0){
             container.innerHTML=`<p style="color:rgba(255,255,255,0.5); text-align:center; padding:20px;">هنوز مشتری ثبت نشده - با رزرو کردن مشتری اضافه میشود</p>`;
             return;
         }
-        container.innerHTML=`<div style="display:grid; gap:10px;">`+customers.map(c=>`
+        container.innerHTML=`<div style="display:grid; gap:10px;">`+roster.map(c=>`
             <div class="glass" style="padding:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
                     <h4 style="font-weight:700;">${escapeHtml(c.name)}</h4>
-                    <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">📞 ${escapeHtml(c.phone||'-')} | 📧 ${escapeHtml(c.email||'-')} | ✈️ ${c.telegram||'-'}</p>
+                    <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">📞 ${escapeHtml(c.phone||'-')} | 📧 ${escapeHtml(c.email||'-')} | ✈️ ${escapeHtml(c.telegram||'-')}</p>
                     <p style="font-size:0.75rem; color:rgba(255,255,255,0.4);">${c.count} رزرو</p>
                 </div>
-                <button class="glass-btn" style="padding:8px 14px; font-size:0.8rem;" onclick="openShareModalForCustomer('${c.name.replace(/'/g,"\\'")}','${escapeHtml(c.phone)}','${escapeHtml(c.email)}')">📤 ارسال گزارش</button>
+                <button class="glass-btn" style="padding:8px 14px; font-size:0.8rem;" data-cust-name="${escapeHtml(c.name)}" data-cust-phone="${escapeHtml(c.phone||'')}" data-cust-email="${escapeHtml(c.email||'')}" onclick="sendReportToCustomerFromNode(this)">📤 ارسال گزارش</button>
             </div>
         `).join('')+`</div>`;
     }
@@ -3422,7 +3542,7 @@
 `+
 `مدت کارکرد: ${formatTime(durationSec)}
 `+
-`هزینه: ${cost.toLocaleString()} تومان
+`هزینه: ${cost.toLocaleString('fa-IR')} تومان
 `+
 `تاریخ: ${new Date().toLocaleString('fa-IR')}
 `+
@@ -3449,7 +3569,7 @@
 `+
 `مدت: ${formatTime(s.duration)}
 `+
-`هزینه: ${s.cost.toLocaleString()} تومان
+`هزینه: ${s.cost.toLocaleString('fa-IR')} تومان
 `+
 `تعرفه: ${s.tariff==='single'?'تک نفره':'دو نفره'}
 `+
@@ -3499,6 +3619,14 @@
 `<p>این گزارش شامل خلاصه فعالیت شما در گیم‌نت میباشد.</p>`;
         setPdfContent(html, `customer-${name}.pdf`);
     }
+    // Report share button -> share modal, reading the payload from data-*
+    // attributes instead of building an inline JS string out of user data.
+    function shareReportFromNode(node){
+        if(!node) return;
+        try{
+            openShareModal(node.getAttribute('data-report-title')||'', node.getAttribute('data-report-text')||'', {});
+        }catch(e){ showToast('اشتراک‌گذاری ممکن نشد','error'); }
+    }
     function openShareModal(title, text, meta){
         document.getElementById('shareClientName').textContent=title;
         document.getElementById('shareSummary').textContent=text;
@@ -3525,11 +3653,11 @@
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700; width:35%;">نام کلاینت</td><td style="padding:10px; border:1px solid #e2e8f0;">${escapeHtml(c.name)}</td></tr>
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">تعرفه</td><td style="padding:10px; border:1px solid #e2e8f0;">${c.tariff==='single'?'تک نفره':'دو نفره'} ${c.extra? `+${c.extra} نفر اضافه`:''}</td></tr>
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">مدت فعلی</td><td style="padding:10px; border:1px solid #e2e8f0; direction:ltr; text-align:right;">${formatTime(c.elapsed||0)}</td></tr>
-                <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">هزینه</td><td style="padding:10px; border:1px solid #e2e8f0; color:#16a34a; font-weight:800;">${cost.toLocaleString()} تومان</td></tr>
+                <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">هزینه</td><td style="padding:10px; border:1px solid #e2e8f0; color:#16a34a; font-weight:800;">${cost.toLocaleString('fa-IR')} تومان</td></tr>
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">وضعیت</td><td style="padding:10px; border:1px solid #e2e8f0;">${c.status==='online'?'🟢 فعال':c.status==='paused'?'🟡 متوقف':'🔴 آفلاین'}</td></tr>
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">تاریخ</td><td style="padding:10px; border:1px solid #e2e8f0;">${new Date().toLocaleString('fa-IR')}</td></tr>
             </table>
-            <p style="color:#64748b; font-size:12px; margin-top:20px;">قیمت پایه: تک نفره ${tariffs.single.toLocaleString()} / دو نفره ${tariffs.double.toLocaleString()} / نفر اضافه ${tariffs.extra.toLocaleString()} تومان بر ساعت</p>
+            <p style="color:#64748b; font-size:12px; margin-top:20px;">قیمت پایه: تک نفره ${tariffs.single.toLocaleString('fa-IR')} / دو نفره ${tariffs.double.toLocaleString('fa-IR')} / نفر اضافه ${tariffs.extra.toLocaleString('fa-IR')} تومان بر ساعت</p>
         `;
         setPdfContent(html, `client-${escapeHtml(c.name)}-${Date.now()}.pdf`);
     }
@@ -3539,7 +3667,7 @@
             <table style="width:100%; border-collapse:collapse; margin:16px 0;">
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">کلاینت</td><td style="padding:10px; border:1px solid #e2e8f0;">${escapeHtml(s.clientName)}</td></tr>
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">مدت</td><td style="padding:10px; border:1px solid #e2e8f0; direction:ltr; text-align:right;">${formatTime(s.duration)}</td></tr>
-                <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">هزینه</td><td style="padding:10px; border:1px solid #e2e8f0; color:#16a34a; font-weight:800;">${s.cost.toLocaleString()} تومان</td></tr>
+                <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">هزینه</td><td style="padding:10px; border:1px solid #e2e8f0; color:#16a34a; font-weight:800;">${s.cost.toLocaleString('fa-IR')} تومان</td></tr>
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">تاریخ</td><td style="padding:10px; border:1px solid #e2e8f0;">${new Date(s.date).toLocaleString('fa-IR')}</td></tr>
             </table>
         `;
@@ -3668,72 +3796,110 @@
         let now=new Date();
         let filtered=[];
         let title='';
-        if(type==='daily'){ filtered=sessions.filter(s=> new Date(s.date).toDateString()===now.toDateString()); title='گزارش روزانه - '+now.toLocaleDateString('fa-IR');}
+        if(type==='daily'){ filtered=sessions.filter(s=> isSameDay(s.date, now)); title='گزارش روزانه - '+now.toLocaleDateString('fa-IR');}
         else if(type==='weekly'){ let w=new Date(now-7*24*60*60*1000); filtered=sessions.filter(s=> new Date(s.date)>=w); title='گزارش هفتگی';}
         else { let m=new Date(now-30*24*60*60*1000); filtered=sessions.filter(s=> new Date(s.date)>=m); title='گزارش ماهانه';}
         let total=filtered.reduce((sum,s)=>sum+s.cost,0);
         let html=`<h2 style="color:#1e293b; text-align:center;">${title}</h2>
-        <p style="text-align:center; color:#64748b;">تعداد سشن: ${filtered.length} | جمع درآمد: ${total.toLocaleString()} تومان</p>
+        <p style="text-align:center; color:#64748b;">تعداد سشن: ${filtered.length} | جمع درآمد: ${total.toLocaleString('fa-IR')} تومان</p>
         <table style="width:100%; border-collapse:collapse; margin-top:16px; font-size:12px;">
         <thead><tr style="background:#4f46e5; color:white;"><th style="padding:8px; border:1px solid #ddd;">کلاینت</th><th style="padding:8px; border:1px solid #ddd;">مدت</th><th style="padding:8px; border:1px solid #ddd;">هزینه</th><th style="padding:8px; border:1px solid #ddd;">تاریخ</th></tr></thead><tbody>
-        `+filtered.map(s=>`<tr><td style="padding:6px; border:1px solid #e2e8f0;">${escapeHtml(s.clientName)}</td><td style="padding:6px; border:1px solid #e2e8f0; direction:ltr;">${formatTime(s.duration)}</td><td style="padding:6px; border:1px solid #e2e8f0;">${s.cost.toLocaleString()}</td><td style="padding:6px; border:1px solid #e2e8f0; font-size:10px;">${new Date(s.date).toLocaleString('fa-IR')}</td></tr>`).join('')+`</tbody></table>`;
+        `+filtered.map(s=>`<tr><td style="padding:6px; border:1px solid #e2e8f0;">${escapeHtml(s.clientName)}</td><td style="padding:6px; border:1px solid #e2e8f0; direction:ltr;">${formatTime(s.duration)}</td><td style="padding:6px; border:1px solid #e2e8f0;">${s.cost.toLocaleString('fa-IR')}</td><td style="padding:6px; border:1px solid #e2e8f0; font-size:10px;">${new Date(s.date).toLocaleString('fa-IR')}</td></tr>`).join('')+`</tbody></table>`;
         setPdfContent(html, `report-${type}-${Date.now()}.pdf`);
         setTimeout(()=>downloadCurrentPdf(),800);
     }
 
     // Tariff Management
     function loadTariffs() {
+        if(!requirePerm('tariffs','تعرفه‌ها')) return;
         let a=document.getElementById('tariffSingle'); if(a) a.value = tariffs.single;
         let b=document.getElementById('tariffDouble'); if(b) b.value = tariffs.double;
         let c=document.getElementById('tariffExtra'); if(c) c.value = tariffs.extra;
     }
 
     function updateTariff(type, value) {
-        tariffs[type] = (typeof parseFaNumber==='function')? parseFaNumber(value,0) : (parseInt(value) || 0);
+        if(!requirePerm('tariffs','تغییر تعرفه')) return;
+        if (type !== 'single' && type !== 'double' && type !== 'extra') {
+            showToast('تعرفه نامعتبر','error'); return;
+        }
+        let v = (typeof parseFaNumber==='function')? parseFaNumber(value,0) : (parseInt(value) || 0);
+        // A negative tariff makes calculateCost() return a negative cost: the
+        // shop would PAY the customer. 0 makes play free. Clamp instead.
+        if (!isFinite(v) || v < 0) { showToast('تعرفه نمی‌تواند منفی باشد','error'); return; }
+        if (v > 100000000) { showToast('تعرفه خیلی بزرگ است','error'); return; }
+        tariffs[type] = Math.floor(v);
         localStorage.setItem('alvand_tariffs', JSON.stringify(tariffs));
+        try{ renderClients(); updateStats(); }catch(e){}
         showToast('تعرفه بروز شد','success');
     }
 
     // Cost Calculation - with time-based tariff and rounding
+    /** Minutes-since-midnight for a "HH:MM" string, or null when malformed.
+     *  A tariff schedule with a missing/garbage start or end used to throw here,
+     *  and because calculateCost() runs for every card on every tick that single
+     *  bad row (a hand-edited or shared backup) blanked the whole page. */
+    function parseHhMm(v){
+        const m=String(v==null?'':v).match(/^(\d{1,2}):(\d{2})$/);
+        if(!m) return null;
+        const h=parseInt(m[1],10), mi=parseInt(m[2],10);
+        if(!isFinite(h)||!isFinite(mi)||h<0||h>23||mi<0||mi>59) return null;
+        return h*60+mi;
+    }
+    function tariffWindowActive(ts, curMin){
+        if(!ts) return false;
+        const sMin=parseHhMm(ts.start), eMin=parseHhMm(ts.end);
+        if(sMin===null || eMin===null) return false;
+        if(sMin===eMin) return false;            // empty window
+        if(sMin < eMin) return curMin>=sMin && curMin<eMin;
+        return curMin>=sMin || curMin<eMin;       // overnight
+    }
     function getActiveTariff(){
-        let now = new Date();
-        let curMin = now.getHours()*60 + now.getMinutes();
-        for(let ts of tariffSchedules){
-            let s = ts.start.split(':').map(Number); let e = ts.end.split(':').map(Number);
-            let sMin = s[0]*60+s[1]; let eMin = e[0]*60+e[1];
-            let inRange = false;
-            if(sMin <= eMin) inRange = curMin>=sMin && curMin<eMin;
-            else inRange = curMin>=sMin || curMin<eMin; // overnight
-            if(inRange) return ts;
+        const now = new Date();
+        const curMin = now.getHours()*60 + now.getMinutes();
+        const list = Array.isArray(tariffSchedules) ? tariffSchedules : [];
+        for(const ts of list){
+            if(!ts) continue;
+            if(tariffWindowActive(ts, curMin)) return ts;
         }
         return null;
     }
     function getStationType(id){ return (stationTypes||[]).find(t=>t.id===id); }
+    /** A usable, non-negative rate. Tariffs come from storage/inputs and could be
+     *  missing, a string or negative; every consumer must get a number >= 0. */
+    function safeRate(v, fallback){
+        let n=Number(v);
+        if(!isFinite(n) || n<0) n=Number(fallback);
+        if(!isFinite(n) || n<0) n=0;
+        return n;
+    }
     function getTariffForClient(client){
+        if(!client) return 0;
         let active = getActiveTariff();
         let tid = client.stationType||null;
         if(tid){
-            if(active && active.prices && active.prices[tid]>0) return active.prices[tid];
+            if(active && active.prices && active.prices[tid]>0) return safeRate(active.prices[tid], 0);
             let st=getStationType(tid);
-            if(st && st.price>0) return st.price;
+            if(st && st.price>0) return safeRate(st.price, 0);
         }
         if(active){
-            if(client.tariff==='single') return active.single;
-            else return active.double;
+            if(client.tariff==='single') return safeRate(active.single, tariffs.single);
+            else return safeRate(active.double, tariffs.double);
         }
-        return client.tariff === 'single' ? tariffs.single : tariffs.double;
+        return safeRate(client.tariff === 'single' ? tariffs.single : tariffs.double, 0);
     }
     function getExtraRate(){
         let active = getActiveTariff();
-        return active ? active.extra : tariffs.extra;
+        return safeRate(active ? active.extra : tariffs.extra, 0);
     }
     function calculateCost(client) {
-        const hours = (client.elapsed || 0) / 3600;
+        if(!client) return 0;
+        const hours = (Number(client.elapsed)||0) / 3600;
         let rate = getTariffForClient(client);
         let cost = Math.round(hours * rate);
         // extras are billed pro-rata from the moment each one joined (see updateTimers)
-        const xs = client.extraSeconds || 0;
+        const xs = Number(client.extraSeconds)||0;
         if (xs > 0) cost += Math.round((xs / 3600) * getExtraRate());
+        if(!isFinite(cost) || cost < 0) cost = 0;
         return applyRounding(cost);
     }
     function calculateDurationFromAmountRaw(amount, tariffType='single', extra=0, stationType=null){
@@ -3752,11 +3918,16 @@
         return Math.round((amount / rate) * 3600);
     }
     function applyRounding(amount){
-        if(roundingMode==='none') return amount;
-        if(roundingMode==='up') return Math.ceil(amount/1000)*1000;
-        if(roundingMode==='down') return Math.floor(amount/1000)*1000;
-        if(roundingMode==='nearest') return Math.round(amount/1000)*1000;
-        return amount;
+        let a=Number(amount);
+        if(!isFinite(a) || a<=0) return 0;        // never turn 0/-x into a charge
+        if(roundingMode==='none') return a;
+        // "round down to the nearest 1000" turned a 500-toman session into 0,
+        // i.e. free play. Anything under the step keeps its own value.
+        if(a<1000) return a;
+        if(roundingMode==='up') return Math.ceil(a/1000)*1000;
+        if(roundingMode==='down') return Math.max(1000, Math.floor(a/1000)*1000);
+        if(roundingMode==='nearest') return Math.max(1000, Math.round(a/1000)*1000);
+        return a;
     }
 
     // Stats
@@ -3768,49 +3939,114 @@
         const todayIncome = sessions.filter(s => {
             const d = new Date(s.date);
             const now = new Date();
-            return d.toDateString() === now.toDateString();
+            return isSameDay(d, now);
         }).reduce((sum, s) => sum + s.cost, 0);
 
         let a=document.getElementById('statActive'); if(a) a.textContent = active;
         let b=document.getElementById('statPaused'); if(b) b.textContent = paused;
         let c=document.getElementById('statTotal'); if(c) c.textContent = total;
-        let d2=document.getElementById('statIncome'); if(d2) d2.textContent = todayIncome.toLocaleString() + ' تومان';
+        let d2=document.getElementById('statIncome'); if(d2) d2.textContent = todayIncome.toLocaleString('fa-IR') + ' تومان';
 
         renderActiveClients();
     }
 
+    // Clients shown on the dashboard: running + paused (paused ones must stay
+    // reachable, otherwise "resume" is impossible from here).
+    function dashboardClientList(){
+        return clients.filter(c => c.status === 'online' || c.status === 'paused');
+    }
     function renderActiveClients() {
         const container = document.getElementById('activeClientsList');
         if(!container) return;
-        const active = clients.filter(c => c.status === 'online');
+        const list = dashboardClientList();
 
-        if (active.length === 0) {
+        if (list.length === 0) {
             container.innerHTML = '<div class="glass" style="grid-column: 1/-1; text-align: center; padding: 40px; color: rgba(255,255,255,0.5);"><p>هیچ کلاینت فعالی وجود ندارد</p></div>';
             try{ window._actIds = ''; }catch(e){}
             return;
         }
 
-        container.innerHTML = active.map(c => {
+        container.innerHTML = list.map(c => {
+            const online = c.status === 'online';
             let remaining='';
             if(c.timerDuration && c.timerDuration>0){
                 let rem=c.timerDuration*60 - (c.elapsed||0);
                 if(rem<0) rem=0;
                 remaining=`<p id="actRemain-${c.id}" style="color:${rem<=300?'#fca5a5':'#fbbf24'}; font-size:0.8rem;">⏳ باقی‌مانده: ${formatTime(rem)}</p>`;
             }
+            const hot = !!(c.timerDuration && (c.timerDuration*60 - (c.elapsed||0))<=300);
             return `
-            <div class="glass active-row" style="padding: 20px; display: flex; align-items: center; justify-content: space-between;">
-                <div>
-                    <h4 style="font-weight: 700; margin-bottom: 4px;">${escapeHtml(c.name)}</h4>
+            <div class="glass active-row clickable" data-cid="${c.id}" onclick="openClientFromDashboard(${numId(c.id)})" title="برای دیدن جزئیات کلیک کنید" style="padding: 18px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                    <h4 style="font-weight: 700;">${escapeHtml(c.name)}</h4>
+                    <span class="qa-state" id="actState-${c.id}" style="background:${online?'rgba(34,197,94,0.18)':'rgba(245,158,11,0.18)'}; color:${online?'#4ade80':'#fcd34d'};">${online?'● فعال':'⏸ متوقف'}</span>
+                </div>
+                <div style="margin-bottom: 6px;">
                     <span class="tariff-badge ${c.tariff === 'single' ? 'tariff-single' : 'tariff-double'}">${c.tariff === 'single' ? 'تک نفره' : 'دو نفره'}</span>
-                    ${remaining}
+                    ${c.extra ? `<span class="tariff-badge tariff-extra">+${c.extra} نفر</span>` : ''}
+                    ${c.timerDuration ? `<span class="tariff-badge" style="background:rgba(239,68,68,0.18); color:#fca5a5; border:1px solid rgba(239,68,68,0.3);">⏱️ ${c.timerDuration}د</span>` : ''}
                 </div>
+                ${remaining}
                 <div style="text-align: left;">
-                    <p id="actElapsed-${c.id}" style="font-size: 1.4rem; font-weight: 900; font-variant-numeric: tabular-nums; color: ${c.timerDuration && (c.timerDuration*60 - c.elapsed)<=300?'#ef4444':'#22c55e'};">${formatTime(c.elapsed || 0)}</p>
-                    <p id="actCost-${c.id}" style="font-size: 0.8rem; color: rgba(255,255,255,0.5);">${calculateCost(c).toLocaleString()} تومان</p>
+                    <p id="actElapsed-${c.id}" style="font-size: 1.4rem; font-weight: 900; font-variant-numeric: tabular-nums; color: ${hot?'#ef4444':'#22c55e'};">${formatTime(c.elapsed || 0)}</p>
+                    <p id="actCost-${c.id}" style="font-size: 0.8rem; color: rgba(255,255,255,0.5);">${calculateCost(c).toLocaleString('fa-IR')} تومان</p>
                 </div>
-            </div>
-        `}).join('');
-        try{ window._actIds = active.map(c=>c.id).join(','); }catch(e){}
+                <div class="qa-bar">
+                    ${online
+                        ? `<button class="qa-btn qa-pause" onclick="event.stopPropagation();dashboardAction(${numId(c.id)},'pause')">⏸ توقف</button>
+                           <button class="qa-btn qa-stop" onclick="event.stopPropagation();dashboardAction(${numId(c.id)},'stop')">■ پایان</button>`
+                        : `<button class="qa-btn qa-start" onclick="event.stopPropagation();dashboardAction(${numId(c.id)},'start')">▶ ${c.elapsed>0?'ادامه':'شروع'}</button>
+                           <button class="qa-btn qa-stop" onclick="event.stopPropagation();dashboardAction(${numId(c.id)},'stop')">■ پایان</button>`}
+                    <button class="qa-btn" onclick="event.stopPropagation();openClientFromDashboard(${numId(c.id)})">⋯ جزئیات</button>
+                </div>
+            </div>`;
+        }).join('');
+        try{ window._actIds = list.map(c=>c.id).join(','); }catch(e){}
+    }
+    /** Dashboard quick actions. Resolve the client by ID (never by index). */
+    function dashboardAction(id, action){
+        const idx = clients.findIndex(c => String(c.id) === String(id));
+        if(idx < 0){ showToast('این کلاینت دیگر وجود ندارد','error'); return; }
+        currentTimeClient = idx;
+        if(action === 'start') startTimer();
+        else if(action === 'pause') pauseTimer();
+        else if(action === 'stop') stopTimer();
+        else return;
+        try{ renderActiveClients(); }catch(e){}
+    }
+    /** Dashboard -> client management: jump to the card, flash it, open its menu. */
+    function openClientFromDashboard(id){
+        const idx = clients.findIndex(c => String(c.id) === String(id));
+        if(idx < 0){ showToast('این کلاینت دیگر وجود ندارد','error'); return; }
+        showSection('clients', document.querySelector('.nav-item[onclick*="showSection(\'clients\'"]'));
+        let tries = 0;
+        const focus = () => {
+            let card = document.querySelector('#clientsGrid .client-card[data-cid="' + id + '"]');
+            if(!card){
+                // hidden behind the station-type filter -> clear it and render once more
+                if(clientTypeFilter && tries === 0){
+                    tries++;
+                    clientTypeFilter = '';
+                    try{ renderClients(); }catch(e){}
+                    setTimeout(focus, 40);
+                    return;
+                }
+                if(tries < 3){ tries++; setTimeout(focus, 60); return; }
+                return;
+            }
+            try{
+                card.scrollIntoView({behavior:'smooth', block:'center'});
+            }catch(e){}
+            try{ card.classList.add('flash-focus'); setTimeout(()=>card.classList.remove('flash-focus'), 2400); }catch(e){}
+            // open the "more" menu so every per-client action is right there
+            try{
+                document.querySelectorAll('[id^="clientMenu-"]').forEach(x => x.style.display = 'none');
+                document.querySelectorAll('#clientsGrid .client-card.menu-open').forEach(x => x.classList.remove('menu-open'));
+                const menu = document.getElementById('clientMenu-' + idx);
+                if(menu){ menu.style.display = 'block'; card.classList.add('menu-open'); }
+            }catch(e){}
+        };
+        setTimeout(focus, 60);
     }
 
     // Light per-second dashboard tick: numbers + surgical list refresh (no rebuild).
@@ -3819,34 +4055,46 @@
             const active = clients.filter(c => c.status === 'online').length;
             const paused = clients.filter(c => c.status === 'paused').length;
             const now = new Date();
-            const todayIncome = sessions.filter(s => new Date(s.date).toDateString() === now.toDateString()).reduce((sum, s) => sum + s.cost, 0);
+            const todayIncome = sessions.filter(s => isSameDay(s.date, now)).reduce((sum, s) => sum + s.cost, 0);
             let a=document.getElementById('statActive'); if(a && a.textContent != String(active)) a.textContent = active;
             let b=document.getElementById('statPaused'); if(b && b.textContent != String(paused)) b.textContent = paused;
             let c=document.getElementById('statTotal'); if(c && c.textContent != String(clients.length)) c.textContent = clients.length;
             let d2=document.getElementById('statIncome');
-            let incTxt = todayIncome.toLocaleString() + ' تومان';
+            let incTxt = todayIncome.toLocaleString('fa-IR') + ' تومان';
             if(d2 && d2.textContent !== incTxt) d2.textContent = incTxt;
         }catch(e){}
         try{ refreshActiveClients(); }catch(e){}
     }
 
     // Dashboard counterpart of refreshClientCards: in-place text updates only.
-    function refreshActiveClients(){        let online = [];
-        try{ online = clients.filter(c => c.status === 'online'); }catch(e){ return; }
-        let ids = online.map(c=>c.id).join(',');
+    function refreshActiveClients(){
+        let list = [];
+        try{ list = dashboardClientList(); }catch(e){ return; }
+        let ids = list.map(c=>c.id).join(',');
         if(window._actIds !== ids){ renderActiveClients(); return; }
-        online.forEach(c => {
+        list.forEach(c => {
+            const online = c.status === 'online';
             setLiveText('actElapsed-'+c.id, formatTime(c.elapsed||0));
-            try{ setLiveText('actCost-'+c.id, calculateCost(c).toLocaleString() + ' تومان'); }catch(e){}
+            try{ setLiveText('actCost-'+c.id, calculateCost(c).toLocaleString('fa-IR') + ' تومان'); }catch(e){}
             if(c.timerDuration && c.timerDuration>0){
                 let rem = Math.max(0, c.timerDuration*60 - (c.elapsed||0));
                 setLiveText('actRemain-'+c.id, '⏳ باقی‌مانده: ' + formatTime(rem));
+            }
+            const st = document.getElementById('actState-'+c.id);
+            if(st){
+                const txt = online ? '● فعال' : '⏸ متوقف';
+                if(st.textContent !== txt){
+                    st.textContent = txt;
+                    st.style.background = online ? 'rgba(34,197,94,0.18)' : 'rgba(245,158,11,0.18)';
+                    st.style.color = online ? '#4ade80' : '#fcd34d';
+                }
             }
         });
     }
 
     // Reports - enhanced with PDF button
     function generateReport(type) {
+        if(!requirePerm('reports','گزارش‌گیری')) return;
         let a=document.getElementById('btnDaily'); if(a) a.classList.remove('glass-btn-success');
         let b=document.getElementById('btnWeekly'); if(b) b.classList.remove('glass-btn-success');
         let c=document.getElementById('btnMonthly'); if(c) c.classList.remove('glass-btn-success');
@@ -3858,7 +4106,7 @@
         let title = '';
 
         if (type === 'daily') {
-            filtered = sessions.filter(s => new Date(s.date).toDateString() === now.toDateString());
+            filtered = sessions.filter(s => isSameDay(s.date, now));
             title = 'گزارش روزانه - ' + now.toLocaleDateString('fa-IR');
         } else if (type === 'weekly') {
             const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
@@ -3877,8 +4125,8 @@
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
                 <h3 style="margin:0;">${title}</h3>
                 <div style="display:flex; gap:8px;">
-                    <button class="glass-btn glass-btn-success" style="padding:8px 14px; font-size:0.8rem;" onclick="generatePdfForReport('${type}')">📄 PDF</button>
-                    <button class="glass-btn" style="padding:8px 14px; font-size:0.8rem;" onclick="openShareModal('${title}', \`${filtered.length} سشن - ${totalCost.toLocaleString()} تومان - ${title}\`, {})">📤 اشتراک</button>
+                    <button class="glass-btn glass-btn-success" style="padding:8px 14px; font-size:0.8rem;" onclick="generatePdfForReport('${escapeHtml(jsStr(type))}')">📄 PDF</button>
+                    <button class="glass-btn" style="padding:8px 14px; font-size:0.8rem;" data-report-title="${escapeHtml(title)}" data-report-text="${escapeHtml(filtered.length+' سشن - '+totalCost.toLocaleString('fa-IR')+' تومان - '+title)}" onclick="shareReportFromNode(this)">📤 اشتراک</button>
                 </div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
@@ -3888,7 +4136,7 @@
                 </div>
                 <div class="glass" style="padding: 20px; text-align: center;">
                     <p style="color: rgba(255,255,255,0.5);">درآمد کل</p>
-                    <p style="font-size: 1.8rem; font-weight: 900; color: #22c55e;">${totalCost.toLocaleString()} تومان</p>
+                    <p style="font-size: 1.8rem; font-weight: 900; color: #22c55e;">${totalCost.toLocaleString('fa-IR')} تومان</p>
                 </div>
             </div>
             <div style="overflow-x: auto;">
@@ -3917,11 +4165,11 @@
                         <td style="padding: 12px;">${escapeHtml(s.clientName)}</td>
                         <td style="padding: 12px;"><span class="tariff-badge ${s.tariff === 'single' ? 'tariff-single' : 'tariff-double'}">${s.tariff === 'single' ? 'تک نفره' : 'دو نفره'}</span></td>
                         <td style="padding: 12px;">${formatTime(s.duration)}</td>
-                        <td style="padding: 12px; font-weight: 700; color: #22c55e;">${s.cost.toLocaleString()}</td>
+                        <td style="padding: 12px; font-weight: 700; color: #22c55e;">${s.cost.toLocaleString('fa-IR')}</td>
                         <td style="padding: 12px; color: rgba(255,255,255,0.6); font-size: 0.85rem;">${new Date(s.date).toLocaleString('fa-IR')}</td>
                         <td style="padding: 12px; text-align:center;">
-                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="generatePdfForSession(${origIdx})">PDF</button>
-                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="openShareModalForSession(${origIdx})">📤</button>
+                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="generatePdfForSession(${numId(origIdx)})">PDF</button>
+                            <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="openShareModalForSession(${numId(origIdx)})">📤</button>
                         </td>
                     </tr>
                 `;
@@ -3934,7 +4182,7 @@
         // also prepare pdf for this report
         let reportHtmlTitle=title;
         // set pdf content for later download
-        let pdfHtml=`<h2 style="text-align:center; color:#4f46e5;">${reportHtmlTitle}</h2><p style="text-align:center;">${filtered.length} سشن - ${totalCost.toLocaleString()} تومان</p>`;
+        let pdfHtml=`<h2 style="text-align:center; color:#4f46e5;">${reportHtmlTitle}</h2><p style="text-align:center;">${filtered.length} سشن - ${totalCost.toLocaleString('fa-IR')} تومان</p>`;
         // we don't auto set here, generatePdfForReport will do
     }
 
@@ -3942,17 +4190,17 @@
     function updateIncome() {
         const now = new Date();
 
-        const today = sessions.filter(s => new Date(s.date).toDateString() === now.toDateString()).reduce((sum, s) => sum + s.cost, 0);
+        const today = sessions.filter(s => isSameDay(s.date, now)).reduce((sum, s) => sum + s.cost, 0);
         const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
         const week = sessions.filter(s => new Date(s.date) >= weekAgo).reduce((sum, s) => sum + s.cost, 0);
         const monthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
         const month = sessions.filter(s => new Date(s.date) >= monthAgo).reduce((sum, s) => sum + s.cost, 0);
         const total = sessions.reduce((sum, s) => sum + s.cost, 0);
 
-        let a=document.getElementById('incomeToday'); if(a) a.textContent = today.toLocaleString() + ' تومان';
-        let b=document.getElementById('incomeWeek'); if(b) b.textContent = week.toLocaleString() + ' تومان';
-        let c=document.getElementById('incomeMonth'); if(c) c.textContent = month.toLocaleString() + ' تومان';
-        let d=document.getElementById('incomeTotal'); if(d) d.textContent = total.toLocaleString() + ' تومان';
+        let a=document.getElementById('incomeToday'); if(a) a.textContent = today.toLocaleString('fa-IR') + ' تومان';
+        let b=document.getElementById('incomeWeek'); if(b) b.textContent = week.toLocaleString('fa-IR') + ' تومان';
+        let c=document.getElementById('incomeMonth'); if(c) c.textContent = month.toLocaleString('fa-IR') + ' تومان';
+        let d=document.getElementById('incomeTotal'); if(d) d.textContent = total.toLocaleString('fa-IR') + ' تومان';
 
         // Breakdown
         const byTariff = { single: 0, double: 0, extra: 0 };
@@ -3967,15 +4215,15 @@
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
                 <div class="glass" style="padding: 20px; text-align: center;">
                     <p style="color: #60a5fa; margin-bottom: 8px;">تک نفره</p>
-                    <p style="font-size: 1.5rem; font-weight: 900;">${Math.round(byTariff.single).toLocaleString()} تومان</p>
+                    <p style="font-size: 1.5rem; font-weight: 900;">${Math.round(byTariff.single).toLocaleString('fa-IR')} تومان</p>
                 </div>
                 <div class="glass" style="padding: 20px; text-align: center;">
                     <p style="color: #c084fc; margin-bottom: 8px;">دو نفره</p>
-                    <p style="font-size: 1.5rem; font-weight: 900;">${Math.round(byTariff.double).toLocaleString()} تومان</p>
+                    <p style="font-size: 1.5rem; font-weight: 900;">${Math.round(byTariff.double).toLocaleString('fa-IR')} تومان</p>
                 </div>
                 <div class="glass" style="padding: 20px; text-align: center;">
                     <p style="color: #fbbf24; margin-bottom: 8px;">نفرات اضافه</p>
-                    <p style="font-size: 1.5rem; font-weight: 900;">${Math.round(byTariff.extra).toLocaleString()} تومان</p>
+                    <p style="font-size: 1.5rem; font-weight: 900;">${Math.round(byTariff.extra).toLocaleString('fa-IR')} تومان</p>
                 </div>
             </div>
         `;
@@ -3988,7 +4236,7 @@
 
         for (let i = 6; i >= 0; i--) {
             const d = new Date(now - i * 24 * 60 * 60 * 1000);
-            const income = sessions.filter(s => new Date(s.date).toDateString() === d.toDateString()).reduce((sum, s) => sum + s.cost, 0);
+            const income = sessions.filter(s => isSameDay(s.date, d)).reduce((sum, s) => sum + s.cost, 0);
             data.push(income);
         }
 
@@ -4014,16 +4262,16 @@
 
     function saveData() {
         // FIXED: per-key try/catch so QuotaExceeded on one key doesn't wipe the rest.
+        // NOTE: the 8 new-features stores (membershipPlans, customerMemberships,
+        // gameHistory, hourlyUsage, notifications, activityLog, employees,
+        // attendance) are intentionally NOT here - new-features.js owns them and
+        // saving them from here used to erase their data.
         var __pairs = [
           ['alvand_clients', clients], ['alvand_sessions', sessions], ['alvand_services', services],
           ['alvand_expenses', expenses], ['alvand_tariffSchedules', tariffSchedules], ['alvand_sales', sales],
           ['alvand_clientServiceMap', clientServiceMap], ['alvand_customers', customers],
           ['alvand_operators', operators], ['alvand_walletHistory', walletHistory],
-          ['alvand_stationTypes', stationTypes],
-          ['alvand_membershipPlans', membershipPlans], ['alvand_customerMemberships', customerMemberships],
-          ['alvand_gameHistory', gameHistory], ['alvand_hourlyUsage', hourlyUsage],
-          ['alvand_notifications', notifications], ['alvand_activityLog', activityLog],
-          ['alvand_employees', employees], ['alvand_attendance', attendance]
+          ['alvand_stationTypes', stationTypes]
         ];
         for (var __i = 0; __i < __pairs.length; __i++) {
           try { localStorage.setItem(__pairs[__i][0], JSON.stringify(__pairs[__i][1])); }
@@ -4050,11 +4298,13 @@
         showToast('تعرفه تغییر کرد','success');
     }
     function openAmountModal(idx){
-        // merged into time modal: amount section lives inside مدیریت زمان
-        openTimeModal(idx);
+        currentTimeClient = idx;
+        document.getElementById('amountInput').value='';
+        document.getElementById('amountResult').style.display='none';
+        document.getElementById('amountModal').classList.add('show');
     }
     function calculateDurationFromAmount(amount){
-        if(!amount) amount = parseInt(document.getElementById('amountInput').value)||0;
+        if(!amount) amount = parseFaNumber(document.getElementById('amountInput').value, 0)||0;
         else document.getElementById('amountInput').value = amount;
         if(amount<=0){ showToast('مبلغ وارد کن','error'); return; }
         if(currentTimeClient===null) return;
@@ -4064,18 +4314,18 @@
         document.getElementById('amountResultText').textContent = formatTime(dur) + '  ('+Math.round(dur/60)+' دقیقه)';
         window._calcDur = dur;
     }
-    document.getElementById('amountInput')?.addEventListener('input', function(){ if(this.value) calculateDurationFromAmount(parseInt(this.value)); });
+    document.getElementById('amountInput')?.addEventListener('input', function(){ if(this.value) calculateDurationFromAmount(parseFaNumber(this.value, 0)); });
     function applyAmountDuration(){
         if(!window._calcDur) { showToast('اول مبلغ را وارد کن','error'); return; }
         if(currentTimeClient===null) return;
         let c=clients[currentTimeClient];
-        if(!c){ currentTimeClient=null; return; }
         c.timerDuration = Math.ceil(window._calcDur/60);
         c.notified=false;
         saveData();
+        closeModal('amountModal');
         renderClients();
-        try{ updateTimeDisplay(); updateTimerStatusText(); }catch(e){}
         showToast('مدت '+c.timerDuration+' دقیقه تنظیم شد','success');
+        openTimeModal(currentTimeClient);
     }
 
     // Buffet
@@ -4089,14 +4339,14 @@
                 <div style="display:flex; justify-content:space-between; align-items:start;">
                     <div>
                         <h4 style="font-weight:800;">${escapeHtml(s.name)} <span style="font-size:0.7rem; padding:2px 6px; border-radius:50px; background:${s.category==='buffet'?'rgba(245,158,11,0.15)':'rgba(99,102,241,0.15)'}; color:${s.category==='buffet'?'#fbbf24':'#818cf8'};">${s.category==='buffet'?'بوفه':'خدمات'}</span></h4>
-                        <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">خرید: ${s.cost.toLocaleString()} - فروش: ${s.price.toLocaleString()}</p>
-                        <p class="profit-badge" style="display:inline-block; margin-top:6px;">سود: ${(s.price-s.cost).toLocaleString()} تومان</p>
+                        <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">خرید: ${s.cost.toLocaleString('fa-IR')} - فروش: ${s.price.toLocaleString('fa-IR')}</p>
+                        <p class="profit-badge" style="display:inline-block; margin-top:6px;">سود: ${(s.price-s.cost).toLocaleString('fa-IR')} تومان</p>
                     </div>
                     <span class="${s.stock<10?'stock-low':'stock-ok'}" style="font-size:0.85rem;">موجودی: ${s.stock}</span>
                 </div>
                 <div style="display:flex; gap:6px; margin-top:12px;">
-                    <button class="glass-btn" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="editService(${s.id})">✏️ ویرایش</button>
-                    <button class="glass-btn glass-btn-danger" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="deleteService(${s.id})">🗑️ حذف</button>
+                    <button class="glass-btn" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="editService(${numId(s.id)})">✏️ ویرایش</button>
+                    <button class="glass-btn glass-btn-danger" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="deleteService(${numId(s.id)})">🗑️ حذف</button>
                 </div>
             </div>
         `).join('');
@@ -4104,6 +4354,7 @@
     }
     function filterServices(f){ serviceFilter=f; renderServices(); }
     function openServiceModal(){
+        if(!requirePerm('buffet','بوفه')) return;
         document.getElementById('serviceId').value='';
         document.getElementById('serviceName').value='';
         document.getElementById('servicePrice').value='';
@@ -4125,9 +4376,9 @@
     function saveService(){
         let id=document.getElementById('serviceId').value;
         let name=document.getElementById('serviceName').value.trim();
-        let price=parseInt(document.getElementById('servicePrice').value)||0;
-        let cost=parseInt(document.getElementById('serviceCost').value)||0;
-        let stock=parseInt(document.getElementById('serviceStock').value)||0;
+        let price=parseFaNumber(document.getElementById('servicePrice').value, 0)||0;
+        let cost=parseFaNumber(document.getElementById('serviceCost').value, 0)||0;
+        let stock=parseFaNumber(document.getElementById('serviceStock').value, 0)||0;
         let category=document.getElementById('serviceCategory').value;
         if(!name||!price){ showToast('نام و قیمت الزامی','error'); return; }
         if(id){
@@ -4142,24 +4393,25 @@
         showToast('خدمت ذخیره شد','success');
     }
     function deleteService(id){
+        if(!requirePerm('buffet','حذف خدمت')) return;
         if(!confirm('حذف شود؟')) return;
         services=services.filter(s=>s.id!==id);
         saveServices(); renderServices(); showToast('حذف شد','success');
     }
     function updateBuffetStats(){
-        let today=new Date().toDateString();
-        let todaySales=sales.filter(s=> new Date(s.date).toDateString()===today);
+        let today=localDayKey(new Date());
+        let todaySales=sales.filter(s=> isSameDay(s.date, today));
         let income=todaySales.reduce((sum,s)=>sum+s.price*s.qty,0);
         let profit=todaySales.reduce((sum,s)=>sum+s.profit,0);
         let low=services.filter(s=>s.stock<10).length;
-        let el1=document.getElementById('buffetIncomeToday'); if(el1) el1.textContent=income.toLocaleString()+' تومان';
-        let el2=document.getElementById('buffetProfitToday'); if(el2) el2.textContent=profit.toLocaleString()+' تومان';
+        let el1=document.getElementById('buffetIncomeToday'); if(el1) el1.textContent=income.toLocaleString('fa-IR')+' تومان';
+        let el2=document.getElementById('buffetProfitToday'); if(el2) el2.textContent=profit.toLocaleString('fa-IR')+' تومان';
         let el3=document.getElementById('lowStockCount'); if(el3) el3.textContent=low+' قلم';
         // sales list
         let list=document.getElementById('buffetSalesList');
         if(list){
             if(todaySales.length===0) list.innerHTML='<p style="text-align:center; color:rgba(255,255,255,0.4); padding:20px;">فروشی امروز نداشته‌اید</p>';
-            else list.innerHTML=todaySales.slice(-10).reverse().map(s=>`<div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem;"><span>${escapeHtml(s.name)} x${s.qty}</span><span style="color:#22c55e;">${(s.price*s.qty).toLocaleString()} تومان</span></div>`).join('');
+            else list.innerHTML=todaySales.slice(-10).reverse().map(s=>`<div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem;"><span>${escapeHtml(s.name)} x${s.qty}</span><span style="color:#22c55e;">${(s.price*s.qty).toLocaleString('fa-IR')} تومان</span></div>`).join('');
         }
     }
     function openAddServiceToClient(idx){
@@ -4171,12 +4423,12 @@
             <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border-radius:12px; padding:10px 12px;">
                 <div>
                     <p style="font-weight:700; font-size:0.9rem;">${escapeHtml(s.name)} <span style="font-size:0.7rem; color:rgba(255,255,255,0.5);">موجودی:${s.stock}</span></p>
-                    <p style="font-size:0.8rem; color:#22c55e;">${s.price.toLocaleString()} تومان</p>
+                    <p style="font-size:0.8rem; color:#22c55e;">${s.price.toLocaleString('fa-IR')} تومان</p>
                 </div>
                 <div style="display:flex; gap:6px; align-items:center;">
-                    <button class="glass-btn glass-btn-danger" style="padding:4px 8px; font-size:0.8rem;" onclick="addServiceToClientQty(${s.id}, -1)">-</button>
+                    <button class="glass-btn glass-btn-danger" style="padding:4px 8px; font-size:0.8rem;" onclick="addServiceToClientQty(${numId(s.id)}, -1)">-</button>
                     <span id="svcQty-${s.id}" style="min-width:24px; text-align:center; font-weight:800;">${((clientServiceMap[c.id]||[]).find(x=>x.serviceId===s.id)?.qty||0)}</span>
-                    <button class="glass-btn glass-btn-success" style="padding:4px 8px; font-size:0.8rem;" onclick="addServiceToClientQty(${s.id}, 1)">+</button>
+                    <button class="glass-btn glass-btn-success" style="padding:4px 8px; font-size:0.8rem;" onclick="addServiceToClientQty(${numId(s.id)}, 1)">+</button>
                 </div>
             </div>
         `).join('');
@@ -4208,7 +4460,7 @@
         let c=clients[currentTimeClient];
         let arr=clientServiceMap[c.id]||[];
         let total=arr.reduce((sum,it)=>{ let s=services.find(x=>x.id===it.serviceId); return sum+(s? s.price*it.qty:0); },0);
-        document.getElementById('svcTotalForClient').textContent=total.toLocaleString()+' تومان';
+        document.getElementById('svcTotalForClient').textContent=total.toLocaleString('fa-IR')+' تومان';
         let sel=document.getElementById('svcSelectedList');
         if(arr.length===0) sel.innerHTML='<p style="color:rgba(255,255,255,0.4); font-size:0.8rem;">چیزی انتخاب نشده</p>';
         else sel.innerHTML=arr.map(it=>{ let s=services.find(x=>x.id===it.serviceId); return `<span style="display:inline-block; background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); border-radius:50px; padding:4px 10px; margin:4px; font-size:0.75rem;">${escapeHtml(s.name)} x${it.qty}</span>`; }).join('');
@@ -4222,20 +4474,21 @@
         else list.innerHTML=expenses.slice().reverse().map(e=>`
             <div class="glass expense-row" style="padding:14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                 <div>
-                    <p style="font-weight:700;">${escapeHtml(e.title)} <span style="font-size:0.7rem; padding:2px 6px; border-radius:50px; background:rgba(255,255,255,0.08);">${e.category}</span></p>
+                    <p style="font-weight:700;">${escapeHtml(e.title)} <span style="font-size:0.7rem; padding:2px 6px; border-radius:50px; background:rgba(255,255,255,0.08);">${escapeHtml(e.category||"")}</span></p>
                     <p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">${new Date(e.date).toLocaleDateString('fa-IR')}</p>
                 </div>
                 <div style="text-align:left;">
-                    <p style="font-weight:800; color:#ef4444;">${e.amount.toLocaleString()} تومان</p>
+                    <p style="font-weight:800; color:#ef4444;">${e.amount.toLocaleString('fa-IR')} تومان</p>
                     <div style="display:flex; gap:6px; margin-top:4px;">
-                        <button class="glass-btn" style="padding:4px 8px; font-size:0.7rem;" onclick="editExpense(${e.id})">✏️</button>
-                        <button class="glass-btn glass-btn-danger" style="padding:4px 8px; font-size:0.7rem;" onclick="deleteExpense(${e.id})">🗑️</button>
+                        <button class="glass-btn" style="padding:4px 8px; font-size:0.7rem;" onclick="editExpense(${numId(e.id)})">✏️</button>
+                        <button class="glass-btn glass-btn-danger" style="padding:4px 8px; font-size:0.7rem;" onclick="deleteExpense(${numId(e.id)})">🗑️</button>
                     </div>
                 </div>
             </div>
         `).join('');
     }
     function openExpenseModal(){
+        if(!requirePerm('expenses','هزینه')) return;
         document.getElementById('expenseId').value='';
         document.getElementById('expenseTitle').value='';
         document.getElementById('expenseAmount').value='';
@@ -4255,7 +4508,7 @@
     function saveExpense(){
         let id=document.getElementById('expenseId').value;
         let title=document.getElementById('expenseTitle').value.trim();
-        let amount=parseInt(document.getElementById('expenseAmount').value)||0;
+        let amount=parseFaNumber(document.getElementById('expenseAmount').value, 0)||0;
         let category=document.getElementById('expenseCategory').value;
         let date=document.getElementById('expenseDate').value;
         if(!title||!amount||!date){ showToast('همه فیلدها','error'); return; }
@@ -4271,32 +4524,33 @@
         showToast('هزینه ثبت شد','success');
     }
     function deleteExpense(id){
+        if(!requirePerm('expenses','حذف هزینه')) return;
         if(!confirm('حذف شود؟')) return;
         expenses=expenses.filter(e=>e.id!==id);
         saveExpenses(); renderExpenses(); updateExpenseStats();
         showToast('حذف شد','success');
     }
     function updateExpenseStats(){
-        let today=new Date().toDateString();
-        let todayExp=expenses.filter(e=> new Date(e.date).toDateString()===today).reduce((s,e)=>s+e.amount,0);
+        let today=localDayKey(new Date());
+        let todayExp=expenses.filter(e=> isSameDay(e.date, today)).reduce((s,e)=>s+(Number(e.amount)||0),0);
         let month=new Date().getMonth();
-        let monthExp=expenses.filter(e=> new Date(e.date).getMonth()===month).reduce((s,e)=>s+e.amount,0);
-        let todayIncome=sessions.filter(s=> new Date(s.date).toDateString()===today).reduce((s,x)=>s+(x.cost||0),0);
-        let buffetToday=sales.filter(s=> new Date(s.date).toDateString()===today).reduce((s,x)=>s+x.price*x.qty,0);
+        let monthExp=expenses.filter(e=>{ const d=new Date(e.date); return d.getMonth()===month && d.getFullYear()===new Date().getFullYear(); }).reduce((s,e)=>s+(Number(e.amount)||0),0);
+        let todayIncome=sessions.filter(s=> isSameDay(s.date, today)).reduce((s,x)=>s+(x.cost||0),0);
+        let buffetToday=sales.filter(s=> isSameDay(s.date, today)).reduce((s,x)=>s+x.price*x.qty,0);
         todayIncome+=buffetToday;
-        let el1=document.getElementById('expenseToday'); if(el1) el1.textContent=todayExp.toLocaleString()+' تومان';
-        let el2=document.getElementById('expenseMonth'); if(el2) el2.textContent=monthExp.toLocaleString()+' تومان';
-        let el3=document.getElementById('netProfitToday'); if(el3) el3.textContent=(todayIncome - todayExp).toLocaleString()+' تومان';
+        let el1=document.getElementById('expenseToday'); if(el1) el1.textContent=todayExp.toLocaleString('fa-IR')+' تومان';
+        let el2=document.getElementById('expenseMonth'); if(el2) el2.textContent=monthExp.toLocaleString('fa-IR')+' تومان';
+        let el3=document.getElementById('netProfitToday'); if(el3) el3.textContent=(todayIncome - todayExp).toLocaleString('fa-IR')+' تومان';
         if(el3) el3.style.color = (todayIncome - todayExp)>=0 ? '#22c55e':'#ef4444';
     }
     function updateCashCardStats(){
-        let today=new Date().toDateString();
+        let today=localDayKey(new Date());
         let pays=safeParse(localStorage.getItem('alvand_payments')||'[]');
-        let cash=pays.filter(p=> new Date(p.date).toDateString()===today && p.method==='cash').reduce((s,p)=>s+p.amount,0);
-        let card=pays.filter(p=> new Date(p.date).toDateString()===today && p.method==='card').reduce((s,p)=>s+p.amount,0);
-        let el1=document.getElementById('cashToday'); if(el1) el1.textContent=cash.toLocaleString()+' تومان';
-        let el2=document.getElementById('cardToday'); if(el2) el2.textContent=card.toLocaleString()+' تومان';
-        let el3=document.getElementById('totalCashCardToday'); if(el3) el3.textContent=(cash+card).toLocaleString()+' تومان';
+        let cash=pays.filter(p=> isSameDay(p.date, today) && p.method==='cash').reduce((s,p)=>s+(Number(p.amount)||0),0);
+        let card=pays.filter(p=> isSameDay(p.date, today) && p.method==='card').reduce((s,p)=>s+(Number(p.amount)||0),0);
+        let el1=document.getElementById('cashToday'); if(el1) el1.textContent=cash.toLocaleString('fa-IR')+' تومان';
+        let el2=document.getElementById('cardToday'); if(el2) el2.textContent=card.toLocaleString('fa-IR')+' تومان';
+        let el3=document.getElementById('totalCashCardToday'); if(el3) el3.textContent=(cash+card).toLocaleString('fa-IR')+' تومان';
     }
 
     // Tariff Schedule
@@ -4307,25 +4561,23 @@
         else list.innerHTML=tariffSchedules.map(ts=>`
             <div class="glass ${isTariffActive(ts)?'tariff-active':''}" style="padding:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                 <div>
-                    <h4 style="font-weight:800;">${escapeHtml(ts.name)} <span style="font-size:0.8rem; color:#818cf8;">${ts.start} تا ${ts.end}</span> ${isTariffActive(ts)?'<span style="background:#22c55e; color:white; padding:2px 8px; border-radius:50px; font-size:0.7rem;">فعال الان</span>':''}</h4>
-                    <p style="font-size:0.85rem; color:rgba(255,255,255,0.6);">تک:${ts.single.toLocaleString()} دو:${ts.double.toLocaleString()} اضافه:${ts.extra.toLocaleString()}</p>
-                    ${(ts.prices && Object.keys(ts.prices).filter(k=>ts.prices[k]>0).length) ? `<div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">`+Object.keys(ts.prices).filter(k=>ts.prices[k]>0).map(tid=>{ let st=getStationType(tid); return `<span class="tariff-badge tariff-extra">${st?st.icon+' '+st.name:tid}: ${(ts.prices[tid]||0).toLocaleString()}</span>`; }).join('')+`</div>` : ''}
+                    <h4 style="font-weight:800;">${escapeHtml(ts.name)} <span style="font-size:0.8rem; color:#818cf8;">${escapeHtml(ts.start)} تا ${escapeHtml(ts.end)}</span> ${isTariffActive(ts)?'<span style="background:#22c55e; color:white; padding:2px 8px; border-radius:50px; font-size:0.7rem;">فعال الان</span>':''}</h4>
+                    <p style="font-size:0.85rem; color:rgba(255,255,255,0.6);">تک:${ts.single.toLocaleString('fa-IR')} دو:${ts.double.toLocaleString('fa-IR')} اضافه:${ts.extra.toLocaleString('fa-IR')}</p>
+                    ${(ts.prices && Object.keys(ts.prices).filter(k=>ts.prices[k]>0).length) ? `<div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">`+Object.keys(ts.prices).filter(k=>ts.prices[k]>0).map(tid=>{ let st=getStationType(tid); return `<span class="tariff-badge tariff-extra">${st?st.icon+' '+st.name:tid}: ${(ts.prices[tid]||0).toLocaleString('fa-IR')}</span>`; }).join('')+`</div>` : ''}
                 </div>
                 <div style="display:flex; gap:6px;">
-                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="editTariffSchedule(${ts.id})">✏️</button>
-                    <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteTariffSchedule(${ts.id})">🗑️</button>
+                    <button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="editTariffSchedule(${numId(ts.id)})">✏️</button>
+                    <button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteTariffSchedule(${numId(ts.id)})">🗑️</button>
                 </div>
             </div>
         `).join('');
     }
     function isTariffActive(ts){
-        let now=new Date(); let cur=now.getHours()*60+now.getMinutes();
-        let s=ts.start.split(':').map(Number); let e=ts.end.split(':').map(Number);
-        let sMin=s[0]*60+s[1]; let eMin=e[0]*60+e[1];
-        if(sMin<=eMin) return cur>=sMin && cur<eMin;
-        else return cur>=sMin || cur<eMin;
+        const now=new Date();
+        return tariffWindowActive(ts, now.getHours()*60 + now.getMinutes());
     }
     function openTariffScheduleModal(){
+        if(!requirePerm('tariffs','تعرفه ساعتی')) return;
         document.getElementById('tariffScheduleId').value='';
         document.getElementById('tsName').value='';
         try{renderTsTypePrices(null);}catch(e){}
@@ -4349,12 +4601,17 @@
         let name=document.getElementById('tsName').value.trim()||'بدون نام';
         let start=document.getElementById('tsStart').value;
         let end=document.getElementById('tsEnd').value;
-        let single=parseInt(document.getElementById('tsSingle').value)||0;
-        let double=parseInt(document.getElementById('tsDouble').value)||0;
-        let extra=parseInt(document.getElementById('tsExtra').value)||0;
+        let single=parseFaNumber(document.getElementById('tsSingle').value, 0)||0;
+        let double=parseFaNumber(document.getElementById('tsDouble').value, 0)||0;
+        let extra=parseFaNumber(document.getElementById('tsExtra').value, 0)||0;
         let prices={};
-        document.querySelectorAll('#tsTypePrices input').forEach(inp=>{ prices[inp.dataset.type]=parseInt(inp.value)||0; });
-        if(!start||!end){ showToast('ساعت وارد کن','error'); return; }
+        document.querySelectorAll('#tsTypePrices input').forEach(inp=>{
+            const v=(typeof parseFaNumber==='function'? parseFaNumber(inp.value,0) : parseInt(inp.value)||0);
+            prices[inp.dataset.type]= v>0 ? v : 0;
+        });
+        if(parseHhMm(start)===null || parseHhMm(end)===null){ showToast('ساعت را در قالب HH:MM وارد کن','error'); return; }
+        if(start===end){ showToast('شروع و پایان بازه یکی است','error'); return; }
+        if(single<0||double<0||extra<0){ showToast('مبلغ تعرفه نمی‌تواند منفی باشد','error'); return; }
         if(id){
             let ts=tariffSchedules.find(x=>x.id===parseInt(id));
             Object.assign(ts,{name,start,end,single,double,extra,prices});
@@ -4367,11 +4624,13 @@
         showToast('تعرفه ساعتی ذخیره شد','success');
     }
     function deleteTariffSchedule(id){
+        if(!requirePerm('tariffs','حذف بازه ساعتی')) return;
         if(!confirm('حذف شود؟')) return;
         tariffSchedules=tariffSchedules.filter(x=>x.id!==id);
         saveTariffSchedules(); renderTariffSchedules(); updateActiveTariffDisplay();
     }
     function clearTariffSchedules(){
+        if(!requirePerm('tariffs','پاک کردن بازه‌ها')) return;
         if(!confirm('همه بازه‌ها حذف شوند؟')) return;
         tariffSchedules=[]; saveTariffSchedules(); renderTariffSchedules();
     }
@@ -4381,8 +4640,8 @@
         let active=getActiveTariff();
         let el2=document.getElementById('activeTariffDisplay');
         if(!el2) return;
-        if(active) el2.textContent=active.name+' - تک:'+active.single.toLocaleString()+' دو:'+active.double.toLocaleString();
-        else el2.textContent='تعرفه عادی - تک:'+tariffs.single.toLocaleString()+' دو:'+tariffs.double.toLocaleString();
+        if(active) el2.textContent=active.name+' - تک:'+active.single.toLocaleString('fa-IR')+' دو:'+active.double.toLocaleString('fa-IR');
+        else el2.textContent='تعرفه عادی - تک:'+tariffs.single.toLocaleString('fa-IR')+' دو:'+tariffs.double.toLocaleString('fa-IR');
     }
 
     // Backup
@@ -4406,50 +4665,110 @@
         let el2=document.getElementById('lastBackupTimeSettings');
         if(el2) el2.textContent = txt;
     }
+    /* ---------- Backup ----------
+       The old payload only held 10 keys, so a restore silently dropped the shop
+       name, customers' wallets, operators, the license and every new-features
+       store. It was also written straight back into the very localStorage it
+       was backing up, with no validation at all (sanitizeBackup existed but was
+       never called). Now: a complete snapshot, validated on restore, and mirrored
+       to a real file in userData/backups via the preload bridge. */
+    const BACKUP_STORE_KEYS = [
+      'clients','tariffs','sessions','reservations','services','expenses','tariffSchedules','sales',
+      'clientServiceMap','stationTypes','payments','customers','operators','walletHistory',
+      'license','allLicenses','rounding','lang','theme','alarmSound','alarmRepeat','rounding',
+      'backupTime','lite','uiZoom','shopName','shopPhone','guideShown',
+      // new-features stores
+      'membershipPlans','customerMemberships','gameHistory','hourlyUsage','notifications',
+      'activityLog','employees','attendance',
+      // modules
+      'waitingList','loyaltyPoints','surveys','smsLog','smsConfig','phonebook','events',
+      'branches','currentBranch','shifts','lowStockThreshold','posConfig','customers_enc'
+    ];
+    function collectBackupObject(){
+        const dump={ date: new Date().toISOString(), appVersion: (typeof APP_VERSION!=='undefined'? APP_VERSION : (window.APP_VERSION||'')), schema: 2 };
+        BACKUP_STORE_KEYS.forEach(function(k){
+            if(k==='rounding') { dump.roundingMode = localStorage.getItem('alvand_rounding')||'none'; return; }
+            try{
+                const raw=localStorage.getItem('alvand_'+k);
+                if(raw!==null && raw!==undefined) dump[k]=raw;   // raw JSON string, restored as-is
+            }catch(e){}
+        });
+        // keep live values that may not have been flushed yet
+        try{ dump.clients = JSON.stringify(clients); }catch(e){}
+        try{ dump.sessions = JSON.stringify(sessions); }catch(e){}
+        try{ dump.customers = JSON.stringify(customers); }catch(e){}
+        try{ dump.operators = JSON.stringify(operators); }catch(e){}
+        try{ dump.tariffs = JSON.stringify(tariffs); }catch(e){}
+        try{ dump.stationTypes = JSON.stringify(stationTypes); }catch(e){}
+        return dump;
+    }
     function createBackup(){
-        let data={
-            clients, tariffs, sessions, reservations, services, expenses, tariffSchedules, sales, clientServiceMap, stationTypes,
-            payments: safeParse(localStorage.getItem('alvand_payments')||'[]'),
-            roundingMode, date: new Date().toISOString()
-        };
-        localStorage.setItem('alvand_backup', JSON.stringify(data));
+        let data;
+        try{ data = collectBackupObject(); }
+        catch(e){ showToast('بکاپ ساخته نشد','error'); return null; }
+        let json;
+        try{ json = JSON.stringify(data); }
+        catch(e){ showToast('بکاپ ساخته نشد','error'); return null; }
+        try{ localStorage.setItem('alvand_backup', json); }catch(e){ showToast('فضای ذخیره‌سازی پر است','error'); return null; }
         localStorage.setItem('alvand_lastBackup', Date.now().toString());
         updateBackupDisplay();
         showToast('بکاپ ذخیره شد','success');
+        return json;
     }
     function downloadBackupFile(){
         let data=localStorage.getItem('alvand_backup');
-        if(!data){ createBackup(); data=localStorage.getItem('alvand_backup'); }
+        if(!data){ data = createBackup(); }
+        if(!data) return;
         let blob=new Blob([data], {type:'application/json'});
         let url=URL.createObjectURL(blob);
-        let a=document.createElement('a'); a.href=url; a.download='gamenet-backup-'+new Date().toISOString().slice(0,10)+'.json'; a.click();
-        URL.revokeObjectURL(url);
+        let a=document.createElement('a');
+        a.href=url;
+        a.download='gamenet-backup-'+localDayKey(new Date())+'-'+Date.now().toString().slice(-5)+'.json';
+        document.body.appendChild(a);
+        a.click();
+        // revoking immediately can cancel the download in Chromium
+        setTimeout(function(){ try{ URL.revokeObjectURL(url); a.remove(); }catch(e){} }, 4000);
         showToast('فایل بکاپ دانلود شد','success');
     }
     function restoreBackup(input){
+        if(!requirePerm('backup','بازگردانی بکاپ')) return;
         let file=input.files[0];
         if(!file) return;
+        if(file.size > 60*1024*1024){ showToast('فایل بکاپ خیلی بزرگ است','error'); return; }
         let reader=new FileReader();
         reader.onload=function(e){
             try{
                 let data=safeParse(e.target.result);
-                if(data.clients) localStorage.setItem('alvand_clients', JSON.stringify(data.clients));
-                if(data.tariffs) localStorage.setItem('alvand_tariffs', JSON.stringify(data.tariffs));
-                if(data.sessions) localStorage.setItem('alvand_sessions', JSON.stringify(data.sessions));
-                if(data.reservations) localStorage.setItem('alvand_reservations', JSON.stringify(data.reservations));
-                if(data.services) localStorage.setItem('alvand_services', JSON.stringify(data.services));
-                if(data.expenses) localStorage.setItem('alvand_expenses', JSON.stringify(data.expenses));
-                if(data.tariffSchedules) localStorage.setItem('alvand_tariffSchedules', JSON.stringify(data.tariffSchedules));
-                if(data.sales) localStorage.setItem('alvand_sales', JSON.stringify(data.sales));
-                if(data.clientServiceMap) localStorage.setItem('alvand_clientServiceMap', JSON.stringify(data.clientServiceMap));
-                if(data.stationTypes && data.stationTypes.length){ stationTypes=data.stationTypes; localStorage.setItem('alvand_stationTypes', JSON.stringify(stationTypes)); }
-                if(data.payments) localStorage.setItem('alvand_payments', JSON.stringify(data.payments));
-                if(data.roundingMode) localStorage.setItem('alvand_rounding', data.roundingMode);
-                showToast('بازگردانی شد - صفحه رفرش میشود','success');
-                setTimeout(()=> location.reload(), 1500);
-            }catch(err){ showToast('فایل خراب','error'); }
+                if(!data || typeof data!=='object'){ showToast('فایل خراب است','error'); return; }
+                // validate BEFORE touching a single live key
+                if(typeof window.validatedRestoreObject==='function'){
+                    const v = window.validatedRestoreObject(data);
+                    if(!v){ showToast('فایل بکاپ معتبر نیست','error'); return; }
+                    data = v;
+                } else if(typeof window.sanitizeBackup==='function'){
+                    const r = window.sanitizeBackup(data);
+                    if(!r.ok){ showToast('فایل بکاپ معتبر نیست: '+(r.error||''),'error'); return; }
+                }
+                let restored=0;
+                BACKUP_STORE_KEYS.forEach(function(k){
+                    if(k==='rounding'){
+                        if(data.roundingMode!==undefined){ localStorage.setItem('alvand_rounding', String(data.roundingMode)); restored++; }
+                        return;
+                    }
+                    if(data[k]===undefined || data[k]===null) return;
+                    try{ localStorage.setItem('alvand_'+k, typeof data[k]==='string'? data[k] : JSON.stringify(data[k])); restored++; }catch(err){}
+                });
+                // explicit legacy field name
+                if(data.roundingMode!==undefined && data.rounding===undefined){
+                    localStorage.setItem('alvand_rounding', String(data.roundingMode));
+                }
+                showToast(restored? ('بازگردانی شد ('+restored+' بخش) - صفحه رفرش میشود') : 'این فایل بکاپ داده‌ای ندارد', restored? 'success':'error');
+                if(restored) setTimeout(()=> location.reload(), 1500);
+            }catch(err){ showToast('بازگردانی ناموفق','error'); }
         };
+        reader.onerror=function(){ showToast('خواندن فایل ناموفق بود','error'); };
         reader.readAsText(file);
+        try{ input.value=''; }catch(e){}
     }
     function checkAutoBackup(){
         if(localStorage.getItem('alvand_backupEnabled')==='0') return;
@@ -4462,7 +4781,7 @@
             let t=localStorage.getItem('alvand_backupTime')||'23:59';
             let parts=t.split(':'); let hh=parseInt(parts[0]); if(isNaN(hh)) hh=23; let mm=parseInt(parts[1]); if(isNaN(mm)) mm=59;
             let d=new Date(); d.setHours(hh,mm,0,0);
-            let todayStr=new Date().toDateString();
+            let todayStr=localDayKey(new Date());
             if(Date.now()>=d.getTime() && localStorage.getItem('alvand_backupDay')!==todayStr){
                 createBackup();
                 localStorage.setItem('alvand_backupDay', todayStr);
@@ -4481,22 +4800,9 @@
     }
 
 
-    // Bridge: expose live stores to extension modules (new-features.js, round2-*.js)
-    // Getters (not copies) so reassignments inside app.js stay visible.
-    try{
-        Object.defineProperties(window, {
-            clients: { get: function(){ return clients; }, configurable: true },
-            sessions: { get: function(){ return sessions; }, configurable: true },
-            customers: { get: function(){ return customers; }, configurable: true },
-            reservations: { get: function(){ return reservations; }, configurable: true },
-            services: { get: function(){ return services; }, configurable: true },
-            expenses: { get: function(){ return expenses; }, configurable: true },
-            clientServiceMap: { get: function(){ return clientServiceMap; }, configurable: true },
-            currentOperator: { get: function(){ return currentOperator; }, configurable: true },
-            stationTypes: { get: function(){ return stationTypes; }, configurable: true },
-            tariffs: { get: function(){ return tariffs; }, configurable: true }
-        });
-    }catch(e){}
+    // (The second bridge this file used to declare here is gone: publishState()
+    //  at the top of this file covers the same stores AND accepts writes, which
+    //  the getters-only version silently dropped.)
 
     // Init
     init();

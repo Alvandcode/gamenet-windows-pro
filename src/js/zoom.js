@@ -1,4 +1,13 @@
-/* UI Zoom: Ctrl + mouse wheel or Ctrl + Plus/Minus/0. Persisted in localStorage. */
+/* UI Zoom: Ctrl + mouse wheel or Ctrl + Plus/Minus/0. Persisted in localStorage.
+ *
+ * The zoom is applied to the ROOT element (<html>), not to <body>:
+ * `zoom` on <body> scaled the body's own box while the page background was
+ * painted from that box, so at zoom < 100% the background stopped part-way down
+ * the window and left a hard horizontal seam (looked like a frozen background
+ * image). Zooming the root keeps the background canvas, the fixed layers
+ * (modals / toast / overlays) and the layout consistent at any zoom level.
+ * The background itself now lives on :root via --app-bg (see main.css).
+ */
 (function(){
 'use strict';
 
@@ -16,8 +25,22 @@ function applyZoom(v){
   v = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(v)));
   try{ localStorage.setItem(KEY, String(v)); }catch(e){}
   try{
-    if (document.body) document.body.style.zoom = v + '%';
-    document.documentElement.style.setProperty('--ui-zoom', (v/100).toString());
+    var root = document.documentElement;
+    if(!root) return v;
+    // `zoom` is a real CSS property in Chromium 128+; the setProperty fallback
+    // keeps older engines (Electron 31 = Chromium 126) working too.
+    try{ root.style.zoom = v + '%'; }catch(_){}
+    try{ root.style.setProperty('zoom', v + '%'); }catch(_){}
+    try{ root.style.setProperty('--ui-zoom', (v / 100).toString()); }catch(_){}
+    // Re-assert the full-viewport background: a stale canvas background is the
+    // exact artifact this rewrite is meant to remove.
+    try{
+      var cs = getComputedStyle(root);
+      var bg = cs.getPropertyValue('--app-bg');
+      if(bg && !cs.backgroundImage && !cs.backgroundColor){
+        root.style.backgroundImage = bg;
+      }
+    }catch(_){}
   }catch(e){}
   return v;
 }
@@ -69,6 +92,11 @@ window.addEventListener('keydown', function(e){
 /* apply saved zoom as early as possible */
 try{ applyZoom(getZoom()); }catch(e){}
 if (document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', function(){ try{ applyZoom(getZoom()); }catch(e){} });
+  document.addEventListener('DOMContentLoaded', function(){
+    try{ applyZoom(getZoom()); }catch(e){}
+  });
 }
+/* The theme paints the background on :root; re-assert zoom after a theme switch
+   so the two never fight over the root element's inline styles. */
+document.addEventListener('gamenet:theme', function(){ try{ applyZoom(getZoom()); }catch(e){} });
 })();

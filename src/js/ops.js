@@ -27,6 +27,14 @@ function pkgServicesText(p){
     return (s ? s.name : '?') + '×' + it.qty;
   }).join('، ') || '-';
 }
+/* finance.js builds the package <select>, but PKG is module-private here -
+ * it reached for the bare name and the dropdown threw "PKG is not defined",
+ * so the package list was always empty. Publish it like the other stores. */
+window.getPackages = function(){ return PKG; };
+window.getCoupons = function(){ return CPN; };
+window.getAmanats = function(){ return AMN; };
+window.getMaintenance = function(){ return MNT; };
+
 window.renderPackages = function(){
   var c = document.getElementById('packagesList');
   if (!c) return;

@@ -272,7 +272,8 @@ window.renderOpsSection = function(){
   try{ window.renderAmanats(); }catch(e){}
   try{ window.renderMaintenance(); }catch(e){}
   var ps = document.getElementById('pkgSelect');
-  if (ps) ps.innerHTML = '<option value="">انتخاب پکیج...</option>' + PKG.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + ' - ' + (p.price || 0).toLocaleString() + '</option>'; }).join('');
+  var pkgs = (window.getPackages ? window.getPackages() : []);
+  if (ps) ps.innerHTML = '<option value="">انتخاب پکیج...</option>' + pkgs.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + ' - ' + (p.price || 0).toLocaleString() + '</option>'; }).join('');
   var cs = document.getElementById('pkgClientSelect');
   if (cs) cs.innerHTML = '<option value="">انتخاب کلاینت...</option>' + (window.clients || []).map(function(c, i){ return '<option value="' + i + '">' + esc(c.name) + '</option>'; }).join('');
 };

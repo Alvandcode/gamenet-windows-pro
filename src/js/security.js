@@ -97,31 +97,70 @@
 
   /**
    * Validate a restore/backup payload before touching live keys.
-   * Prevents "restore garbage -> wipe shop data" accidents.
+   * Prevents "restore garbage -> wipe shop data" accidents. This was written
+   * but never called; restoreBackup() now routes every file through it.
+   * Values are raw JSON strings in the backup format, so each field is parsed
+   * and shape-checked here instead of being trusted.
    */
+  var ARRAY_KEYS = ['clients','sessions','reservations','services','expenses','tariffSchedules','sales',
+                    'payments','customers','operators','walletHistory','allLicenses','membershipPlans',
+                    'customerMemberships','gameHistory','notifications','activityLog','employees',
+                    'attendance','waitingList','surveys','smsLog','events','shifts'];
+  var OBJ_KEYS = ['tariffs','clientServiceMap','hourlyUsage','branches'];
+  var MAX_ITEMS = 200000;
   function sanitizeBackup(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, error: 'bad shape' };
     var out = {};
-    var arrKeys = ['clients', 'sessions', 'reservations', 'services', 'expenses', 'tariffSchedules', 'sales', 'payments', 'customers', 'operators', 'walletHistory'];
-    for (var i = 0; i < arrKeys.length; i++) {
-      var k = arrKeys[i];
-      if (data[k] === undefined) continue;
-      if (!Array.isArray(data[k])) return { ok: false, error: 'field ' + k + ' must be array' };
-      if (data[k].length > 50000) return { ok: false, error: 'field ' + k + ' too large' };
-      out[k] = data[k];
+    var i, k, parsed;
+    for (i = 0; i < ARRAY_KEYS.length; i++) {
+      k = ARRAY_KEYS[i];
+      if (data[k] === undefined || data[k] === null) continue;
+      var rawArr = data[k];
+      if (typeof rawArr === 'string') {
+        try { parsed = JSON.parse(rawArr); } catch (e) { return { ok: false, error: 'field ' + k + ' is not valid JSON' }; }
+      } else parsed = rawArr;
+      if (!Array.isArray(parsed)) return { ok: false, error: 'field ' + k + ' must be an array' };
+      if (parsed.length > MAX_ITEMS) return { ok: false, error: 'field ' + k + ' too large' };
+      // every element must be a plain object (or null) - blocks prototype junk
+      for (var j = 0; j < parsed.length; j++) {
+        var it = parsed[j];
+        if (it !== null && (typeof it !== 'object' || Array.isArray(it))) {
+          return { ok: false, error: 'field ' + k + ' has a non-object entry' };
+        }
+      }
+      out[k] = typeof rawArr === 'string' ? rawArr : JSON.stringify(parsed);
     }
-    if (data.tariffs !== undefined) {
-      if (typeof data.tariffs !== 'object' || data.tariffs === null) return { ok: false, error: 'tariffs shape' };
-      out.tariffs = data.tariffs;
+    for (i = 0; i < OBJ_KEYS.length; i++) {
+      k = OBJ_KEYS[i];
+      if (data[k] === undefined || data[k] === null) continue;
+      var rawObj = data[k];
+      if (typeof rawObj === 'string') {
+        try { parsed = JSON.parse(rawObj); } catch (e) { return { ok: false, error: 'field ' + k + ' is not valid JSON' }; }
+      } else parsed = rawObj;
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return { ok: false, error: 'field ' + k + ' shape' };
+      out[k] = typeof rawObj === 'string' ? rawObj : JSON.stringify(parsed);
     }
-    if (data.clientServiceMap !== undefined) {
-      if (typeof data.clientServiceMap !== 'object' || data.clientServiceMap === null) return { ok: false, error: 'clientServiceMap shape' };
-      out.clientServiceMap = data.clientServiceMap;
+    if (data.stationTypes !== undefined && data.stationTypes !== null) {
+      var st = data.stationTypes;
+      if (typeof st === 'string') { try { st = JSON.parse(st); } catch (e) { return { ok: false, error: 'stationTypes invalid' }; } }
+      if (!Array.isArray(st)) return { ok: false, error: 'stationTypes shape' };
+      if (st.length > 500) return { ok: false, error: 'stationTypes too large' };
+      out.stationTypes = typeof data.stationTypes === 'string' ? data.stationTypes : JSON.stringify(st);
     }
-    if (data.stationTypes !== undefined) {
-      if (!Array.isArray(data.stationTypes)) return { ok: false, error: 'stationTypes shape' };
-      out.stationTypes = data.stationTypes;
+    // scalars / opaque strings: pass through with a length cap
+    var SCALARS = ['license','allLicensesMeta','roundingMode','rounding','lang','theme','alarmSound',
+                   'alarmRepeat','backupTime','lite','uiZoom','shopName','shopPhone','guideShown',
+                   'smsConfig','phonebook','posConfig','lowStockThreshold','currentBranch',
+                   'customers_enc','loyaltyPoints','membershipPlans'];
+    for (i = 0; i < SCALARS.length; i++) {
+      k = SCALARS[i];
+      if (data[k] === undefined || data[k] === null) continue;
+      var v = data[k];
+      if (typeof v === 'string') { if (v.length > 4 * 1024 * 1024) return { ok: false, error: 'field ' + k + ' too large' }; out[k] = v; }
+      else if (typeof v === 'object') { try { out[k] = JSON.stringify(v); } catch (e) { return { ok: false, error: 'field ' + k + ' not serialisable' }; } }
+      else out[k] = String(v).slice(0, 200);
     }
+    if (data.date !== undefined) out.date = String(data.date).slice(0, 60);
     return { ok: true, data: out };
   }
 
@@ -132,25 +171,139 @@
   var FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
   var AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
   function faToEn(value) {
-    return String(value == null ? '' : value).replace(/[۰-۹]/g, function (ch) {
-      return String(FA_DIGITS.indexOf(ch));
-    }).replace(/[٠-٩]/g, function (ch) {
-      return String(AR_DIGITS.indexOf(ch));
-    }).replace(/[٬,٬\s]/g, function (ch) {
-      return ch === ' ' || ch === '٬' ? '' : ch;
-    });
+    return String(value == null ? '' : value)
+      .replace(/[۰-۹]/g, function (ch) { return String(ch.charCodeAt(0) - 0x06F0); })
+      .replace(/[٠-٩]/g, function (ch) { return String(ch.charCodeAt(0) - 0x0660); })
+      // thousands separators only: comma / Arabic thousands separator / spaces.
+      // A decimal point is preserved (see parseFaDecimal for money).
+      .replace(/[٬,‌‏\s]/g, '');
   }
+  /** Integer parser for every numeric form field. Persian and Arabic-Indic
+   *  digits are accepted because the customer's keyboard is Persian by default
+   *  - plain parseInt("۳۰") is NaN, so the field silently became 0. */
   function parseFaNumber(value, fallback) {
     if (fallback === undefined) fallback = 0;
     var n = parseInt(faToEn(value), 10);
     return isNaN(n) ? fallback : n;
   }
+  /** Decimal parser for money: keeps one decimal place, thousands separators
+   *  removed. parseInt("12,500") used to become 12. */
+  function parseFaDecimal(value, fallback) {
+    if (fallback === undefined) fallback = 0;
+    var t = faToEn(value).replace(/[^0-9.\-]/g, '');
+    if (!t || t === '-' || t === '.') return fallback;
+    // at most one decimal point: "1.2.3" -> "1.2"
+    var parts = t.split('.');
+    if (parts.length > 2) t = parts[0] + '.' + parts[1];
+    else t = parts.join('.');
+    var n = parseFloat(t);
+    return isFinite(n) ? n : fallback;
+  }
+
+  /**
+   * Coerce an id/array index to a plain number for use inside an inline
+   * onclick="fn(VALUE)" attribute.
+   *
+   * Why this exists: the renderer builds HTML with template strings and used to
+   * interpolate stored values straight into inline event handlers. A value like
+   * `1);alert(1)//` (possible through a hand-edited or shared backup file)
+   * closes the call and executes code. escapeHtml() does NOT help there, because
+   * the browser HTML-decodes the attribute before the JS is parsed.
+   * Ids are always compared with === against numbers, so coercing them to a
+   * number is both safe and behaviour-preserving: a non-numeric id simply fails
+   * to match instead of injecting code.
+   */
+  function numId(v) {
+    var n = typeof v === 'number' ? v : parseInt(v, 10);
+    return isFinite(n) ? n : 0;
+  }
+
+  /** Escape a string so it can be embedded as a JS literal inside an inline
+   *  onclick="fn('VALUE')" attribute.
+   *  Must neutralise BOTH quote styles: the attribute itself is double-quoted,
+   *  so an unescaped `"` would end the attribute early and turn the rest of the
+   *  value into live markup (verified stored-XSS vector through a backup file).
+   *  `<` and `>` are dropped outright so no tag can ever be formed. */
+  function jsStr(v) {
+    return String(v == null ? '' : v)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/"/g, '\\"')
+      .replace(/\r?\n/g, ' ')
+      .replace(/[<>]/g, '');
+  }
+
+  /**
+   * Day keys. The app compared "today" four different ways (toDateString,
+   * toISOString().slice(0,10), a Jalali month check, a raw Date), and the UTC
+   * one made the reservation filter show yesterday between 00:00 and 03:30 local
+   * - exactly when a night-shift gamenet closes the books. Everything now goes
+   * through these two helpers: local calendar day, and "is this today".
+   */
+  function localDayKey(d) {
+    const x = (d instanceof Date) ? d : new Date(d);
+    if (isNaN(x.getTime())) return '';
+    return x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2) + '-' + ('0' + x.getDate()).slice(-2);
+  }
+  function isSameDay(a, b) {
+    const ka = localDayKey(a), kb = localDayKey(b);
+    return !!ka && ka === kb;
+  }
+  function daysBetween(a, b) {
+    const ka = localDayKey(a), kb = localDayKey(b);
+    if (!ka || !kb) return 0;
+    const pa = ka.split('-').map(Number), pb = kb.split('-').map(Number);
+    const da = Date.UTC(pa[0], pa[1] - 1, pa[2]);
+    const db = Date.UTC(pb[0], pb[1] - 1, pb[2]);
+    return Math.round((db - da) / 86400000);
+  }
+  /** Persian month/day for birthday-style comparisons (uses local time). */
+  function monthDayKey(d) {
+    const x = (d instanceof Date) ? d : new Date(d);
+    if (isNaN(x.getTime())) return '';
+    return ('0' + (x.getMonth() + 1)).slice(-2) + '-' + ('0' + x.getDate()).slice(-2);
+  }
+  /** Start of the Iranian week = Saturday 00:00 local.
+   *  "Last 7 days" (now - 7*864e5) is a rolling window: on Wednesday it splits
+   *  the current week in half and the previous week is not reachable at all.
+   *  Reports must use calendar weeks. */
+  function weekStart(d) {
+    const x = (d instanceof Date) ? new Date(d.getTime()) : new Date(d);
+    if (isNaN(x.getTime())) return new Date(NaN);
+    x.setHours(0, 0, 0, 0);
+    // getDay(): 0=Sunday ... 6=Saturday -> shift so Saturday is the first day
+    const back = (x.getDay() + 1) % 7;
+    x.setDate(x.getDate() - back);
+    return x;
+  }
+  function monthStart(d) {
+    const x = (d instanceof Date) ? new Date(d.getTime()) : new Date(d);
+    if (isNaN(x.getTime())) return new Date(NaN);
+    return new Date(x.getFullYear(), x.getMonth(), 1, 0, 0, 0, 0);
+  }
+  /** Coerce anything (string / Persian digits / null) to a finite number. */
+  function toNum(v, fallback) {
+    if (typeof v === 'number') return isFinite(v) ? v : (fallback === undefined ? 0 : fallback);
+    if (v === null || v === undefined || v === '') return fallback === undefined ? 0 : fallback;
+    const n = parseFaDecimal(v, NaN);
+    return isFinite(n) ? n : (fallback === undefined ? 0 : fallback);
+  }
 
   // expose globally for app.js + patches.js (classic scripts, no modules)
   window.safeParse = safeParse;
   window.escapeHtml = escapeHtml;
+  window.localDayKey = localDayKey;
+  window.isSameDay = isSameDay;
+  window.weekStart = weekStart;
+  window.monthStart = monthStart;
+  window.toNum = toNum;
+  window.daysBetween = daysBetween;
+  window.monthDayKey = monthDayKey;
+  window.numId = numId;
+  window.jsStr = jsStr;
   window.faToEn = faToEn;
   window.parseFaNumber = parseFaNumber;
+  window.parseFaDecimal = parseFaDecimal;
   window.escAttr = escAttr;
   window.secureRandomId = secureRandomId;
   window.sha256hex = sha256hex;
