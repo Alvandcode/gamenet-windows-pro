@@ -8,7 +8,7 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 
-const ROOT = 'C:/Users/Iran Novin/Documents/Default Project/gamenet-windows-pro';
+const ROOT = path.join(__dirname, '..');
 const EXE = path.join(ROOT, 'dist/win-unpacked/Gamenet Manager Pro.exe');
 const PROFILE = path.join(os.tmpdir(), 'opencode', 'pkg-profile');
 const PORT = 9355;

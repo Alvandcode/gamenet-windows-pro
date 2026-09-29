@@ -8,7 +8,7 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 
-const ROOT = 'C:/Users/Iran Novin/Documents/Default Project/gamenet-windows-pro';
+const ROOT = path.join(__dirname, '..');
 const ELECTRON = path.join(ROOT, 'node_modules/electron/dist/electron.exe');
 const PROFILE = path.join(os.tmpdir(), 'opencode', 'gui-profile2');
 const PORT = 9345;
