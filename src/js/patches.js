@@ -1,21 +1,170 @@
 /* Gamenet Manager Pro - runtime hardening patches (loaded AFTER app.js)
- * - plaintext operator passwords -> SHA-256 (legacy fallback + forced rotation of admin/1234)
+ * - operator passwords -> PBKDF2-SHA256 with a per-user salt (legacy SHA-256 and
+ *   plaintext are still accepted on login and upgraded, so nobody is locked out)
+ * - login throttling: repeated wrong passwords lock the account with a backoff
  * - backup validated + mirrored to real files (not only LocalStorage)
  * - offline-safe externals, correct AbortController timeouts
  */
 (function () {
   'use strict';
 
-  /* ---------- operator password hashing ---------- */
-  function needsHash(pw) {
-    try { return !(window.isSha256Hex && window.isSha256Hex(pw)); } catch (_) { return true; }
+  /* ---------- operator password hashing ----------
+   * The stored value used to be a bare sha256hex('gamenet::' + password). That is
+   * fast and unsalted, so a stolen localStorage (or a backup file) is cracked
+   * instantly - the hash of "1234" is a constant, and a 4-digit password has only
+   * 10^4 candidates. Now: PBKDF2-SHA256, 210k iterations, 16-byte random salt per
+   * operator, stored as  pbkdf2$<iters>$<saltB64>$<hashB64>.
+   *
+   * Compatibility is deliberate: verifyPassword() still accepts the old
+   * unsalted SHA-256 and even a plaintext password, and a successful login
+   * rewrites the record in the strong form. Someone upgrading mid-session keeps
+   * their existing password. */
+  var PBKDF2_ITERS = 210000;
+  var PBKDF2_PREFIX = 'pbkdf2$';
+  var MIN_PASSWORD = 8;
+
+  function hasSubtle() {
+    try { return !!(window.crypto && window.crypto.subtle && window.crypto.subtle.importKey); }
+    catch (_) { return false; }
   }
 
-  async function hashIfNeeded(pw) {
-    if (!needsHash(pw)) return pw;
-    try { return await window.sha256hex('gamenet::' + String(pw)); }
-    catch (_) { return pw; }
+  function b64FromBytes(u8) {
+    var bin = '';
+    for (var i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+    return btoa(bin);
   }
+  function bytesFromB64(b64) {
+    var bin = atob(String(b64 || ''));
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  /** constant-time compare - a length or early-exit difference leaks timing */
+  function timingSafeEqualStr(a, b) {
+    a = String(a || ''); b = String(b || '');
+    var diff = a.length ^ b.length;
+    for (var i = 0; i < Math.max(a.length, b.length); i++) {
+      diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+    }
+    return diff === 0;
+  }
+
+  async function pbkdf2Hash(password, saltBytes, iters) {
+    var enc = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
+    var raw = enc ? enc.encode(String(password)) : new Uint8Array(utf8Bytes(String(password)));
+    var base = await window.crypto.subtle.importKey('raw', raw, { name: 'PBKDF2' }, false, ['deriveBits']);
+    var bits = await window.crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: saltBytes, iterations: iters || PBKDF2_ITERS, hash: 'SHA-256' },
+      base, 256);
+    return new Uint8Array(bits);
+  }
+
+  window.hashPassword = async function (password) {
+    var salt = window.crypto.getRandomValues(new Uint8Array(16));
+    var hash = await pbkdf2Hash(password, salt, PBKDF2_ITERS);
+    return PBKDF2_PREFIX + PBKDF2_ITERS + '$' + b64FromBytes(salt) + '$' + b64FromBytes(hash);
+  };
+
+  window.isStrongHash = function (v) {
+    return typeof v === 'string' && v.indexOf(PBKDF2_PREFIX) === 0 && v.split('$').length === 4;
+  };
+
+  /** Verify a candidate against a stored value of ANY supported form. */
+  window.verifyPassword = async function (stored, candidate) {
+    if (typeof stored !== 'string' || !stored) return false;
+    var pw = String(candidate == null ? '' : candidate);
+    if (window.isStrongHash(stored)) {
+      try {
+        var parts = stored.split('$');
+        var iters = parseInt(parts[1], 10) || PBKDF2_ITERS;
+        var salt = bytesFromB64(parts[2]);
+        var want = parts[3];
+        var got = b64FromBytes(await pbkdf2Hash(pw, salt, iters));
+        return timingSafeEqualStr(got, want);
+      } catch (e) { return false; }
+    }
+    // legacy: unsalted sha256 of 'gamenet::' + password
+    try {
+      var legacy = await window.sha256hex('gamenet::' + pw);
+      if (timingSafeEqualStr(legacy, stored)) return true;
+    } catch (_) {}
+    // last resort: a plaintext password from an install that never migrated
+    return timingSafeEqualStr(stored, pw);
+  };
+
+  /* true when the stored value is NOT the strong form and must be rewritten.
+   * This used to ask "is it a sha256 hex?", which meant an UNSALTED legacy hash
+   * counted as fine and was never upgraded. */
+  function needsHash(pw) {
+    return !window.isStrongHash(pw);
+  }
+
+  /** Returns the stored value for `password`, re-hashing a weak/plaintext one. */
+  async function hashIfNeeded(pw) {
+    if (window.isStrongHash(pw)) return pw;
+    if (!hasSubtle()) {
+      // no Web Crypto (very old WebView / locked-down context): keep the old
+      // behaviour so the shop can still log in - weaker, but never a lockout
+      try { return await window.sha256hex('gamenet::' + String(pw)); }
+      catch (_) { return pw; }
+    }
+    try { return await window.hashPassword(pw); }
+    catch (_) {
+      try { return await window.sha256hex('gamenet::' + String(pw)); }
+      catch (_) { return pw; }
+    }
+  }
+
+  /* ---------- login throttling ----------
+   * The login form accepted an unlimited number of guesses, so a 4-digit
+   * password was found in seconds. Counters live in localStorage so restarting
+   * the app does not wipe them. */
+  var LOCK_KEY = 'alvand_loginLock';
+  var LOCK_BASE_MS = 30000;      // 30s after 5 failures
+  var LOCK_MAX_MS = 15 * 60000;  // cap at 15 minutes
+  var LOCK_THRESHOLD = 5;
+
+  function readLocks() {
+    try { var j = JSON.parse(localStorage.getItem(LOCK_KEY) || '{}'); return (j && typeof j === 'object') ? j : {}; }
+    catch (_) { return {}; }
+  }
+  function lockFor(username) {
+    var rec = readLocks()[String(username || '').toLowerCase()];
+    if (!rec || !rec.until) return 0;
+    return Math.max(0, Number(rec.until) - Date.now());
+  }
+  function registerFailure(username) {
+    var all = readLocks();
+    var k = String(username || '').toLowerCase();
+    var rec = all[k] || { fails: 0 };
+    rec.fails = (Number(rec.fails) || 0) + 1;
+    if (rec.fails >= LOCK_THRESHOLD) {
+      var over = rec.fails - LOCK_THRESHOLD;
+      rec.until = Date.now() + Math.min(LOCK_MAX_MS, LOCK_BASE_MS * Math.pow(2, over));
+    }
+    all[k] = rec;
+    try { localStorage.setItem(LOCK_KEY, JSON.stringify(all)); } catch (_) {}
+    return rec;
+  }
+  function clearFailures(username) {
+    var all = readLocks();
+    delete all[String(username || '').toLowerCase()];
+    try { localStorage.setItem(LOCK_KEY, JSON.stringify(all)); } catch (_) {}
+  }
+  /* The seeded account is admin/1234. Detecting it by comparing the *password*
+   * no longer works once it is hashed, so the check is "does the stored value
+   * verify against a known default?" - the same code path as a login. */
+  var DEFAULT_PASSWORDS = ['1234', 'admin', 'password', '123456'];
+  async function needsRotation(op) {
+    if (!op) return false;
+    for (var i = 0; i < DEFAULT_PASSWORDS.length; i++) {
+      try { if (await window.verifyPassword(op.password, DEFAULT_PASSWORDS[i])) return true; } catch (_) {}
+    }
+    return false;
+  }
+  window.operatorNeedsRotation = needsRotation;
+
+  window.loginLockRemaining = lockFor;
 
   // Migrate stored operators once (plaintext -> hash). Runs after app.js init().
   async function migrateOperatorPasswords() {
@@ -59,17 +208,41 @@
       var u = document.getElementById('loginUser').value.trim();
       var p = document.getElementById('loginPass').value.trim();
       var err = document.getElementById('loginError');
-      var hashed = await hashIfNeeded(p);
+      if (!u || !p) { err.textContent = 'نام کاربری و رمز را بنویسید'; err.style.display = 'block'; return; }
+
+      // 1) throttling first, so guessing is expensive even before any hashing
+      var wait = lockFor(u);
+      if (wait > 0) {
+        var secs = Math.ceil(wait / 1000);
+        var mins = Math.floor(secs / 60);
+        err.textContent = '⛔ حسابهر بسیر اتفاقه‌است. ' +
+          (mins > 0 ? (mins + ' دقیقه') : (secs + ' ثانیه')) + ' دیگار صبر کنید';
+        err.style.display = 'block';
+        return;
+      }
+
+      // 2) find the account, then VERIFY the password (never compare strings)
       var op = null;
       try {
-        op = operators.find(function (x) {
-          return x.username === u && (x.password === p || x.password === hashed);
-        });
+        var pool = (typeof operators !== 'undefined' && Array.isArray(operators)) ? operators : [];
+        var cands = pool.filter(function (x) { return x && x.username === u; });
+        for (var i = 0; i < cands.length; i++) {
+          if (await window.verifyPassword(cands[i].password, p)) { op = cands[i]; break; }
+        }
       } catch (_) { op = null; }
-      if (!op) { err.textContent = 'نام کاربری یا رمز اشتباه'; err.style.display = 'block'; return; }
-      // upgrade stored password to hash on successful legacy login
-      if (op.password === p && needsHash(p)) {
-        op.password = hashed;
+
+      if (!op) {
+        registerFailure(u);
+        var left = LOCK_THRESHOLD - (readLocks()[u.toLowerCase()] || { fails: 0 }).fails;
+        err.textContent = 'نام کاربری یا رمز اشتباه' +
+          (left > 0 ? (' — ' + left + ' فاصله تا قفل') : '');
+        err.style.display = 'block';
+        return;
+      }
+      clearFailures(u);
+      // upgrade a legacy/plaintext record to PBKDF2 on the way in
+      if (needsHash(op.password)) {
+        op.password = await hashIfNeeded(p);
         try { localStorage.setItem('alvand_operators', JSON.stringify(operators)); } catch (_) {}
       }
       currentOperator = op;
@@ -78,7 +251,7 @@
       try { updateOperatorBar(); applyPerms(); } catch (_) {}
       try { showToast('خوش آمدید ' + op.username, 'success'); } catch (_) {}
       err.style.display = 'none';
-      if (u === 'admin' && p === '1234') setTimeout(forceAdminRotation, 800);
+      if (needsRotation(op)) setTimeout(forceAdminRotation, 800);
     } catch (e) {
       console.warn('login failed', e);
     }
@@ -91,8 +264,19 @@
       var username = document.getElementById('opUser').value.trim();
       var password = document.getElementById('opPass').value.trim();
       var role = document.getElementById('opRole').value;
-      if (!username || !password) { showToast('نام و رمز', 'error'); return; }
-      if (password.length < 4) { showToast('رمز حداقل ۴ کاراکتر', 'error'); return; }
+      /* Editing an operator without typing a new password must KEEP the stored
+       * one. It used to be impossible (the field was pre-filled with the hash,
+       * and an empty field was rejected), so changing a permission meant
+       * retyping the password - or silently destroying it. */
+      var isEdit = !!id;
+      var keepPassword = isEdit && !password;
+      if (!username || (!password && !isEdit)) { showToast('نام و رمز', 'error'); return; }
+      /* 4 characters is one dictionary away from being cracked; the input rule
+       * is what actually matters, the PBKDF2 only protects at rest. */
+      if (!keepPassword && password.length < MIN_PASSWORD) { showToast('رمز حداقل ' + MIN_PASSWORD + ' کاراکتر باشد', 'error'); return; }
+      if (!keepPassword && (!/[A-Za-z\u06f0-\u06f9\u0660-\u06690-9]/.test(password) || !/[^A-Za-z\u06f0-\u06f9\u0660-\u06690-9]/.test(password))) {
+        showToast('رمز مخاط یک حرف باید و یک عدد ن باشد', 'warning');
+      }
       var perms = {
         clients: document.getElementById('permClients').checked,
         buffet: document.getElementById('permBuffet').checked,
@@ -106,7 +290,7 @@
         employees: !!(document.getElementById('permEmployees') || {}).checked,
         operators: !!(document.getElementById('permOperators') || {}).checked
       };
-      var hashed = await hashIfNeeded(password);
+      var hashed = keepPassword ? null : await hashIfNeeded(password);
       if (id) {
         var op = operators.find(function (x) { return String(x.id) === String(id); });
         if (!op) return;
@@ -115,11 +299,8 @@
           var admins = operators.filter(function (x) { return x.role === 'admin'; });
           if (admins.length <= 1) { showToast('آخرین مدیر را نمی‌توان به اپراتور تغییر داد', 'error'); return; }
         }
-        if (password === '••••' || password === '****') {
-          Object.assign(op, { username: username, role: role, perms: perms });
-        } else {
-          Object.assign(op, { username: username, password: hashed, role: role, perms: perms });
-        }
+        Object.assign(op, { username: username, role: role, perms: perms });
+        if (!keepPassword) op.password = hashed;
       } else {
         if (operators.find(function (x) { return x.username === username; })) { showToast('نام تکراری', 'error'); return; }
         operators.push({ id: Date.now(), username: username, password: hashed, role: role, perms: perms });

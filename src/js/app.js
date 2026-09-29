@@ -246,7 +246,11 @@
         if(!op) return;
         document.getElementById('opId').value=op.id;
         document.getElementById('opUser').value=op.username;
-        document.getElementById('opPass').value=op.password;
+        /* The stored value is a PBKDF2 hash. Showing it here meant that saving
+         * the form (e.g. only to flip a permission) re-hashed the hash and the
+         * operator lost their password for good. The field is write-only. */
+        const _pass=document.getElementById('opPass');
+        if(_pass){ _pass.value=''; _pass.placeholder='خالی = رمز فعلی بدون تغییر'; }
         document.getElementById('opRole').value=op.role;
         let p=op.perms||{};
         document.getElementById('permClients').checked=!!p.clients;
@@ -267,7 +271,9 @@
         let username=document.getElementById('opUser').value.trim();
         let password=document.getElementById('opPass').value.trim();
         let role=document.getElementById('opRole').value;
-        if(!username||!password){ showToast('نام و رمز','error'); return; }
+        // on EDIT an empty password means "keep it"; the field is never
+        // pre-filled with the stored hash, so this cannot wipe a password
+        if(!username || (!password && !document.getElementById('opId').value)){ showToast('نام و رمز','error'); return; }
         let perms={
             clients:document.getElementById('permClients').checked,
             buffet:document.getElementById('permBuffet').checked,
@@ -284,11 +290,14 @@
         if(id){
             let op=operators.find(x=>String(x.id)===String(id));
             if(!op){ showToast('اپراتور پیدا نشد','error'); return; }
+            const wasBlank=!password;   // the field is write-only, so empty = keep the current one
             // demoting the last admin would lock the shop out
             if(op.role==='admin' && role!=='admin' && operators.filter(x=>x.role==='admin').length<=1){
                 showToast('آخرین مدیر را نمی‌توان به اپراتور تغییر داد','error'); return;
             }
-            Object.assign(op,{username,password,role,perms});
+            Object.assign(op,{username,role,perms});
+            // only overwrite the stored secret when a NEW password was typed
+            if(!wasBlank) op.password=password;
         } else {
             if(operators.find(x=>x.username===username)){ showToast('نام تکراری','error'); return; }
             operators.push({id:Date.now(), username,password,role,perms});
