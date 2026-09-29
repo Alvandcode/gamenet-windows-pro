@@ -22,16 +22,69 @@ window.deleteBranch = function(id){
   sv('alvand_branches', BR); window.renderBranches();
 };
 window.switchBranch = function(id){
+  if (String(id) === String(curBR)) { toast('این شعبه فعال است', 'warning'); return; }
+  var target = BR.filter(function(b){ return String(b.id) === String(id); })[0];
+  if (!confirm('شعبه به «' + ((target && target.name) || id) + '» تغییر کرد؟\n\nسنس‌ها، خریدها و فروش بوفه از این لحظه به این شعبه ثبت می‌شود.')) return;
   try{ localStorage.setItem('alvand_currentBranch', String(id)); }catch(e){}
-  toast('شعبه تغییر کرد','success'); location.reload();
+  curBR = String(id);
+  toast('شعبه تغییر کرد', 'success');
+  try{ window.renderBranches(); }catch(e){}
+  // no full reload: reloading lost the page you were on for what is only a tag
+  // on the next record
 };
+
+/* Per-branch figures. switchBranch() used to be a label with no numbers behind
+ * it, so there was no way to tell whether the shops were actually split. */
+window.branchStats = function(){
+  var bid = window.branchIdOf || function(r){ return '1'; };
+  var byId = {};
+  BR.forEach(function(b){ byId[String(b.id)] = {id:b.id, name:b.name, sessions:0, income:0, expense:0, sales:0}; });
+  var ensure = function(id){
+    var k = String(id == null || id === '' ? '1' : id);
+    if (!byId[k]) { byId[k] = {id:k, name:'شعبه ' + k, sessions:0, income:0, expense:0, sales:0}; }
+    return byId[k];
+  };
+  var ss = (typeof sessions !== 'undefined' && Array.isArray(sessions)) ? sessions : [];
+  ss.forEach(function(s){ if (!s) return; var r = ensure(bid(s)); r.sessions++; r.income += (Number(s.cost) || 0); });
+  var ex = (typeof expenses !== 'undefined' && Array.isArray(expenses)) ? expenses : [];
+  ex.forEach(function(e){ if (e) ensure(bid(e)).expense += (Number(e.amount) || 0); });
+  var sl = (typeof sales !== 'undefined' && Array.isArray(sales)) ? sales : [];
+  sl.forEach(function(s){ if (s) ensure(bid(s)).sales += (Number(s.price) || 0) * (Number(s.qty) || 0); });
+  return Object.keys(byId).map(function(k){ return byId[k]; });
+};
+
 window.renderBranches = function(){
   var c = document.getElementById('branchesList');
   if (!c) return;
+  var stats = window.branchStats ? window.branchStats() : [];
+  var stat = {};
+  stats.forEach(function(s){ stat[String(s.id)] = s; });
+  var fa = function(n){ return (Number(n) || 0).toLocaleString('fa-IR'); };
   c.innerHTML = BR.map(function(b){
     var on = String(b.id) === String(curBR);
-    return '<div class="glass" style="padding:12px;margin-bottom:8px"><b>'+esc(b.name)+'</b>'+(on?' (فعال)':'')+'<div style="margin-top:6px">'+(on?'':'<button class="glass-btn" onclick="switchBranch('+b.id+')">تغییر</button> ')+(b.id!==1?'<button class="glass-btn glass-btn-danger" onclick="deleteBranch('+b.id+')">حذف</button>':'')+'</div></div>';
-  }).join('');
+    var st = stat[String(b.id)] || {sessions:0, income:0, expense:0, sales:0};
+    var total = st.income + st.sales;
+    var net = total - st.expense;
+    var cell = function(label, value, color){
+      return '<div>' + label + ': <b' + (color ? ' style="color:' + color + '"' : '') + '>' + value + '</b></div>';
+    };
+    return '<div class="glass" style="padding:12px;margin-bottom:8px' + (on ? ';border-color:rgba(34,197,94,0.6)' : '') + '">'
+      + '<b>' + esc(b.name) + '</b>'
+      + (on ? ' <span style="font-size:0.7rem;padding:2px 8px;border-radius:50px;background:rgba(34,197,94,0.2);color:#22c55e">شعبه فعال</span>' : '')
+      + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px;font-size:0.78rem">'
+      + cell('سنس‌های ثبت‌شده', st.sessions)
+      + cell('درآمد بازی', fa(st.income), '#22c55e')
+      + cell('فروش بوفه', fa(st.sales))
+      + cell('جمع درآمد', fa(total), '#22c55e')
+      + cell('هزینه‌ها', fa(st.expense), '#ef4444')
+      + cell('خالص', fa(net), net >= 0 ? '#22c55e' : '#ef4444')
+      + '</div>'
+      + '<div style="margin-top:8px">'
+      + (on ? '' : '<button class="glass-btn" onclick="switchBranch(' + Number(b.id) + ')">ثبت با این شعبه</button> ')
+      + (b.id !== 1 ? '<button class="glass-btn glass-btn-danger" onclick="deleteBranch(' + Number(b.id) + ')">حذف</button>' : '')
+      + '</div></div>';
+  }).join('')
+  + '<p style="font-size:0.72rem;color:rgba(255,255,255,0.5);margin-top:8px;line-height:1.9">از این پس هر سانس، هر خرید و هر فروش بوفه برای شعبه فعال ثبت می‌شود. رکوردهای قدیمی که قبل از فعال شدن این قابلیت ثبت شده‌اند، در شعبه اصلی حساب می‌شوند.</p>';
 };
 window.openBranchModal = function(){
   var n = document.getElementById('branchName'); if (n) n.value = '';

@@ -931,6 +931,13 @@
                     <div class="glass" style="padding:20px;">
                         <h3 style="margin-bottom:12px;">⭐ رضایت مشتریان</h3>
                         <div id="surveyStatsContent"></div>
+                        <!-- submitSurveyForm() and the whole survey modal existed and
+                             were wired to the stars, but nothing in the app could
+                             ever OPEN it, so no survey could be recorded. -->
+                        <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+                            <button class="glass-btn" onclick="openSurveyModal()">⭐ ثبت نظر مشتری</button>
+                            <span style="font-size:0.72rem; color:rgba(255,255,255,0.45); align-self:center;">نظر درباره دهيند، رضایت مشتریان بالای</span>
+                        </div>
                     </div>
                     <div class="glass" style="padding:20px;">
                         <h3 style="margin-bottom:12px;">⚠️ هشدار موجودی بوفه</h3>

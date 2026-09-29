@@ -1,4 +1,21 @@
 
+    /* ---------- branch tagging ----------
+     * switchBranch() used to write `alvand_currentBranch` and then nothing read
+     * it: the selector looked like it isolated the books per branch, but every
+     * session and expense landed in one shared pile. New records now carry the
+     * branch so the numbers can actually be split; older records have no
+     * branchId and are treated as the main branch. */
+    function currentBranchId(){
+        try { return String(localStorage.getItem('alvand_currentBranch') || '1'); }
+        catch(e){ return '1'; }
+    }
+    function branchIdOf(rec){
+        // a session/expense saved before branching existed belongs to branch 1
+        return (rec && rec.branchId !== undefined && rec.branchId !== null && rec.branchId !== '') ? String(rec.branchId) : '1';
+    }
+    window.currentBranchId = currentBranchId;
+    window.branchIdOf = branchIdOf;
+
     // ========== Cross-module state bridge ==========
     /* app.js runs inside one big IIFE, so its `customers` / `sessions` / ...
      * are invisible to the other renderer scripts. Five modules read them as
@@ -1383,12 +1400,32 @@
         syncNavGroupBadges();
         saveNavGroupState();
     }
+    /* Attribute values came from user data (section ids, client ids), so
+     * pasting them straight into a CSS selector blew up on quotes/brackets:
+     * "[onclick*=\"showSection('a\"b'\"]" is not a valid selector and the
+     * DOM parser then throws. Filter in JS instead. */
+    function byAttrValue(sel, attr, value){
+        const want = String(value);
+        let hit = null;
+        document.querySelectorAll(sel).forEach(el=>{
+            if(hit) return;
+            if(String(el.getAttribute(attr) || '').indexOf(want) !== -1) hit = el;
+        });
+        return hit;
+    }
+    /** Sidebar entry (or settings sub-item) that owns <section>. */
+    function navEntryForSection(section){
+        if(!section) return null;
+        const q = "showSection('" + section + "'";
+        let hit = byAttrValue('.nav-item, .settings-sub-item', 'onclick', q);
+        return hit;
+    }
     /** Open the group that owns <section> and mark the group as "has active item". */
     function expandNavGroupForSection(section){
         if(!section) return;
         document.querySelectorAll('.nav-group').forEach(g=>g.classList.remove('has-active'));
         // matches both .nav-item entries and the .settings-sub-item buttons
-        const item=document.querySelector('[onclick*="showSection(\'' + section + '\'"]');
+        const item = navEntryForSection(section);
         if(!item) return;
         const group=item.closest('.nav-group');
         if(!group) return;
@@ -2366,8 +2403,7 @@
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         // no explicit element (programmatic jump, e.g. from the dashboard) ->
         // highlight the sidebar entry that owns this section
-        if (!el) el = document.querySelector('.nav-item[onclick*="showSection(\'' + section + '\'"]')
-                  || document.getElementById('navSettings');
+        if (!el) el = navEntryForSection(section) || document.getElementById('navSettings');
         if (el && el.classList) el.classList.add('active');
         expandNavGroupForSection(section);
         if (window.innerWidth <= 768) closeSidebar();
@@ -2926,6 +2962,7 @@
         let total = pendingPayment.total;
         // record session
         sessions.push({
+            branchId: currentBranchId(),      // which branch earned this
             clientId: pendingPayment.clientId,
             clientName: pendingPayment.clientName,
             duration: pendingPayment.duration,
@@ -2949,7 +2986,7 @@
                 // reduce stock
                 s.stock = Math.max(0, (s.stock||0) - it.qty);
                 // record sale
-                sales.push({serviceId:s.id, name:s.name, qty:it.qty, price:s.price, cost:s.cost, profit:(s.price-s.cost)*it.qty, date:new Date().toISOString()});
+                sales.push({serviceId:s.id, name:s.name, qty:it.qty, price:s.price, cost:s.cost, profit:(s.price-s.cost)*it.qty, date:new Date().toISOString(), branchId:currentBranchId()});
             }
         });
         // record cash/card
@@ -4027,10 +4064,10 @@
     function openClientFromDashboard(id){
         const idx = clients.findIndex(c => String(c.id) === String(id));
         if(idx < 0){ showToast('این کلاینت دیگر وجود ندارد','error'); return; }
-        showSection('clients', document.querySelector('.nav-item[onclick*="showSection(\'clients\'"]'));
+        showSection('clients', navEntryForSection('clients'));
         let tries = 0;
         const focus = () => {
-            let card = document.querySelector('#clientsGrid .client-card[data-cid="' + id + '"]');
+            let card = byAttrValue('#clientsGrid .client-card', 'data-cid', String(id));
             if(!card){
                 // hidden behind the station-type filter -> clear it and render once more
                 if(clientTypeFilter && tries === 0){
@@ -4525,7 +4562,7 @@
             let e=expenses.find(x=>x.id===parseInt(id));
             Object.assign(e,{title,amount,category,date});
         } else {
-            expenses.push({id:Date.now(), title,amount,category,date});
+            expenses.push({id:Date.now(), title,amount,category,date, branchId:currentBranchId()});
         }
         saveExpenses();
         closeModal('expenseModal');

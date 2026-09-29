@@ -39,6 +39,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     doc.body.appendChild(s);
   }
   const sleep_ = sleep;
+/* The app schedules its follow-ups with setTimeout, so a fixed sleep is a race:
+ * poll for the condition instead, with a ceiling that still fails loudly. */
+const waitFor = async (fn, ms = 3000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    try { if (fn()) return true; } catch (e) { /* keep polling */ }
+    await sleep(25);
+  }
+  try { return !!fn(); } catch (e) { return false; }
+};
 
   console.log('--- 1. sidebar groups ---');
   const groups = [...doc.querySelectorAll('.nav-group')];
@@ -131,20 +141,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   console.log('--- 5. dashboard -> client details jump ---');
   window.openClientFromDashboard(11);
-  await sleep_(200);
-  ok(doc.getElementById('clients-section').style.display === 'block', 'jumped to the clients section');
-  const card = doc.querySelector('#clientsGrid .client-card[data-cid="11"]');
-  ok(!!card, 'target client card found in the grid');
-  ok(card.classList.contains('flash-focus'), 'target card is flashed');
-  ok(doc.getElementById('clientMenu-0') && doc.getElementById('clientMenu-0').style.display === 'block', 'client "more" menu opened');
-  await sleep_(2500);
-  ok(!card.classList.contains('flash-focus'), 'flash class is removed automatically');
+  /* Query the live grid at every step: renderClients() can replace the card
+   * node between two of these checks, and a node captured up front would then
+   * be a detached copy that never gets the flash class. */
+  const cardOf = () => doc.querySelector('#clientsGrid .client-card[data-cid="11"]');
+  ok(await waitFor(() => doc.getElementById('clients-section').style.display === 'block'), 'jumped to the clients section');
+  ok(await waitFor(() => !!cardOf()), 'target client card found in the grid');
+  ok(await waitFor(() => {
+    const c = cardOf();
+    return !!c && c.classList.contains('flash-focus');
+  }), 'target card is flashed');
+  ok(await waitFor(() => doc.getElementById('clientMenu-0') && doc.getElementById('clientMenu-0').style.display === 'block'),
+    'client "more" menu opened');
+  ok(await waitFor(() => {
+    const c = cardOf();
+    return !!c && !c.classList.contains('flash-focus');
+  }, 4000), 'flash class is removed automatically');
   // a filtered-out client must still be reachable
   window.eval("clientTypeFilter='ps'");
   window.renderClients();
   window.openClientFromDashboard(11);
-  await sleep_(250);
-  ok(!!doc.querySelector('#clientsGrid .client-card[data-cid="11"]'), 'filter cleared so the client is reachable');
+  ok(await waitFor(() => !!cardOf()), 'filter cleared so the client is reachable');
   ok(window.eval('clientTypeFilter') === '', 'clientTypeFilter was reset');
 
   console.log('--- 6. zoom / background ---');
