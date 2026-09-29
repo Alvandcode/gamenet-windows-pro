@@ -133,6 +133,12 @@
                 <div class="nav-item" onclick="showSection('phonebook', this)">
                     <span style="font-size: 1.3rem;">📒</span> دفترچه تلفن
                 </div>
+                <div class="nav-item" onclick="showSection('finance', this)">
+                    <span style="font-size: 1.3rem;">💰</span> مالی
+                </div>
+                <div class="nav-item" onclick="showSection('ops', this)">
+                    <span style="font-size: 1.3rem;">🧰</span> عملیات
+                </div>
             </nav>
 
             <div id="operatorBar" class="glass" style="padding:12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem;">
@@ -415,6 +421,15 @@
                     <button class="glass-btn glass-btn-danger" onclick="clearTariffSchedules()">🗑️ حذف همه</button>
                 </div>
                 <div id="tariffSchedulesList" style="display:grid; gap:12px; margin-bottom:20px;"></div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">🎉 روزهای تعطیل (برای تعرفه تعطیلات)</h3>
+                    <p style="color:rgba(255,255,255,0.5); font-size:0.8rem; margin-bottom:8px;">جمعه‌ها خودکار حساب می‌شوند؛ بقیه تعطیلات را اینجا اضافه کن</p>
+                    <div style="display:flex; gap:8px; margin-bottom:12px;">
+                        <input type="text" id="holidayDate" readonly onclick="openDatePicker('holidayDate')" placeholder="انتخاب تاریخ..." style="flex:1;">
+                        <button class="glass-btn glass-btn-success" onclick="addHoliday()">➕</button>
+                    </div>
+                    <div id="holidaysList"></div>
+                </div>
                 <div class="glass" style="padding:20px;">
                     <h3 style="margin-bottom:12px;">تست تعرفه فعلی</h3>
                     <p style="color:rgba(255,255,255,0.6); font-size:0.85rem; margin-bottom:8px;">ساعت الان: <span id="currentHourDisplay" style="font-weight:800; color:#818cf8;"></span></p>
@@ -455,6 +470,11 @@
                         <button class="glass-btn glass-btn-warning" onclick="pruneOldSessions()">🧹 پاکسازی</button>
                     </div>
                     <p style="font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:8px;">قبل از پاکسازی خودکار بکاپ گرفته می‌شود — سشن، فروش بوفه و پرداخت‌های قدیمی حذف می‌شوند</p>
+                </div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">✈️ بکاپ خودکار به تلگرام</h3>
+                    <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:12px;">فایل بکاپ روزانه خودکار به تلگرام مالک ارسال می‌شود</p>
+                    <div id="tgBackupContent"></div>
                 </div>
                 <div class="glass" style="padding:20px;">
                     <h3 style="margin-bottom:12px;">تنظیمات رند کردن</h3>
@@ -905,6 +925,13 @@
                     <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
                         <button class="glass-btn glass-btn-success" onclick="sendBulkSms()">📤 ارسال گروهی به همه</button>
                     </div>
+                    <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">
+                        <label style="display:block; margin-bottom:6px; font-size:0.8rem; color:rgba(255,255,255,0.7);">قالب یادآوری بدهی (متغیرها: {نام} {مبلغ})</label>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="debtTemplate" value="سلام {نام}، بدهی شما {مبلغ} تومان است. لطفا تسویه کنید." style="flex:1;">
+                            <button class="glass-btn glass-btn-warning" onclick="sendDebtReminders()">💳 یادآوری بدهی‌ها</button>
+                        </div>
+                    </div>
                 </div>
                 <div id="phonebookList" style="margin-bottom:16px;"></div>
                 <div class="glass" style="padding:20px;">
@@ -933,6 +960,162 @@
                         <div style="display:flex; gap:8px; margin-top:16px;">
                             <button class="glass-btn glass-btn-success" style="flex:1;" onclick="savePhonebookEntry()">ذخیره</button>
                             <button class="glass-btn" style="flex:1;" onclick="closeModal('phonebookModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Finance Section -->
+            <section id="finance-section" class="section" style="display: none;">
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">💰 مالی</h1>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">سود و زیان، تحویل صندوق و مالیات</p>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+                        <h3>📊 صورت سود و زیان</h3>
+                        <div style="display:flex; gap:6px;">
+                            <button class="glass-btn pnl-range-btn" data-range="today" style="padding:6px 12px; font-size:0.75rem;" onclick="renderPNL('today')">امروز</button>
+                            <button class="glass-btn pnl-range-btn" data-range="month" style="padding:6px 12px; font-size:0.75rem;" onclick="renderPNL('month')">ماه</button>
+                            <button class="glass-btn pnl-range-btn" data-range="all" style="padding:6px 12px; font-size:0.75rem;" onclick="renderPNL('all')">کل</button>
+                        </div>
+                    </div>
+                    <div id="pnlContent"></div>
+                </div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <h3 style="margin-bottom:12px;">🔄 تحویل صندوق</h3>
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px;">
+                        <div><label style="display:block; margin-bottom:6px; font-size:0.8rem; color:rgba(255,255,255,0.7);">تحویل‌دهنده</label><input type="text" id="hoOperator"></div>
+                        <div><label style="display:block; margin-bottom:6px; font-size:0.8rem; color:rgba(255,255,255,0.7);">موجودی اول (تومان)</label><input type="number" id="hoOpening" value="0" oninput="renderHandovers()"></div>
+                        <div><label style="display:block; margin-bottom:6px; font-size:0.8rem; color:rgba(255,255,255,0.7);">شمارش پایان (تومان)</label><input type="number" id="hoCounted" value="0"></div>
+                    </div>
+                    <p id="hoExpected" style="font-size:0.85rem; color:#818cf8; margin-bottom:8px;"></p>
+                    <div style="margin-bottom:8px;"><label style="display:block; margin-bottom:6px; font-size:0.8rem; color:rgba(255,255,255,0.7);">یادداشت</label><input type="text" id="hoNote"></div>
+                    <button class="glass-btn glass-btn-success" style="width:100%;" onclick="saveHandover()">ثبت تحویل</button>
+                    <div id="handoversList" style="margin-top:12px;"><div id="handoversHistory"></div></div>
+                </div>
+                <div class="glass" style="padding:20px;">
+                    <h3 style="margin-bottom:12px;">🧾 مالیات بر ارزش افزوده</h3>
+                    <div style="display:flex; gap:8px; align-items:center; max-width:300px;">
+                        <input type="number" id="taxRateInput" min="0" max="100" value="0" onchange="setTaxRate(this.value)">
+                        <span style="color:rgba(255,255,255,0.6);">٪ (صفر = بدون مالیات)</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Operations Section -->
+            <section id="ops-section" class="section" style="display: none;">
+                <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">🧰 عملیات</h1>
+                <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">پکیج، کوپن، امانات، تعمیرات و اعلام همگانی</p>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+                        <h3>🎁 پکیج‌های ترکیبی (زمان + بوفه)</h3>
+                        <button class="glass-btn glass-btn-success" style="padding:6px 12px; font-size:0.8rem;" onclick="openPackageModal()">➕ پکیج</button>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                        <select id="pkgSelect" style="flex:1; min-width:160px;"></select>
+                        <select id="pkgClientSelect" style="flex:1; min-width:160px;"></select>
+                        <button class="glass-btn glass-btn-success" onclick="applyPackageToClient()">اجرا روی کلاینت</button>
+                    </div>
+                    <div id="packagesList"></div>
+                </div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h3>🏷️ کدهای تخفیف</h3>
+                        <button class="glass-btn glass-btn-success" style="padding:6px 12px; font-size:0.8rem;" onclick="openCouponModal()">➕ کوپن</button>
+                    </div>
+                    <div id="couponsList"></div>
+                </div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h3>📦 امانات مشتریان</h3>
+                        <button class="glass-btn glass-btn-success" style="padding:6px 12px; font-size:0.8rem;" onclick="openAmanatModal()">➕ امانت</button>
+                    </div>
+                    <div id="amanatsList"></div>
+                </div>
+                <div class="glass" style="padding:20px; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h3>🔧 تعمیر و نگهداری</h3>
+                        <button class="glass-btn glass-btn-success" style="padding:6px 12px; font-size:0.8rem;" onclick="openMaintenanceModal()">➕ خرابی</button>
+                    </div>
+                    <div id="maintenanceList"></div>
+                </div>
+                <div class="glass" style="padding:20px;">
+                    <h3 style="margin-bottom:12px;">📢 اعلام همگانی به مانیتورها</h3>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="broadcastMsg" placeholder="متن پیام..." style="flex:1;">
+                        <button class="glass-btn glass-btn-success" onclick="broadcastAll()">ارسال به همه</button>
+                    </div>
+                </div>
+                <!-- Package Modal -->
+                <div class="modal-overlay" id="packageModal">
+                    <div class="glass modal" style="padding:24px; max-width:500px; width:90%;">
+                        <h3 style="margin-bottom:16px;">پکیج</h3>
+                        <input type="hidden" id="pkgId">
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام پکیج</label><input type="text" id="pkgName" placeholder="مثلا: پکیج طلایی"></div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">دقیقه بازی</label><input type="number" id="pkgMinutes" value="120"></div>
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">قیمت باندل (تومان)</label><input type="number" id="pkgPrice"></div>
+                            </div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">اقلام بوفه</label><div id="pkgItems" style="display:grid; gap:6px; max-height:150px; overflow-y:auto;"></div></div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="savePackage()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('packageModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Coupon Modal -->
+                <div class="modal-overlay" id="couponModal">
+                    <div class="glass modal" style="padding:24px; max-width:450px; width:90%;">
+                        <h3 style="margin-bottom:16px;">کوپن تخفیف</h3>
+                        <input type="hidden" id="cpnId">
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">کد</label><input type="text" id="cpnCode" placeholder="مثلا: NOROOZ20" style="text-align:left; direction:ltr;"></div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نوع</label><select id="cpnType"><option value="percent">درصدی</option><option value="fixed">مبلغی</option></select></div>
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">مقدار</label><input type="number" id="cpnValue" value="10"></div>
+                            </div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">سقف استفاده (۰=نامحدود)</label><input type="number" id="cpnMax" value="0"></div>
+                                <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">انقضا</label><input type="date" id="cpnExp"></div>
+                            </div>
+                            <label style="display:flex; gap:8px; align-items:center;"><input type="checkbox" id="cpnActive" checked> فعال</label>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveCoupon()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('couponModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Amanat Modal -->
+                <div class="modal-overlay" id="amanatModal">
+                    <div class="glass modal" style="padding:24px; max-width:450px; width:90%;">
+                        <h3 style="margin-bottom:16px;">امانت جدید</h3>
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">نام مالک *</label><input type="text" id="amnOwner"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">وسیله *</label><input type="text" id="amnItem" placeholder="مثلا: کارت ملی، کلید موتور"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">تلفن</label><input type="text" id="amnPhone"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">یادداشت</label><input type="text" id="amnNote"></div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveAmanat()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('amanatModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Maintenance Modal -->
+                <div class="modal-overlay" id="maintenanceModal">
+                    <div class="glass modal" style="padding:24px; max-width:450px; width:90%;">
+                        <h3 style="margin-bottom:16px;">ثبت خرابی</h3>
+                        <div style="display:grid; gap:12px;">
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">دستگاه</label><select id="mntClient"></select></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">عنوان خرابی *</label><input type="text" id="mntTitle" placeholder="مثلا: خرابی دسته شماره ۲"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">هزینه (تومان)</label><input type="number" id="mntCost" value="0"></div>
+                            <div><label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">یادداشت</label><input type="text" id="mntNote"></div>
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:16px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveMaintenance()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('maintenanceModal')">لغو</button>
                         </div>
                     </div>
                 </div>
@@ -1109,6 +1292,21 @@
                     <button class="glass-btn glass-btn-success" style="padding:10px 16px;" onclick="setCustomTimer()">✅ تنظیم</button>
                 </div>
                 <p id="timerStatusText" style="margin-top:8px; font-size:0.8rem; color: rgba(255,255,255,0.5);"></p>
+            </div>
+            <div style="background: rgba(34,197,94,0.06); border-radius:16px; padding:16px; margin-bottom:16px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.7); font-size:0.9rem;">💰 مدت از روی مبلغ</label>
+                <p style="color:rgba(255,255,255,0.5); font-size:0.8rem; margin-bottom:8px;">مبلغی که مشتری داده را بزن تا مدت بازی حساب شود</p>
+                <input type="number" id="amountInput" placeholder="مثال: 50000" style="text-align:center; font-size:1.1rem; font-weight:800; margin-bottom:8px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px; margin-bottom:8px;">
+                    <button class="glass-btn" style="padding:6px 4px; font-size:0.75rem;" onclick="calculateDurationFromAmount(30000)">30ت</button>
+                    <button class="glass-btn" style="padding:6px 4px; font-size:0.75rem;" onclick="calculateDurationFromAmount(50000)">50ت</button>
+                    <button class="glass-btn" style="padding:6px 4px; font-size:0.75rem;" onclick="calculateDurationFromAmount(100000)">100ت</button>
+                    <button class="glass-btn" style="padding:6px 4px; font-size:0.75rem;" onclick="calculateDurationFromAmount(150000)">150ت</button>
+                </div>
+                <div id="amountResult" style="background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); border-radius:12px; padding:12px; display:none; margin-bottom:8px;">
+                    <p style="color:#22c55e; font-weight:800; font-size:1rem;" id="amountResultText"></p>
+                </div>
+                <button class="glass-btn glass-btn-success" style="width:100%;" onclick="applyAmountDuration()">✅ اعمال به تایمر</button>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;">
                 <button class="glass-btn glass-btn-success" onclick="startTimer()">&#9654; شروع</button>
@@ -1374,29 +1572,6 @@
         </div>
     </div>
 
-    <!-- Amount to Duration Modal -->
-    <div class="modal-overlay" id="amountModal">
-        <div class="glass" style="width:90%; max-width:450px; padding:28px; text-align:center;">
-            <h2 style="margin-bottom:16px;">💰 مدت از روی مبلغ</h2>
-            <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:12px;">مبلغی که مشتری داده را بزن تا مدت بازی حساب شود</p>
-            <input type="number" id="amountInput" placeholder="مثال: 50000" style="text-align:center; font-size:1.2rem; font-weight:800; margin-bottom:12px;">
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
-                <button class="glass-btn" onclick="calculateDurationFromAmount(30000)">30 تومان</button>
-                <button class="glass-btn" onclick="calculateDurationFromAmount(50000)">50 تومان</button>
-                <button class="glass-btn" onclick="calculateDurationFromAmount(100000)">100 تومان</button>
-                <button class="glass-btn" onclick="calculateDurationFromAmount(150000)">150 تومان</button>
-            </div>
-            <div id="amountResult" style="background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); border-radius:12px; padding:16px; display:none; margin-bottom:12px;">
-                <p style="color:#22c55e; font-weight:800; font-size:1.1rem;" id="amountResultText"></p>
-                <p style="color:rgba(255,255,255,0.5); font-size:0.8rem; margin-top:4px;">تعرفه فعلی ساعتی اعمال شد</p>
-            </div>
-            <div style="display:flex; gap:10px; justify-content:center;">
-                <button class="glass-btn glass-btn-success" onclick="applyAmountDuration()">✅ اعمال به تایمر</button>
-                <button class="glass-btn" onclick="closeModal('amountModal')">بستن</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Tariff Schedule Modal -->
     <div class="modal-overlay" id="tariffScheduleModal">
         <div class="glass" style="width:90%; max-width:500px; padding:28px;">
@@ -1405,6 +1580,14 @@
             <div style="margin-bottom:12px;">
                 <label style="display:block; margin-bottom:6px; color:rgba(255,255,255,0.7);">نام بازه (مثلا شبانه)</label>
                 <input type="text" id="tsName" placeholder="شبانه، عصر، تخفیف ظهر">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="display:block; margin-bottom:6px; color:rgba(255,255,255,0.7);"> روزهای اعمال</label>
+                <select id="tsDayType">
+                    <option value="all">همه روزها</option>
+                    <option value="weekend">فقط پنجشنبه و جمعه</option>
+                    <option value="holiday">فقط تعطیلات</option>
+                </select>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
                 <div>
@@ -1449,6 +1632,15 @@
                 <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>بوفه:</span><span id="payBuffetCost" style="font-weight:800; color:#f59e0b;"></span></div>
                 <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:8px; display:flex; justify-content:space-between; font-size:1.1rem;"><span>جمع کل:</span><span id="payTotal" style="font-weight:900; color:#22c55e;"></span></div>
                 <p style="font-size:0.75rem; color:rgba(255,255,255,0.4); margin-top:6px;" id="payRoundingInfo"></p>
+                <div id="couponLine" style="display:none; justify-content:space-between; font-size:0.9rem; margin-top:6px;"></div>
+            </div>
+            <div style="margin-bottom:12px; text-align:right;">
+                <label style="display:block; margin-bottom:6px; color:rgba(255,255,255,0.7);">کد تخفیف (اختیاری)</label>
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="couponInput" placeholder="کد کوپن..." style="flex:1; text-align:left; direction:ltr;">
+                    <button class="glass-btn" onclick="applyCoupon()">اعمال</button>
+                    <button class="glass-btn glass-btn-danger" onclick="clearCoupon()">✕</button>
+                </div>
             </div>
             <div style="margin-bottom:12px; text-align:right;">
                 <label style="display:block; margin-bottom:6px; color:rgba(255,255,255,0.7);">روش پرداخت</label>
@@ -1627,5 +1819,7 @@
     <script src="src/js/round2-b.js"></script>
     <script src="src/js/round2-c.js"></script>
     <script src="src/js/phonebook.js"></script>
+    <script src="src/js/ops.js"></script>
+    <script src="src/js/finance.js"></script>
 </body>
 </html>

@@ -118,10 +118,8 @@
         showToast('تعرفه تغییر کرد','success');
     }
     function openAmountModal(idx){
-        currentTimeClient = idx;
-        document.getElementById('amountInput').value='';
-        document.getElementById('amountResult').style.display='none';
-        document.getElementById('amountModal').classList.add('show');
+        // merged into time modal: amount section lives inside مدیریت زمان
+        openTimeModal(idx);
     }
     function calculateDurationFromAmount(amount){
         if(!amount) amount = parseInt(document.getElementById('amountInput').value)||0;
@@ -139,13 +137,13 @@
         if(!window._calcDur) { showToast('اول مبلغ را وارد کن','error'); return; }
         if(currentTimeClient===null) return;
         let c=clients[currentTimeClient];
+        if(!c){ currentTimeClient=null; return; }
         c.timerDuration = Math.ceil(window._calcDur/60);
         c.notified=false;
         saveData();
-        closeModal('amountModal');
         renderClients();
+        try{ updateTimeDisplay(); updateTimerStatusText(); }catch(e){}
         showToast('مدت '+c.timerDuration+' دقیقه تنظیم شد','success');
-        openTimeModal(currentTimeClient);
     }
 
     // Buffet
@@ -910,6 +908,22 @@
             // find customer by name if exists
             let cust=customers.find(c=> pendingPayment.clientName.includes(c.name) || c.name.includes(pendingPayment.clientName) || c.phone===pendingPayment.phone);
             // if not found try to find by pending customer
+            // package bundle replaces hourly game pricing (overage beyond minutes billed hourly)
+            if(pendingPayment.package && pendingPayment.package.price>0){
+                let pkg=pendingPayment.package;
+                let overSec=Math.max(0,(pendingPayment.duration||0)-(pkg.minutes||0)*60);
+                let overCost=0;
+                if(overSec>0){
+                    try{
+                        let cc=clients[pendingPayment.clientIdx];
+                        let rate=cc? getTariffForClient(cc) : tariffs.single;
+                        overCost=Math.round(overSec/3600*rate);
+                    }catch(e){}
+                }
+                pendingPayment.baseTotal = pkg.price + overCost + (pendingPayment.buffetCost||0);
+                pendingPayment.total = applyRounding(pendingPayment.baseTotal);
+                showToast('🎁 پکیج '+pkg.name+' اعمال شد','success');
+            }
             // apply rank discount
             if(cust){
                 let rank=getRank(cust.totalHours||0);
@@ -924,6 +938,38 @@
                     pendingPayment.total -= bDisc;
                     showToast('🎂 تخفیف تولد 10% : -'+bDisc.toLocaleString(),'success');
                 }
+                // membership discount: only the extra beyond rank discount
+                try{
+                    if(window.getActiveMembership){
+                        let mem=getActiveMembership(cust.id);
+                        if(mem && (mem.discount||0)>rank.discount){
+                            let mDisc=Math.round(pendingPayment.total*(mem.discount-rank.discount)/100);
+                            pendingPayment.total -= mDisc;
+                            showToast('🎫 تخفیف عضویت '+mem.planName+' : -'+mDisc.toLocaleString(),'success');
+                        }
+                    }
+                }catch(e){}
+                // coupon discount
+                if(pendingPayment.couponCode && window.validateCoupon && window.couponDiscount){
+                    let vr=validateCoupon(pendingPayment.couponCode);
+                    if(vr.ok){
+                        let amt=couponDiscount(vr.coupon, pendingPayment.total);
+                        pendingPayment.total -= amt;
+                        pendingPayment.couponAmount = amt;
+                        if(window.useCoupon){ try{useCoupon(pendingPayment.couponCode);}catch(e){} }
+                        showToast('🏷️ کوپن '+vr.coupon.code+' : -'+amt.toLocaleString(),'success');
+                    } else {
+                        showToast('کوپن نامعتبر شد: '+vr.error,'warning');
+                        pendingPayment.couponCode='';
+                    }
+                }
+                // VAT tax (0 = off)
+                try{
+                    if(window.taxAmount){
+                        let tx=taxAmount(pendingPayment.total);
+                        if(tx>0){ pendingPayment.total += tx; pendingPayment.tax = tx; }
+                    }
+                }catch(e){}
                 // try wallet payment
                 if(cust.wallet && cust.wallet >= pendingPayment.total){
                     if(confirm('کیف پول '+cust.name+' موجودی کافی دارد ('+cust.wallet.toLocaleString()+') از کیف پول کسر شود؟')){
@@ -2329,6 +2375,10 @@
         if (section === 'insights') { try{generateMonthlyComparison();}catch(e){} try{renderForecast();}catch(e){} try{renderSurveyStats();}catch(e){} try{renderStockAlerts();}catch(e){} }
         if (section === 'tools') { try{renderPOSConfig();}catch(e){} try{renderSecurityPanel();}catch(e){} try{renderCustomerPortal();}catch(e){} try{fillToolsCustomerSelects();}catch(e){} }
         if (section === 'phonebook') { try{renderPhonebook();}catch(e){} try{renderSmsConfig();}catch(e){} try{renderSmsLog();}catch(e){} }
+        if (section === 'finance') { try{renderFinance();}catch(e){} }
+        if (section === 'ops') { try{renderOpsSection();}catch(e){} }
+        if (section === 'tariffSchedule') { try{renderHolidays();}catch(e){} }
+        if (section === 'backup') { try{renderTgBackup();}catch(e){} }
     }
     function fillToolsCustomerSelects(){
         var opts = customers.map(function(c){ return '<option value="'+c.id+'">'+escapeHtml(c.name)+'</option>'; }).join('');
@@ -2440,8 +2490,7 @@
                     <div id="clientMenu-${i}" style="display:none; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:10px; margin-bottom:8px;">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom:8px;">
                             ${c.status==='online' ? `<button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="pauseClient(${i})">⏸ توقف موقت</button>` : ''}
-                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openTimeModal(${i})">&#9201; زمان</button>
-                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openAmountModal(${i})">💰 مبلغ->زمان</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openTimeModal(${i})">&#9201; زمان / مبلغ</button>
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openReservationModal(${i})">&#128197; رزرو</button>
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openAddServiceToClient(${i})">🍿 بوفه</button>
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openShareModalForClient(${i})">📤 ارسال</button>
@@ -2591,6 +2640,12 @@
         let _ipEl=document.getElementById('timeClientIP');
         if(_ipEl){ _ipEl.value=c.ip||''; _ipEl.onchange=()=>{ c.ip=_ipEl.value.trim(); saveData(); renderClients(); }; }
         document.getElementById('timeModal').classList.add('show');
+        // reset embedded amount section
+        try{
+            document.getElementById('amountInput').value='';
+            document.getElementById('amountResult').style.display='none';
+            window._calcDur=null;
+        }catch(e){}
         // show reservation warning if any
         let res=getActiveReservationForClient(c.id);
         let warn=document.getElementById('reservationWarning');
@@ -2758,6 +2813,9 @@
             clientName: c.name,
             duration: c.elapsed,
             gameCost, buffetCost, total,
+            baseTotal: total,
+            couponCode: '', couponAmount: 0, tax: 0,
+            package: c.activePackage ? safeParse(JSON.stringify(c.activePackage)) : null,
             tariff: c.tariff, extra: c.extra,
             stationType: c.stationType||null,
             services: safeParse(JSON.stringify(svc))
@@ -3992,10 +4050,8 @@
         showToast('تعرفه تغییر کرد','success');
     }
     function openAmountModal(idx){
-        currentTimeClient = idx;
-        document.getElementById('amountInput').value='';
-        document.getElementById('amountResult').style.display='none';
-        document.getElementById('amountModal').classList.add('show');
+        // merged into time modal: amount section lives inside مدیریت زمان
+        openTimeModal(idx);
     }
     function calculateDurationFromAmount(amount){
         if(!amount) amount = parseInt(document.getElementById('amountInput').value)||0;
@@ -4013,13 +4069,13 @@
         if(!window._calcDur) { showToast('اول مبلغ را وارد کن','error'); return; }
         if(currentTimeClient===null) return;
         let c=clients[currentTimeClient];
+        if(!c){ currentTimeClient=null; return; }
         c.timerDuration = Math.ceil(window._calcDur/60);
         c.notified=false;
         saveData();
-        closeModal('amountModal');
         renderClients();
+        try{ updateTimeDisplay(); updateTimerStatusText(); }catch(e){}
         showToast('مدت '+c.timerDuration+' دقیقه تنظیم شد','success');
-        openTimeModal(currentTimeClient);
     }
 
     // Buffet
