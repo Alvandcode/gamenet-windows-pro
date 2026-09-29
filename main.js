@@ -273,6 +273,64 @@ function setupBackupIPC() {
       return { ok: false, error: String((err && err.message) || err) };
     }
   });
+
+  /* LAN agent calls (warn / lock / unlock / shutdown / status) go out from the
+     main process. The renderer's CSP deliberately does not allow plain http to
+     arbitrary LAN addresses - "http://192.168.*" and friends are not valid CSP
+     host sources, so Chromium ignored them and every agent button silently
+     failed. Doing the request here keeps the strict CSP and still reaches the
+     machines on the shop LAN. */
+  const AGENT_PORT = 48721;
+  ipcMain.handle('gamenet:agent-request', async (_evt, opts = {}) => {
+    const ip = String(opts.ip || '').trim();
+    const rawPath = String(opts.path || '');
+    // only a bare IPv4 host and a same-origin-looking path: the renderer must
+    // not be able to use this as a general-purpose proxy
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return { ok: false, error: 'bad ip' };
+    if (ip.split('.').some((o) => Number(o) > 255)) return { ok: false, error: 'bad ip' };
+    if (!/^\/[A-Za-z0-9\-._~/?&=%+:@]*$/.test(rawPath) || rawPath.startsWith('//')) {
+      return { ok: false, error: 'bad path' };
+    }
+    try {
+      return await new Promise((resolve, reject) => {
+        let settled = false;
+        const done = (fn, arg) => { if (settled) return; settled = true; fn(arg); };
+        let req;
+        try {
+          req = http.request({ hostname: ip, port: AGENT_PORT, path: rawPath, method: 'GET', timeout: 5000 }, (res) => {
+            let data = '';
+            let tooBig = false;
+            res.on('data', (chunk) => {
+              data += chunk;
+              if (data.length > 65536) {
+                tooBig = true;
+                try { req.destroy(); } catch (_) {}
+                done(resolve, { ok: false, error: 'response too large (>64KB)' });
+              }
+            });
+            res.on('end', () => {
+              if (tooBig) return;
+              let parsed = null;
+              try { parsed = JSON.parse(data); } catch (_) { parsed = null; }
+              done(resolve, {
+                ok: res.statusCode >= 200 && res.statusCode < 300 && !!parsed,
+                status: res.statusCode,
+                data: parsed,
+                error: parsed ? undefined : 'agent returned no JSON',
+              });
+            });
+            res.on('error', (e) => done(reject, e));
+          });
+        } catch (e) { done(reject, e); return; }
+        req.on('timeout', () => { try { req.destroy(new Error('timeout')); } catch (_) {} });
+        req.on('error', (e) => done(reject, e));
+        req.on('close', () => done(resolve, { ok: false, error: 'connection closed' }));
+        req.end();
+      });
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  });
 }
 
 function createWindow() {

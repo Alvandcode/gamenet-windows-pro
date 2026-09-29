@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
-    <!-- connect-src needs http://192.168.* / 10.* / 172.16-31.* for the LAN agent
-         (http://<pc-ip>:48721) and img-src needs the QR service, otherwise the
-         remote-agent buttons and the customer QR silently never work.
+    <!-- connect-src lists no plain-http LAN sources on purpose: "http://192.168.*"
+         and friends are NOT valid CSP host sources, so Chromium ignored all of
+         them and logged a warning per entry. The LAN agent (http://<pc-ip>:48721)
+         is reached from the main process over Node's http instead, via the
+         gamenet:agent-request IPC channel, so this policy stays tight.
          https://api.ipify.org stays for the online/offline + license IP ping. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://api.qrserver.com; connect-src 'self' https: http://192.168.* http://10.* http://172.16.* http://172.17.* http://172.18.* http://172.19.* http://172.2?.* http://172.3?.* https://api.ipify.org https://api.github.com https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://api.qrserver.com; connect-src 'self' https: https://api.ipify.org https://api.github.com https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
     <link rel="stylesheet" href="src/styles/main.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">

@@ -354,10 +354,19 @@ const waitFor = async (fn, ms = 3000) => {
   ok(window.eval("hasPerm('tools')") === true, 'admin still reaches everything');
 
   console.log('--- 13. CSP and offline-safe features ---');
-  const csp = doc.querySelector('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
-  ok(/connect-src[^;]*http:\/\/192\.168\.\*/.test(csp), 'CSP allows the LAN agent (192.168.*)');
-  ok(/connect-src[^;]*http:\/\/10\.\*/.test(csp), 'CSP allows the LAN agent (10.*)');
-  ok(/img-src[^;]*api\.qrserver\.com/.test(csp), 'CSP allows the QR image service');
+        const csp = doc.querySelector('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
+        // "http://192.168.*" and "http://10.*" are NOT valid CSP host sources:
+        // Chromium ignored every one of them (one console warning each), which
+        // left the LAN agent buttons unable to reach any machine.
+        ok(!/http:\/\/(192\.168|10|172\.1[6-9]|172\.2\d|172\.3[01])\./.test(csp), 'CSP has no ignored LAN host sources');
+        ok(/connect-src[^;]*'self'/.test(csp), 'CSP connect-src still allows same-origin');
+        const preloadSrc = fs.readFileSync(path.join(ROOT, 'preload.js'), 'utf8');
+        const mainSrc = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
+        ok(/gamenet:agent-request/.test(preloadSrc), 'preload exposes the agent bridge');
+        ok(/ipcMain\.handle\('gamenet:agent-request'/.test(mainSrc), 'main process serves agent requests');
+        const appSrc2 = fs.readFileSync(path.join(ROOT, 'src/js/app.js'), 'utf8');
+        ok(/gamenet\.agent\.request/.test(appSrc2), 'agentFetch uses the main-process bridge');
+        ok(/img-src[^;]*api\.qrserver\.com/.test(csp), 'CSP allows the QR image service');
   ok(typeof window.renderCustomerQR === 'function', 'renderCustomerQR exists');
   ok(typeof window.printThermalReceipt === 'function', 'printThermalReceipt exists');
   ok(!/window\.open\('', '_blank'/.test(fs.readFileSync(path.join(ROOT, 'src/js/round2-a.js'), 'utf8')),

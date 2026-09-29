@@ -2181,9 +2181,20 @@
     function agentToken(){ try{ return localStorage.getItem('alvand_agentToken')||'alvand123'; }catch(e){ return 'alvand123'; } }
     function setAgentToken(v){ try{ localStorage.setItem('alvand_agentToken', (v||'').trim()||'alvand123'); }catch(e){} showToast('توکن ایجنت ذخیره شد','success'); }
     async function agentFetch(ip, path){
+        const full = path + (path.includes('?')?'&':'?') + 'token=' + encodeURIComponent(agentToken());
+        // In Electron the request goes through the main process: the renderer's
+        // CSP cannot allow plain http to arbitrary LAN hosts, and every agent
+        // button failed with it. The fetch() branch is only for the test harness
+        // (jsdom, no preload bridge).
+        const bridge = window.gamenet && window.gamenet.agent && window.gamenet.agent.request;
+        if(typeof bridge === 'function'){
+            const r = await bridge(ip, full);
+            if(!r || !r.ok) throw new Error((r && r.error) || 'agent request failed');
+            return r.data;
+        }
         const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),5000);
         try{
-            const r=await fetch(`http://${ip}:${AGENT_PORT}${path}${path.includes('?')?'&':'?'}token=${encodeURIComponent(agentToken())}`, {signal:ctl.signal});
+            const r=await fetch(`http://${ip}:${AGENT_PORT}${full}`);
             clearTimeout(t);
             return await r.json();
         }catch(e){ clearTimeout(t); throw e; }

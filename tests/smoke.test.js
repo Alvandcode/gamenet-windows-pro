@@ -50,7 +50,9 @@ try {
 // 2. package.json
 try {
   const pkg = JSON.parse(read('package.json'));
-  ok(pkg.version === '1.8.1', 'package version is 1.8.1 (got ' + pkg.version + ')');
+  // compared against config.js below; hardcoding the number here meant every
+  // version bump had to edit this file too, and forgetting it failed CI
+  ok(/^\d+\.\d+\.\d+$/.test(pkg.version), 'package version is a release number (got ' + pkg.version + ')');
   const files = JSON.stringify(pkg.build && pkg.build.files || []);
   ok(files.includes('src/**/*'), 'electron-builder includes src/**');
   ok(files.includes('preload.js'), 'electron-builder includes preload.js');
@@ -314,9 +316,21 @@ try {
   ok(/'activityLog'/.test(stg), 'the file mirror includes the new-features stores');
 
   // 7. CSP
-  const csp = (read('index.html').match(/Content-Security-Policy" content="([^"]+)"/) || [])[1] || '';
-  ok(/http:\/\/192\.168\.\*/.test(csp), 'CSP allows the LAN agent');
-  ok(/api\.qrserver\.com/.test(csp), 'CSP allows the QR image');
+        const csp = (read('index.html').match(/Content-Security-Policy" content="([^"]+)"/) || [])[1] || '';
+        // these are not valid CSP host sources, so Chromium dropped them all and
+        // the LAN agent could never connect; the agent now goes over IPC
+        ok(!/http:\/\/(192\.168|10|172\.1[6-9])\./.test(csp), 'CSP carries no ignored LAN host sources');
+        ok(/gamenet:agent-request/.test(read('preload.js')), 'preload exposes the agent bridge');
+        ok(/ipcMain\.handle\('gamenet:agent-request'/.test(read('main.js')), 'main process serves agent requests');
+        ok(/api\.qrserver\.com/.test(csp), 'CSP allows the QR image');
+
+        // 8. the version shown in the UI and the version electron-builder
+        // stamps into the installer were two separate hardcoded strings, so a
+        // release could ship as 1.9.0 while the app claimed to be 1.8.1.
+        const pkgVer = JSON.parse(read('package.json')).version;
+        const shownVer = (read('src/js/config.js').match(/APP_VERSION\s*=\s*'([^']+)'/) || [])[1];
+        ok(!!shownVer && shownVer === pkgVer,
+          'config.js APP_VERSION matches package.json (' + shownVer + ' vs ' + pkgVer + ')');
 } catch (e) {
   ok(false, 'regression guards: ' + e.message);
 }

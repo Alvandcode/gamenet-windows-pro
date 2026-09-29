@@ -22,10 +22,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # jsdom 30 (a devDependency, used by every DOM test) declares
+      # engines.node "^22.22.2 || ^24.15.0 || >=26.0.0". On Node 20 requiring
+      # it dies inside undici with "webidl.util.markAsUncloneable is not a
+      # function", so the E2E step failed and no release was ever produced.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       # DEPENDENCIES FIRST: the old order ran `npm run validate` before
@@ -45,8 +49,23 @@ jobs:
           npm run test:e2e
           npm run test:ux
 
+      # These three existed in the repo but were never run by CI, so a
+      # regression in the merged finance/ops modules, the password hashing or
+      # the branch/survey code could still ship.
+      - name: Merge, password and dead-feature checks
+        run: |
+          node tests/merge-integrity.test.js
+          node tests/password-security.test.js
+          node tests/dead-features.test.js
+
       - name: Smoke-check the renderer boots in a real browser
         run: node tests/browser-smoke.test.js
+
+      # Launches the real Electron app with an isolated profile, checks the
+      # window really rendered, that every module exported its API, that the
+      # console is clean, and exercises the main-process agent bridge.
+      - name: Real Electron GUI test
+        run: node tests/electron-gui.test.js
 
       - name: Read app version
         id: pkgver
