@@ -30,6 +30,11 @@ const showToast = window.showToast || function(msg){ console.log(msg); };
 // ===== SAVE HELPERS =====
 function saveMembershipPlans(){ try{ localStorage.setItem('alvand_membershipPlans', JSON.stringify(membershipPlans)); }catch(e){} }
 function saveCustomerMemberships(){ try{ localStorage.setItem('alvand_customerMemberships', JSON.stringify(customerMemberships)); }catch(e){} }
+window.saveCustomerMemberships = saveCustomerMemberships;
+// A plain assignment captured a snapshot, so assigning a new array here left
+// getActiveMembership() still looking at the original one. Mirror the contents
+// into the module variable instead, the same way the other shared stores work.
+window.customerMemberships = customerMemberships;
 function saveGameHistory(){ try{ localStorage.setItem('alvand_gameHistory', JSON.stringify(gameHistory)); }catch(e){} }
 function saveHourlyUsage(){ try{ localStorage.setItem('alvand_hourlyUsage', JSON.stringify(hourlyUsage)); }catch(e){} }
 function saveNotifications(){ try{ localStorage.setItem('alvand_notifications', JSON.stringify(notifications)); }catch(e){} }

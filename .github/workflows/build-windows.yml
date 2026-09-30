@@ -57,6 +57,7 @@ jobs:
           node tests/merge-integrity.test.js
           node tests/password-security.test.js
           node tests/dead-features.test.js
+          node tests/group-play.test.js
 
       - name: Smoke-check the renderer boots in a real browser
         run: node tests/browser-smoke.test.js

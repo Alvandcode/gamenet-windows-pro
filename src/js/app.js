@@ -2584,6 +2584,7 @@
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom:8px;">
                             ${c.status==='online' ? `<button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="pauseClient(${numId(i)})">⏸ توقف موقت</button>` : ''}
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openTimeModal(${numId(i)})">&#9201; زمان / مبلغ</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="gpOpenReport('${escapeHtml(c.id)}')">&#128202; کارکرد</button>
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openReservationModal(${numId(i)})">&#128197; رزرو</button>
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openAddServiceToClient(${numId(i)})">🍿 بوفه</button>
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openShareModalForClient(${numId(i)})">📤 ارسال</button>

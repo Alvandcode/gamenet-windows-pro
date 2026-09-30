@@ -129,6 +129,69 @@ const ok = (cond, label, extra) => {
   ok(/"bad path"/.test(String(badPath)), 'absolute URL as path is rejected', String(badPath).slice(0, 90));
   server.close();
 
+  console.log('--- the start-play panel and walk-in guests ---');
+  // The license gate is a signed token that only the seller tool can mint, and
+  // that tool is not on this machine, so the flow is driven through the same
+  // entry points the UI buttons call rather than by clicking behind the gate.
+  const gp = await evaluate(`(async () => {
+    try {
+      clients = [
+        { id: 1, name: 'رضا محمدی', tariff: 'single', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
+        { id: 2, name: 'سارا احمدی', tariff: 'double', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
+      ];
+      tariffs = { single: 20000, double: 35000, extra: 15000 };
+      showSection('clients');
+      gpRenderPicker();
+      const chips = document.querySelectorAll('#gpPicker .gp-chip').length;
+
+      const boxes = document.querySelectorAll('#gpPicker input[type=checkbox]');
+      boxes[0].checked = true; boxes[0].dispatchEvent(new Event('change', { bubbles: true }));
+      boxes[1].checked = true; boxes[1].dispatchEvent(new Event('change', { bubbles: true }));
+      const picked = gpSelectionSize();
+      const estimate = document.getElementById('gpEstimate').textContent;
+
+      const g = gpStart({ clientIds: gpSelectionIds(), guestLabel: 'مهمان', guestCount: 1 });
+      g.startedAt = Date.now() - 80 * 60 * 1000;
+      gpSetActive(g);
+      renderGroupPanel();
+      const clock = document.getElementById('gpClock').textContent;
+      const running = document.getElementById('gpRunning').innerText.replace(/\\s+/g, ' ');
+
+      const before = gpSessionsOf('all').length;
+      const sum = gpFinish();
+      const after = gpSessionsOf('all');
+
+      gpOpenReport('1');
+      await new Promise(r => setTimeout(r, 400));
+      const reportText = document.getElementById('usageReportModalBody').innerText.replace(/\\s+/g, ' ');
+
+      return JSON.stringify({
+        chips, picked, estimate, clock, running: running.slice(0, 120),
+        seconds: sum.seconds, headcount: sum.headcount, total: sum.total,
+        added: after.length - before, billed: after.filter(function(r){ return r.billed; }).length,
+        reportOpen: document.getElementById('usageReportModal').classList.contains('show'),
+        report: reportText.slice(0, 200),
+      });
+    } catch (e) { return JSON.stringify({ error: String((e && e.message) || e) }); }
+  })()`);
+  const G = JSON.parse(gp);
+  if (G.error) {
+    ok(false, 'the group-play flow ran', G.error);
+  } else {
+    ok(G.chips === 2, 'the picker offers the shop customers', G.chips);
+    ok(G.picked === 2, 'both could be selected at once', G.picked);
+    ok(/نفر/.test(G.estimate), 'the hourly estimate is shown', G.estimate);
+    ok(/^01:20:0\d$/.test(G.clock), 'the shared clock reached 1h20m', G.clock);
+    ok(/در حال بازی/.test(G.running) && /مهمان/.test(G.running), 'the panel names every player, walk-in included', G.running);
+    ok(G.headcount === 3, 'the party is three people', G.headcount);
+    ok(G.seconds >= 4799 && G.seconds <= 4801, 'the elapsed time is one hour twenty', G.seconds);
+    ok(G.total > 0, 'a bill was produced', G.total);
+    ok(G.added === 3, 'one record per member was written', G.added);
+    ok(G.billed === 1, 'exactly one record carries the bill', G.billed);
+    ok(G.reportOpen, 'the usage report opened');
+    ok(/کارکرد/.test(G.report), 'the report is about the customer', G.report.slice(0, 100));
+  }
+
   console.log('--- console is clean ---');
   const csp = errors.filter((e) => /Content Security Policy/.test(e));
   ok(csp.length === 0, 'no invalid CSP sources (' + csp.length + ')');
