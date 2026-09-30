@@ -63,6 +63,8 @@ jobs:
           node tests/timer-safety.test.js
           node tests/storage-robustness.test.js
           node tests/legacy-records.test.js
+          node tests/coupon.test.js
+          node tests/bulk-sms.test.js
 
       - name: Smoke-check the renderer boots in a real browser
         run: node tests/browser-smoke.test.js

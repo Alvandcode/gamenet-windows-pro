@@ -346,24 +346,43 @@ window.sendBulkSms = function(){
   var ta = document.getElementById('smsComposer');
   var text = ta ? ta.value.trim() : '';
   if (!text){ toast('اول متن پیام را بنویس','error'); if (ta) ta.focus(); return; }
-  var list = PB.filter(function(e){ return e.phoneMobile && mobileOk(e.phoneMobile); });
+  /* One number can be written several ways in a phonebook ('0912 000 0009',
+   * '09120000009', '+989120000009'), and each spelling used to be messaged
+   * separately, so the shop paid for the same person twice. Group by the
+   * canonical local number and keep the first row's name for the message. */
+  var seen = {};
+  var list = [];
+  PB.forEach(function(e){
+    if (!e || !e.phoneMobile || !mobileOk(e.phoneMobile)) return;
+    var key = toLocalMobile(e.phoneMobile);
+    if (seen[key]) return;
+    seen[key] = true;
+    list.push(e);
+  });
   if (!list.length){ toast('مخاطبی با موبایل معتبر نیست','error'); return; }
   if (!confirm(list.length + ' پیامک ارسال شود؟')) return;
   toast('ارسال گروهی شروع شد...','success');
   logAct('sms', 'ارسال گروهی به ' + list.length + ' نفر');
-  var i = 0, okCount = 0;
+  var i = 0, okCount = 0, failCount = 0;
   (function next(){
     if (i >= list.length){
-      toast('تمام شد: ' + okCount + ' موفق از ' + list.length, okCount === list.length ? 'success' : 'warning');
+      toast('تمام شد: ' + okCount + ' موفق' + (failCount ? '، ' + failCount + ' ناموفق' : '') + ' از ' + list.length,
+            okCount === list.length ? 'success' : 'warning');
       return;
     }
     var e = list[i++];
     var msg = text.replace(/\{نام\}/g, e.firstName || fullName(e));
     var req = window.buildSmsRequest(SMSCFG, e.phoneMobile, msg);
     var p = req.error ? Promise.resolve({ok:false, error:req.error}) : sendSmsRequest(req);
-    p.then(function(res){
-      if (res && res.ok) okCount++;
+    /* A rejected request must still advance the queue and be logged. Without
+     * this the whole bulk send stopped at the first timeout. */
+    Promise.resolve(p).then(function(res){
+      if (res && res.ok) okCount++; else failCount++;
       logSms(e.phoneMobile, fullName(e), msg, res);
+    }).catch(function(err){
+      failCount++;
+      logSms(e.phoneMobile, fullName(e), msg, {ok:false, error:String((err && err.message) || err)});
+    }).then(function(){
       setTimeout(next, 800);
     });
   })();

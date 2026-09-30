@@ -38,16 +38,20 @@ window.computePNL = function(days){
     if (days === 0){ return new Date(d).toDateString() === new Date().toDateString(); }
     return (now - new Date(d).getTime()) <= days * 864e5;
   };
+  /* Go through num() for every stored field. A row that holds a string, a
+   * Persian-digit value or null used to turn the entire P&L into NaN, and the
+   * page then printed "NaN" instead of a profit or a loss. */
+  var n = (typeof window.num === 'function') ? window.num : function(v){ return Number(v) || 0; };
   var gameRev = 0;
-  (window.sessions || []).forEach(function(s){ if (inR(s.date)) gameRev += (s.cost || 0); });
+  (window.sessions || []).forEach(function(s){ if (s && inR(s.date)) gameRev += n(s.cost); });
   var bufRev = 0, bufCost = 0;
   sp('alvand_sales', []).forEach(function(s){
-    if (!inR(s.date)) return;
-    bufRev += (s.price || 0) * (s.qty || 0);
-    bufCost += (s.cost || 0) * (s.qty || 0);
+    if (!s || !inR(s.date)) return;
+    bufRev += n(s.price) * n(s.qty);
+    bufCost += n(s.cost) * n(s.qty);
   });
   var exp = 0;
-  sp('alvand_expenses', []).forEach(function(e){ if (inR(e.date)) exp += (e.amount || 0); });
+  sp('alvand_expenses', []).forEach(function(e){ if (e && inR(e.date)) exp += n(e.amount); });
   var revenue = gameRev + bufRev;
   var net = revenue - bufCost - exp;
   return {gameRev:gameRev, bufRev:bufRev, revenue:revenue, cogs:bufCost, expenses:exp, net:net,
@@ -80,8 +84,25 @@ window.expectedCashIn = function(){
   var since = 0;
   HO.forEach(function(h){ var t = new Date(h.date).getTime(); if (t > since) since = t; });
   if (!since){ var d = new Date(); d.setHours(0, 0, 0, 0); since = d.getTime(); }
-  return pays.filter(function(p){ return new Date(p.date).getTime() >= since; })
-    .reduce(function(s, p){ return s + (p.method === 'cash' ? (p.amount || 0) : (p.method === 'split' ? Math.round((p.amount || 0) / 2) : 0)); }, 0);
+  /* A split bill is stored as two rows, one cash and one card, so only the
+   * 'cash' rows belong in the till. The old code also had a 'split' branch
+   * taking half of a row, but no such row is ever written, so the cash half of
+   * every split payment was missing from the handover and the counted cash
+   * looked short. */
+  var n2 = (typeof window.num === 'function') ? window.num : function(v){ return Number(v) || 0; };
+  return pays.filter(function(p){
+    if (!p) return false;
+    if (new Date(p.date).getTime() < since) return false;
+    if (p.method === 'cash') return true;
+    // tolerate a hand-edited or older backup that really does hold one 'split'
+    // row, so those amounts are not lost as well
+    if (p.method === 'split') return true;
+    return false;
+  }).reduce(function(acc, p){
+    if (p.method === 'cash') return acc + n2(p.amount);
+    if (p.method === 'split') return acc + Math.round(n2(p.amount) / 2);
+    return acc;
+  }, 0);
 };
 window.saveHandover = function(){
   var op = val('hoOperator') || ((window.currentOperator && window.currentOperator.username) || '');

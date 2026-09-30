@@ -161,10 +161,21 @@ window.validateCoupon = function(code){
   return {ok:true, coupon:c};
 };
 window.couponDiscount = function(coupon, baseTotal){
-  baseTotal = baseTotal || 0;
+  baseTotal = (typeof window.num === 'function' ? window.num(baseTotal) : (Number(baseTotal) || 0));
+  if (baseTotal < 0) baseTotal = 0;
   if (!coupon) return 0;
-  if (coupon.type === 'percent') return Math.round(baseTotal * (coupon.value || 0) / 100);
-  return Math.min(coupon.value || 0, baseTotal);
+  var n = function(v){ return typeof window.num === 'function' ? window.num(v) : (Number(v) || 0); };
+  var value = n(coupon.value);
+  if (value < 0) value = 0;
+  var disc;
+  if (coupon.type === 'percent') disc = Math.round(baseTotal * value / 100);
+  else disc = value;
+  /* A discount can never be more than the bill. A 150% coupon used to return
+   * 150000 on a 100000 bill and the payment screen showed -50000, i.e. money
+   * owed to the customer instead of a free session. */
+  if (disc < 0) disc = 0;
+  if (disc > baseTotal) disc = baseTotal;
+  return disc;
 };
 window.useCoupon = function(code){
   var r = window.validateCoupon(code);
@@ -182,6 +193,10 @@ window.applyCoupon = function(){
   var base = window.pendingPayment.baseTotal || window.pendingPayment.total;
   var amt = window.couponDiscount(r.coupon, base);
   window.pendingPayment.couponCode = r.coupon.code;
+  window.pendingPayment.couponDiscount = amt;
+  /* Count the use here. validateCoupon() only checks the ceiling, so without
+   * this the counter never moved and a limited coupon stayed valid forever. */
+  window.useCoupon(r.coupon.code);
   window.refreshPayTotal();
   toast('کوپن اعمال شد: -' + amt.toLocaleString(),'success');
 };

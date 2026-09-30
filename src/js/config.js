@@ -3,7 +3,7 @@
   'use strict';
   // Single source of truth for version. The release workflow derives tags from
   // package.json; this file and app.js both read the same value.
-  window.APP_VERSION = '1.10.1';
+  window.APP_VERSION = '1.10.2';
 
   // Firebase is OPTIONAL. The original shipped a hardcoded apiKey in index.html.
   // Now: empty by default (local mode = no online license sync, no revoke check).
