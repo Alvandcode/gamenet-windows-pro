@@ -874,7 +874,7 @@
         let todayStr=localDayKey(new Date());
         let stats=clients.map(c=>{
             let todaySessions=sessions.filter(s=> s.clientId===c.id && isSameDay(s.date, todayStr));
-            let sessHours=todaySessions.reduce((sum,s)=>sum+s.duration/3600,0);
+            let sessHours=todaySessions.reduce((sum, s) => sum + num(s.duration)/3600,0);
             let currentHours= c.status==='online' ? (c.elapsed||0)/3600 : 0;
             let total=sessHours + currentHours;
             return {name:c.name, hours:total, status:c.status};
@@ -936,10 +936,10 @@
         let m1=el1.value, m2=el2.value;
         if(!m1||!m2){ showToast('دو ماه انتخاب کن','error'); return; }
         let d1=new Date(m1+'-01'); let d2=new Date(m2+'-01');
-        let inc1=sessions.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d1.getFullYear() && d.getMonth()===d1.getMonth(); }).reduce((sum,s)=>sum+(s.cost||0),0) + sales.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d1.getFullYear() && d.getMonth()===d1.getMonth(); }).reduce((sum,s)=>sum+s.price*s.qty,0);
-        let inc2=sessions.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d2.getFullYear() && d.getMonth()===d2.getMonth(); }).reduce((sum,s)=>sum+(s.cost||0),0) + sales.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d2.getFullYear() && d.getMonth()===d2.getMonth(); }).reduce((sum,s)=>sum+s.price*s.qty,0);
-        let exp1=expenses.filter(e=>{ let d=new Date(e.date); return d.getFullYear()===d1.getFullYear() && d.getMonth()===d1.getMonth(); }).reduce((sum,e)=>sum+e.amount,0);
-        let exp2=expenses.filter(e=>{ let d=new Date(e.date); return d.getFullYear()===d2.getFullYear() && d.getMonth()===d2.getMonth(); }).reduce((sum,e)=>sum+e.amount,0);
+        let inc1=sessions.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d1.getFullYear() && d.getMonth()===d1.getMonth(); }).reduce((sum,s)=>sum+num(s.cost),0) + sales.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d1.getFullYear() && d.getMonth()===d1.getMonth(); }).reduce((sum, s) => sum + num(s.price) * num(s.qty),0);
+        let inc2=sessions.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d2.getFullYear() && d.getMonth()===d2.getMonth(); }).reduce((sum,s)=>sum+num(s.cost),0) + sales.filter(s=>{ let d=new Date(s.date); return d.getFullYear()===d2.getFullYear() && d.getMonth()===d2.getMonth(); }).reduce((sum, s) => sum + num(s.price) * num(s.qty),0);
+        let exp1=expenses.filter(e=>{ let d=new Date(e.date); return d.getFullYear()===d1.getFullYear() && d.getMonth()===d1.getMonth(); }).reduce((sum, e) => sum + num(e.amount),0);
+        let exp2=expenses.filter(e=>{ let d=new Date(e.date); return d.getFullYear()===d2.getFullYear() && d.getMonth()===d2.getMonth(); }).reduce((sum, e) => sum + num(e.amount),0);
         let max=Math.max(inc1,inc2,exp1,exp2,1);
         let cont=document.getElementById('compareChartContainer');
         let chart=document.getElementById('compareChart');
@@ -989,7 +989,7 @@
             document.getElementById('btnYearly')?.classList.add('glass-btn-success');
             let now=new Date();
             let filtered=sessions.filter(s=> new Date(s.date).getFullYear()===now.getFullYear());
-            let total=filtered.reduce((sum,s)=>sum+(s.cost||0),0) + sales.filter(s=> new Date(s.date).getFullYear()===now.getFullYear()).reduce((sum,s)=>sum+s.price*s.qty,0);
+            let total=filtered.reduce((sum,s)=>sum+num(s.cost),0) + sales.filter(s=> new Date(s.date).getFullYear()===now.getFullYear()).reduce((sum, s) => sum + num(s.price) * num(s.qty),0);
             let html=`<h3 style="text-align:center; margin-bottom:16px;">گزارش سالانه ${now.getFullYear()}</h3>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
                 <div class="glass" style="padding:16px; text-align:center;"><p style="color:rgba(255,255,255,0.5);">تعداد سشن</p><p style="font-size:1.5rem; font-weight:900; color:#818cf8;">${filtered.length}</p></div>
@@ -2163,7 +2163,7 @@
             let st=getStationType(s.stationType);
             let label=st? st.icon+' '+st.name : (s.stationTypeName||'سایر');
             if(!map[label]) map[label]={total:0, count:0};
-            map[label].total+=(s.cost||0); map[label].count++;
+            map[label].total+=num(s.cost); map[label].count++;
         });
         let keys=Object.keys(map);
         if(!keys.length){ box.innerHTML=''; return; }
@@ -2714,10 +2714,78 @@
         showToast('کلاینت با موفقیت اضافه شد','success');
     }
 
+    /* Bank the time before the card is thrown away. Deleting somebody who was
+     * still playing used to drop the session record entirely, so the played
+     * time never reached the reports and the cash was never counted. */
+    function bankClientBeforeDelete(c){
+        if(!c) return 0;
+        const seconds = clientElapsed(c);
+        if (!(seconds > 0)) return 0;   // never played: nothing to bill
+        const gameCost = Math.max(0, Number(calculateCost(c)) || 0);
+        const total = applyRounding(gameCost);
+        if (total > 0) {
+            sessions.push({
+                branchId: currentBranchId(),
+                clientId: c.id,
+                clientName: c.name,
+                duration: seconds,
+                cost: total,
+                gameCost: gameCost,
+                buffetCost: 0,
+                tariff: c.tariff,
+                extra: c.extra,
+                extraSeconds: c.extraSeconds || 0,
+                stationType: c.stationType || null,
+                stationTypeName: (function(){ let st=getStationType(c.stationType); return st? st.icon+' '+st.name : ''; })(),
+                date: new Date().toISOString(),
+                timerDuration: c.timerDuration || 0,
+                paymentMethod: 'cash',
+                services: [],
+                deletedWithCard: true,
+            });
+            try {
+                const payments = safeParse(localStorage.getItem('alvand_payments') || '[]');
+                payments.push({ amount: total, method: 'cash', date: new Date().toISOString(), clientName: c.name });
+                localStorage.setItem('alvand_payments', JSON.stringify(payments));
+            } catch(e){}
+        }
+        c.totalCost = (Number(c.totalCost) || 0) + total;
+        return total;
+    }
+
     function deleteClient(index) {
         if(!requirePerm('clients','حذف دستگاه')) return;
-        if (confirm('آیا از حذف این کلاینت اطمینان دارید؟')) {
-            let cid=clients[index].id;
+        const victim = clients[index];
+        if(!victim) return;
+        const wasPlaying = clientElapsed(victim) > 0;
+        if (wasPlaying) {
+            const secs = Math.floor(clientElapsed(victim));
+            if(!confirm('این کلاینت هنوز در حال بازی است (حدود ' + formatTime(secs) + ').\n'
+                      + 'مبلغ بازی او محاسبه و در کارکردش ثبت شود و سپس حذف شود؟')) {
+                return;
+            }
+        } else if (confirm('آیا از حذف این کلاینت اطمینان دارید؟')) {
+            // fall through to the plain delete below
+        } else {
+            return;
+        }
+        {
+            let cid=victim.id;
+            // if the card is part of a running group party, settle that party
+            try{
+                const g = (typeof gpActive==='function') ? gpActive() : null;
+                if (g && g.members && g.members.some(m => m.kind==='client' && String(m.id)===String(cid))) {
+                    showToast('ابتدا بازی گروهی تسویه می‌شود','warning');
+                    if (typeof gpFinish==='function') gpFinish();
+                    if (clients[index] && String(clients[index].id)===String(cid)) clients.splice(index, 1);
+                    try{ saveData(); }catch(e){}
+                    renderClients(); updateStats();
+                    showToast('بازی گروهی تسویه و کلاینت حذف شد','success');
+                    return;
+                }
+            }catch(e){}
+            // otherwise bank any time still on the card
+            bankClientBeforeDelete(victim);
             clients.splice(index, 1);
             // also remove reservations for this client
             reservations = reservations.filter(r=>r.clientId!==cid);
@@ -2925,10 +2993,20 @@
         if (c.status === 'online') {
             const before = Number(c.elapsed) || 0;
             c.elapsed = clientElapsed(c);
-            if (c.elapsed > before * 1000 + 3600) {
-                // the stored elapsed was missing/garbage: fall back to it and warn
+            /* clientElapsed() already clamps a corrupt stored value to a sane
+             * ceiling and derives the truth from startTime. The old guard here
+             * was `c.elapsed > before * 1000 + 3600`, but `before` is in
+             * SECONDS, so the *1000 made the limit enormous: any real session
+             * longer than an hour looked "impossible" and the code threw the
+             * played time away and billed the stale value instead. A two-hour
+             * session was recorded as 0 seconds and charged 0.
+             * Only a value that is still absurd after clamping is refused. */
+            if (!isFinite(c.elapsed) || c.elapsed < 0) {
                 c.elapsed = before;
                 showToast('⏱️ زمان این کلاینت نامعتبر بود - دستی بررسی کنید','error');
+            } else if (c.elapsed > 34560000) {
+                c.elapsed = before;
+                showToast('⏱️ زمان این کلاینت غیرمنطقی بود - دستی بررسی کنید','error');
             }
             c.startTime = null;
             c.status = 'paused';
@@ -3328,7 +3406,7 @@
     function isReservationActiveOrUpcoming(r){
         let now=new Date();
         let start=new Date(r.date+'T'+r.startTime);
-        let end=new Date(start.getTime()+ r.duration*60000);
+        let end=new Date(start.getTime()+ num(r.duration)*60000);
         // upcoming within 2 hours or active now
         return end>now && start < new Date(now.getTime()+ 24*3600*1000);
     }
@@ -3338,7 +3416,7 @@
             if(r.clientId!==clientId) return false;
             if(r.status==='cancelled' || r.status==='completed') return false;
             let start=new Date(r.date+'T'+r.startTime);
-            let end=new Date(start.getTime()+ r.duration*60000);
+            let end=new Date(start.getTime()+ num(r.duration)*60000);
             return now>=start && now<=end;
         });
     }
@@ -3359,7 +3437,7 @@
             if(r.clientId!==clientId) return false;
             if(r.status==='cancelled' || r.status==='completed') return false;
             let start=new Date(r.date+'T'+r.startTime);
-            let end=new Date(start.getTime()+ r.duration*60000);
+            let end=new Date(start.getTime()+ num(r.duration)*60000);
             // active now
             if(now>=start && now<=end) return true;
             // starts within next 15 minutes
@@ -3376,7 +3454,7 @@
             if(r.clientId!==clientId) return false;
             if(r.status==='cancelled' || r.status==='completed') return false;
             let rStart=new Date(r.date+'T'+r.startTime);
-            let rEnd=new Date(rStart.getTime()+ r.duration*60000);
+            let rEnd=new Date(rStart.getTime()+ num(r.duration)*60000);
             return (newStart < rEnd && newEnd > rStart);
         });
     }
@@ -3516,7 +3594,7 @@
         let filtered=[...reservations].sort((a,b)=> new Date(a.date+'T'+a.startTime)-new Date(b.date+'T'+b.startTime));
         if(filter==='today') filtered=filtered.filter(r=>r.date===todayStr);
         else if(filter==='upcoming') filtered=filtered.filter(r=> new Date(r.date+'T'+r.startTime) >= now);
-        else if(filter==='expired') filtered=filtered.filter(r=> { let end=new Date(new Date(r.date+'T'+r.startTime).getTime()+ r.duration*60000); return end < now; });
+        else if(filter==='expired') filtered=filtered.filter(r=> { let end=new Date(new Date(r.date+'T'+r.startTime).getTime()+ num(r.duration)*60000); return end < now; });
 
         if(filtered.length===0){
             container.innerHTML=`<div class="glass" style="text-align:center; padding:50px; color:rgba(255,255,255,0.5);">هیچ رزروی یافت نشد</div>`;
@@ -3524,7 +3602,7 @@
         }
         container.innerHTML=filtered.map(r=>{
             let start=new Date(r.date+'T'+r.startTime);
-            let end=new Date(start.getTime()+r.duration*60000);
+            let end=new Date(start.getTime()+num(r.duration)*60000);
             let now2=new Date();
             let status=''; let statusColor='#22c55e'; let statusText='آینده';
             if(r.status==='completed'){ statusText='تکمیل شده'; statusColor='#64748b'; }
@@ -3897,7 +3975,7 @@
         if(type==='daily'){ filtered=sessions.filter(s=> isSameDay(s.date, now)); title='گزارش روزانه - '+now.toLocaleDateString('fa-IR');}
         else if(type==='weekly'){ let w=new Date(now-7*24*60*60*1000); filtered=sessions.filter(s=> new Date(s.date)>=w); title='گزارش هفتگی';}
         else { let m=new Date(now-30*24*60*60*1000); filtered=sessions.filter(s=> new Date(s.date)>=m); title='گزارش ماهانه';}
-        let total=filtered.reduce((sum,s)=>sum+s.cost,0);
+        let total=filtered.reduce((sum, s) => sum + num(s.cost),0);
         let html=`<h2 style="color:#1e293b; text-align:center;">${title}</h2>
         <p style="text-align:center; color:#64748b;">تعداد سشن: ${filtered.length} | جمع درآمد: ${total.toLocaleString('fa-IR')} تومان</p>
         <table style="width:100%; border-collapse:collapse; margin-top:16px; font-size:12px;">
@@ -4038,7 +4116,7 @@
             const d = new Date(s.date);
             const now = new Date();
             return isSameDay(d, now);
-        }).reduce((sum, s) => sum + s.cost, 0);
+        }).reduce((sum, s) => sum + num(s.cost), 0);
 
         let a=document.getElementById('statActive'); if(a) a.textContent = active;
         let b=document.getElementById('statPaused'); if(b) b.textContent = paused;
@@ -4153,7 +4231,7 @@
             const active = clients.filter(c => c.status === 'online').length;
             const paused = clients.filter(c => c.status === 'paused').length;
             const now = new Date();
-            const todayIncome = sessions.filter(s => isSameDay(s.date, now)).reduce((sum, s) => sum + s.cost, 0);
+            const todayIncome = sessions.filter(s => isSameDay(s.date, now)).reduce((sum, s) => sum + num(s.cost), 0);
             let a=document.getElementById('statActive'); if(a && a.textContent != String(active)) a.textContent = active;
             let b=document.getElementById('statPaused'); if(b && b.textContent != String(paused)) b.textContent = paused;
             let c=document.getElementById('statTotal'); if(c && c.textContent != String(clients.length)) c.textContent = clients.length;
@@ -4216,8 +4294,8 @@
             title = 'گزارش ماهانه';
         }
 
-        const totalTime = filtered.reduce((sum, s) => sum + s.duration, 0);
-        const totalCost = filtered.reduce((sum, s) => sum + s.cost, 0);
+        const totalTime = filtered.reduce((sum, s) => sum + num(s.duration), 0);
+        const totalCost = filtered.reduce((sum, s) => sum + num(s.cost), 0);
 
         let html = `
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
@@ -4288,12 +4366,12 @@
     function updateIncome() {
         const now = new Date();
 
-        const today = sessions.filter(s => isSameDay(s.date, now)).reduce((sum, s) => sum + s.cost, 0);
+        const today = sessions.filter(s => isSameDay(s.date, now)).reduce((sum, s) => sum + num(s.cost), 0);
         const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-        const week = sessions.filter(s => new Date(s.date) >= weekAgo).reduce((sum, s) => sum + s.cost, 0);
+        const week = sessions.filter(s => new Date(s.date) >= weekAgo).reduce((sum, s) => sum + num(s.cost), 0);
         const monthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
-        const month = sessions.filter(s => new Date(s.date) >= monthAgo).reduce((sum, s) => sum + s.cost, 0);
-        const total = sessions.reduce((sum, s) => sum + s.cost, 0);
+        const month = sessions.filter(s => new Date(s.date) >= monthAgo).reduce((sum, s) => sum + num(s.cost), 0);
+        const total = sessions.reduce((sum, s) => sum + num(s.cost), 0);
 
         let a=document.getElementById('incomeToday'); if(a) a.textContent = today.toLocaleString('fa-IR') + ' تومان';
         let b=document.getElementById('incomeWeek'); if(b) b.textContent = week.toLocaleString('fa-IR') + ' تومان';
@@ -4334,7 +4412,7 @@
 
         for (let i = 6; i >= 0; i--) {
             const d = new Date(now - i * 24 * 60 * 60 * 1000);
-            const income = sessions.filter(s => isSameDay(s.date, d)).reduce((sum, s) => sum + s.cost, 0);
+            const income = sessions.filter(s => isSameDay(s.date, d)).reduce((sum, s) => sum + num(s.cost), 0);
             data.push(income);
         }
 
@@ -4499,7 +4577,7 @@
     function updateBuffetStats(){
         let today=localDayKey(new Date());
         let todaySales=sales.filter(s=> isSameDay(s.date, today));
-        let income=todaySales.reduce((sum,s)=>sum+s.price*s.qty,0);
+        let income=todaySales.reduce((sum, s) => sum + num(s.price) * num(s.qty),0);
         let profit=todaySales.reduce((sum,s)=>sum+s.profit,0);
         let low=services.filter(s=>s.stock<10).length;
         let el1=document.getElementById('buffetIncomeToday'); if(el1) el1.textContent=income.toLocaleString('fa-IR')+' تومان';
@@ -4634,7 +4712,7 @@
         let month=new Date().getMonth();
         let monthExp=expenses.filter(e=>{ const d=new Date(e.date); return d.getMonth()===month && d.getFullYear()===new Date().getFullYear(); }).reduce((s,e)=>s+(Number(e.amount)||0),0);
         let todayIncome=sessions.filter(s=> isSameDay(s.date, today)).reduce((s,x)=>s+(x.cost||0),0);
-        let buffetToday=sales.filter(s=> isSameDay(s.date, today)).reduce((s,x)=>s+x.price*x.qty,0);
+        let buffetToday=sales.filter(s=> isSameDay(s.date, today)).reduce((s, x) => s + num(x.price) * num(x.qty),0);
         todayIncome+=buffetToday;
         let el1=document.getElementById('expenseToday'); if(el1) el1.textContent=todayExp.toLocaleString('fa-IR')+' تومان';
         let el2=document.getElementById('expenseMonth'); if(el2) el2.textContent=monthExp.toLocaleString('fa-IR')+' تومان';

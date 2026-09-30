@@ -183,6 +183,7 @@ const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const day = 86400000;
   const base = new Date(2026, 8, 1, 12, 0, 0);          // 2026-09-01 midday
   const at = (d) => new Date(base.getTime() + d * day).toISOString();
+  window.sessions = [];
   window.gpSave([
     { id: 'r1', date: at(0), duration: 3600, cost: 35000, billed: true, memberKind: 'client', clientId: 1, clientName: 'رضا محمدی', headcount: 2, startedAt: base.getTime(), endedAt: base.getTime() },
     { id: 'r2', date: at(2), duration: 1800, cost: 0, billed: false, memberKind: 'client', clientId: 1, clientName: 'رضا محمدی', headcount: 2, startedAt: base.getTime() + 2 * day, endedAt: base.getTime() + 2 * day },
@@ -206,6 +207,7 @@ const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
   console.log('--- 11. today is reported separately ---');
   const nowReal = Date.now();
+  window.sessions = [];
   window.gpSave([{ id: 't1', date: new Date(nowReal).toISOString(), duration: 2700, cost: 0, billed: false, memberKind: 'client', clientId: 2, clientName: 'سارا احمدی', headcount: 1, startedAt: nowReal, endedAt: nowReal }]);
   const rep2 = window.gpReport('2');
   ok(rep2.today === 2700, '"today" is counted on its own', rep2.today);

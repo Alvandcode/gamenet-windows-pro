@@ -45,11 +45,12 @@ window.branchStats = function(){
     return byId[k];
   };
   var ss = (typeof sessions !== 'undefined' && Array.isArray(sessions)) ? sessions : [];
-  ss.forEach(function(s){ if (!s) return; var r = ensure(bid(s)); r.sessions++; r.income += (Number(s.cost) || 0); });
+  ss.forEach(function(s){ if (!s) return; var r = ensure(bid(s)); r.sessions++; r.income += (window.num ? window.num(s.cost) : (Number(s.cost) || 0)); });
   var ex = (typeof expenses !== 'undefined' && Array.isArray(expenses)) ? expenses : [];
-  ex.forEach(function(e){ if (e) ensure(bid(e)).expense += (Number(e.amount) || 0); });
+  ex.forEach(function(e){ if (e) ensure(bid(e)).expense += (window.num ? window.num(e.amount) : (Number(e.amount) || 0)); });
   var sl = (typeof sales !== 'undefined' && Array.isArray(sales)) ? sales : [];
-  sl.forEach(function(s){ if (s) ensure(bid(s)).sales += (Number(s.price) || 0) * (Number(s.qty) || 0); });
+  sl.forEach(function(s){ if (s) { var np = window.num ? window.num : function(v){ return Number(v) || 0; };
+      ensure(bid(s)).sales += np(s.price) * np(s.qty); } });
   return Object.keys(byId).map(function(k){ return byId[k]; });
 };
 
@@ -236,7 +237,9 @@ window.renderForecast = function(){
   /* sort by date: Object key order is insertion order, so the "last 7 days"
    * used whatever order the sessions happened to be saved in */
   var vals = Object.keys(days).sort().map(function(k){ return days[k]; });
-  var avg = vals.reduce(function(a,b){ return a+b; },0)/vals.length;
+  // no sessions with a valid date at all: the division below used to give NaN
+  // and the panel then printed "NaN" for the daily average and the forecast
+  var avg = vals.length ? vals.reduce(function(a,b){ return a+b; },0)/vals.length : 0;
   var last7 = vals.slice(-7);
   var avg7 = last7.length ? last7.reduce(function(a,b){ return a+b; },0)/last7.length : avg;
   c.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">'

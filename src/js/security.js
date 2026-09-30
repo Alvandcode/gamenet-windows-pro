@@ -282,7 +282,26 @@
     return new Date(x.getFullYear(), x.getMonth(), 1, 0, 0, 0, 0);
   }
   /** Coerce anything (string / Persian digits / null) to a finite number. */
-  function toNum(v, fallback) {
+  /* A stored value that came from an import, a backup, or an older build can be
+ * a string, null, a Persian digit sequence, or NaN. Every place that adds up
+ * money or seconds has to survive that, so this is the single coercion used by
+ * the reports. num(s.cost) can never make a total NaN. */
+function num(v, fallback) {
+    if (typeof v === 'number') return isFinite(v) ? v : (fallback || 0);
+    if (v === null || v === undefined || v === '') return (fallback || 0);
+    // Persian and Arabic-Indic digits, thousands separators, Persian decimal
+    let t = String(v)
+        .replace(/[\u06F0-\u06F9]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+        .replace(/[\u0660-\u0669]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+        .replace(/[,٬\u066C\s_]/g, '')
+        .replace(/[\u066B\.]/g, '.')
+        .replace(/[^0-9.\-]/g, '');
+    const n = parseFloat(t);
+    return isFinite(n) ? n : (fallback || 0);
+}
+window.num = num;
+
+function toNum(v, fallback) {
     if (typeof v === 'number') return isFinite(v) ? v : (fallback === undefined ? 0 : fallback);
     if (v === null || v === undefined || v === '') return fallback === undefined ? 0 : fallback;
     const n = parseFaDecimal(v, NaN);

@@ -58,6 +58,11 @@ jobs:
           node tests/password-security.test.js
           node tests/dead-features.test.js
           node tests/group-play.test.js
+          node tests/number-safety.test.js
+          node tests/delete-safety.test.js
+          node tests/timer-safety.test.js
+          node tests/storage-robustness.test.js
+          node tests/legacy-records.test.js
 
       - name: Smoke-check the renderer boots in a real browser
         run: node tests/browser-smoke.test.js

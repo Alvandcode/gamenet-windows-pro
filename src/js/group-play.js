@@ -65,7 +65,13 @@
   const esc = (s) => (typeof escapeHtml === 'function')
     ? escapeHtml(String(s == null ? '' : s))
     : String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const num = (v, d) => { const n = Number(v); return isFinite(n) ? n : (d || 0); };
+  /* security.js already exports num(), which also reads Persian and
+   * Arabic-Indic digits. The local Number() helper here shadowed it, so a cost
+   * or a duration stored as "۲۰٬۰۰۰" silently became 0 and the report showed
+   * nothing. Use the shared one, with a plain fallback for safety. */
+  const num = (typeof window !== 'undefined' && typeof window.num === 'function')
+    ? function (v, d) { return window.num(v, d); }
+    : function (v, d) { const n = Number(v); return isFinite(n) ? n : (d || 0); };
   const uid = () => 'gp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
@@ -302,6 +308,41 @@
       }
     }
 
+    /* The bill has to reach the real ledger the rest of the app reads. Writing
+     * only to alvand_groupSessions left the party's money out of the daily
+     * income, the monthly chart, the branch card and the year total - the shop
+     * saw the money arrive in the till and nowhere else. One record on the
+     * payer carries the whole amount, so the total is counted once. */
+    try {
+      if (typeof sessions !== 'undefined' && Array.isArray(sessions)) {
+        const payerName = (g.members.find(function (m) {
+          return m.kind === 'client' ? String(m.id) === String(payer) : false;
+        }) || g.members[0] || {}).name || '';
+        sessions.push({
+          id: uid(),
+          groupId: g.id,
+          branchId: (typeof currentBranchId === 'function') ? currentBranchId() : '1',
+          clientId: payer,
+          clientName: payerName,
+          duration: seconds,
+          cost: total,
+          gameCost: total,
+          buffetCost: 0,
+          tariff: (g.members.find(function (m) { return m.kind === 'client' && String(m.id) === String(payer); }) || {}).tariff || 'double',
+          extra: 0,
+          extraSeconds: 0,
+          stationType: g.stationType || null,
+          stationTypeName: '',
+          date: nowIso,
+          timerDuration: 0,
+          paymentMethod: method,
+          services: [],
+          headcount: headcount,
+          groupPlay: true,
+        });
+      }
+    } catch (e) { console.warn('[gamenet] could not write the group session to the ledger', e); }
+
     // payment goes to the cash/card ledger once, for the whole party
     if (total > 0) {
       try {
@@ -348,9 +389,56 @@
   window.gpFinish = finish;
 
   /* ---------- the usage report ---------- */
+  /* Read BOTH stores. A party is recorded in alvand_groupSessions (one row per
+   * person) and a single-player session is recorded in alvand_sessions (one row
+   * on the payer). Reading only the group store meant a customer who had
+   * played all year through the ordinary cards showed an empty report. */
+  function normalise(row, from) {
+    if (!row) return null;
+    const memberKind = row.memberKind || (from === 'group' ? 'client' : 'client');
+    return {
+      id: row.id,
+      groupId: row.groupId || null,
+      date: row.date,
+      startedAt: row.startedAt || null,
+      endedAt: row.endedAt || null,
+      duration: num(row.duration),
+      cost: num(row.cost),
+      billed: row.billed !== undefined ? !!row.billed : num(row.cost) > 0,
+      memberKind: memberKind,
+      clientId: row.clientId === undefined ? null : row.clientId,
+      clientName: row.clientName || row.memberName || '',
+      memberName: row.memberName || row.clientName || '',
+      headcount: num(row.headcount, 1) || 1,
+      tariff: row.tariff || 'single',
+      stationType: row.stationType || null,
+      stationTypeName: row.stationTypeName || '',
+      paymentMethod: row.paymentMethod || null,
+      branchId: (typeof window.branchIdOf === 'function') ? window.branchIdOf(row) : (row.branchId || '1'),
+      from: from,
+    };
+  }
+
+  function allRows() {
+    const out = [];
+    load().forEach(function (r) { const n = normalise(r, 'group'); if (n) out.push(n); });
+    // the ordinary ledger, minus the single billed row a party also wrote there
+    const groups = {};
+    load().forEach(function (r) { if (r.groupId) groups[String(r.groupId)] = true; });
+    if (typeof sessions !== 'undefined' && Array.isArray(sessions)) {
+      sessions.forEach(function (r) {
+        if (r && r.groupId && groups[String(r.groupId)]) return;   // already counted
+        const n = normalise(r, 'ledger');
+        if (n) out.push(n);
+      });
+    }
+    return out;
+  }
+  window.gpAllRows = allRows;
+
   function sessionsOf(key) {
     // key: client id, 'guest:<label>' or 'all'
-    const list = load();
+    const list = allRows();
     if (key === 'all') return list;
     if (typeof key === 'string' && key.indexOf('guest:') === 0) {
       const label = key.slice(6);
