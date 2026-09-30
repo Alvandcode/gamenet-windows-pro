@@ -130,6 +130,51 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   window.renderSurveyStats();
   ok(statsBox.innerHTML.length > 0, 'the empty state renders instead of crashing');
 
+  // ---- 6. PDF export and fonts must work with no internet ----
+  console.log('--- 6. offline PDF export ---');
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const appSrcPdf = fs.readFileSync(path.join(ROOT, 'src/js/app.js'), 'utf8');
+
+  const vendor = path.join(ROOT, 'assets', 'vendor', 'html2pdf.bundle.min.js');
+  ok(fs.existsSync(vendor), 'html2pdf is vendored inside the app');
+  ok(!/cdnjs\.cloudflare\.com[^"']*html2pdf/.test(html), 'index.html does not load html2pdf from a CDN');
+  ok(/assets\/vendor\/html2pdf\.bundle\.min\.js/.test(html), 'index.html loads the local copy');
+
+  const fontCssPath = path.join(ROOT, 'assets', 'fonts', 'vazirmatn.css');
+  ok(fs.existsSync(fontCssPath), 'the Persian font css is local');
+  const fontCss = fs.readFileSync(fontCssPath, 'utf8');
+  ok(!/https:\/\/fonts\.(googleapis|gstatic)/.test(fontCss), 'the local font css points at no remote host');
+  const faces = (fontCss.match(/@font-face/g) || []).length;
+  ok(faces >= 5, 'the local font css declares the weights (' + faces + ' faces)');
+  const refs = [...fontCss.matchAll(/url\('([^']+)'\)/g)].map((m) => m[1]);
+  ok(refs.length > 0 && refs.every((f) => fs.existsSync(path.join(ROOT, 'assets', 'fonts', f))),
+     'every referenced font file is on disk (' + refs.length + ' files)');
+  ok(!/fonts\.googleapis\.com\/css2\?family=Vazirmatn/.test(html), 'index.html does not load the font from Google Fonts');
+  ok(/assets\/fonts\/vazirmatn\.css/.test(html), 'index.html loads the local font css');
+  // the old tag used media="print" + onload, so an offline shop skipped it entirely
+  const htmlNoComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  ok(!/media="print"[^>]*Vazirmatn/.test(htmlNoComments) && !/Vazirmatn[^>]*media="print"/.test(htmlNoComments),
+     'the font stylesheet is not deferred behind an onload handler');
+
+  console.log('--- 7. the PDF template is laid out, not parked off-screen ---');
+  const wrap = doc.getElementById('pdfPrintWrap');
+  const tpl = doc.getElementById('pdfTemplate');
+  ok(!!wrap && !!tpl, 'the pdf wrapper and template exist');
+  const wrapStyle = wrap.getAttribute('style') || '';
+  const tplStyle = tpl.getAttribute('style') || '';
+  // html2canvas draws the element where it is: at left:-9999px inside a
+  // collapsed 0-height wrapper the capture was an empty page (a 3KB PDF of
+  // nothing), which is exactly the blank report people were seeing.
+  ok(!/left:\s*-9999px/.test(tplStyle), 'the template is not parked at left:-9999px');
+  const tplWidth = parseInt((tplStyle.match(/width:\s*(\d+)px/) || [])[1] || '0', 10);
+  ok(tplWidth > 0 && tplWidth <= 718, 'the template fits the printable A4 width (' + tplWidth + ' <= 718)');
+  ok(/box-sizing:\s*border-box/.test(tplStyle), 'padding is inside the width, not added to it');
+  ok(/function withPdfTemplateVisible/.test(appSrcPdf), 'the export reveals the template before rendering');
+  ok(/function renderPdfBlob/.test(appSrcPdf), 'both the blob and the download use one render path');
+  ok(/the report has no content/.test(appSrcPdf), 'an empty report is refused instead of saved blank');
+  ok(/window\.APP_VERSION/.test(appSrcPdf) && /pdfVersionText/.test(appSrcPdf), 'the PDF footer reads the real version');
+  ok(!/v1\.8\.0/.test(html), 'no stale hardcoded version is left in the template');
+
   ok(errors.length === 0, 'no script errors (' + errors.slice(0, 2).join(' | ') + ')');
   console.log(fail === 0 ? '\nALL DEAD-FEATURE CHECKS PASSED (' + pass + ')' : '\n' + fail + ' FAILED (' + pass + ' passed)');
   process.exit(fail ? 1 : 0);

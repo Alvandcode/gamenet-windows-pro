@@ -61,14 +61,15 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
   ok(ready === 'complete', 'the packaged renderer finished loading', ready);
   await sleep(1500);
 
-  console.log('--- the packaged app is the 1.9.0 build, not a stale copy ---');
+  console.log('--- the packaged app is the build we just made, not a stale copy ---');
   const v = JSON.parse(await evaluate(`JSON.stringify({
     pkg: (window.APP_VERSION||'?'),
     shown: (document.body.innerText.match(/نسخه\\s*([0-9.]+)/)||[])[1] || '?',
     bridge: typeof window.gamenet === 'object'
   })`));
-  ok(v.pkg === '1.9.0', 'APP_VERSION inside the package is 1.9.0', v.pkg);
-  ok(v.shown === '1.9.0', 'the UI shows 1.9.0', v.shown);
+  const want = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+  ok(v.pkg === want, 'APP_VERSION inside the package is ' + want, v.pkg);
+  ok(v.shown === want, 'the UI shows ' + want, v.shown);
   ok(v.bridge === true, 'the preload bridge is present');
 
   console.log('--- features that were broken before are in the package ---');

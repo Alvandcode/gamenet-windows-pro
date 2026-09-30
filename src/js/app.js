@@ -3699,6 +3699,9 @@
     function setPdfContent(html, filename){
         document.getElementById('pdfContentInner').innerHTML=html;
         document.getElementById('pdfDate').textContent=new Date().toLocaleString('fa-IR');
+        // the footer used to hardcode "v1.8.0" and drifted from the real version
+        const vf=document.getElementById('pdfVersionText');
+        if(vf) vf.textContent='v'+(typeof APP_VERSION!=='undefined'?APP_VERSION:'');
         currentPdfFilename=filename;
         // prepare blob async for share
         setTimeout(()=> generatePdfBlob(), 300);
@@ -3745,16 +3748,54 @@
     }
     // Minimum sane size for a non-empty A4 PDF. Blank renders are ~1-3KB.
     const MIN_PDF_BLOB_SIZE = 4096;
+    /* html2canvas draws the element where it actually is. The template used to
+     * sit at left:-9999px inside a collapsed 0-height overflow:hidden wrapper,
+     * so the capture was an empty page and every report came out blank (a 3KB
+     * PDF of nothing). Reveal it on a real off-screen island for the duration
+     * of the render, then restore the wrapper exactly as it was. */
+    async function withPdfTemplateVisible(fn){
+        const wrap = document.getElementById('pdfPrintWrap');
+        const tpl  = document.getElementById('pdfTemplate');
+        if(!wrap || !tpl) return fn();
+        const prevWrap = wrap.getAttribute('style') || '';
+        const prevTpl  = tpl.getAttribute('style')  || '';
+        try{
+            // laid out and painted, but nowhere the user can see or click it
+            wrap.setAttribute('style','position:fixed; left:-10000px; top:0; width:700px; height:auto; overflow:visible; visibility:visible;');
+            // A4 minus the 10mm margins is 718px at 96dpi. The template used to
+            // be 800px + 80px of padding, so the right-hand column (and the
+            // footer) was clipped off the page.
+            tpl.setAttribute('style','width:700px; background:#ffffff; color:#1e293b; padding:24px; box-sizing:border-box; font-family: Vazirmatn, Tahoma, sans-serif; direction:rtl;');
+            if(document.fonts && document.fonts.ready){ try{ await document.fonts.ready; }catch(e){} }
+            await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+            return await fn();
+        } finally {
+            wrap.setAttribute('style', prevWrap);
+            tpl.setAttribute('style', prevTpl);
+        }
+    }
+    async function renderPdfBlob(){
+        return withPdfTemplateVisible(async ()=>{
+            const element = document.getElementById('pdfTemplate');
+            const inner = document.getElementById('pdfContentInner');
+            if(!element) throw new Error('no #pdfTemplate');
+            if(!inner || !inner.innerHTML.trim()) throw new Error('the report has no content');
+            const worker = html2pdf().set({
+                margin: 10,
+                filename: currentPdfFilename || 'report.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            }).from(element);
+            return await worker.outputPdf('blob');
+        });
+    }
     async function generatePdfBlob(){
         try{
             if(!window.html2pdf || window.__pdfFailed){ currentPdfBlob=null; return; }
-            let element=document.getElementById('pdfTemplate');
-            let opt={ margin:10, filename:currentPdfFilename, image:{type:'jpeg', quality:0.98}, html2canvas:{scale:2, useCORS:true}, jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}};
-            // html2pdf returns promise when using .output
-            let worker=html2pdf().set(opt).from(element);
-            let pdfBlob=await worker.outputPdf('blob');
+            const pdfBlob = await renderPdfBlob();
             currentPdfBlob=(pdfBlob && pdfBlob.size>MIN_PDF_BLOB_SIZE)? pdfBlob : null;
-            if(!currentPdfBlob) console.log('pdf blob blank (size '+(pdfBlob&&pdfBlob.size)+'), will use native print');
+            if(!currentPdfBlob) console.log('pdf blob blank (size '+((pdfBlob&&pdfBlob.size)||0)+'), will use native print');
         }catch(e){
             console.log('pdf blob err',e);
             currentPdfBlob=null;
@@ -3763,10 +3804,7 @@
     async function downloadCurrentPdf(){
         try{
             if(window.html2pdf && !window.__pdfFailed){
-                let element=document.getElementById('pdfTemplate');
-                let opt={ margin:10, filename:currentPdfFilename||'report.pdf', image:{type:'jpeg', quality:0.98}, html2canvas:{scale:2}, jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}};
-                let worker=html2pdf().set(opt).from(element);
-                let blob=await worker.outputPdf('blob');
+                const blob = await renderPdfBlob();
                 if(blob && blob.size>MIN_PDF_BLOB_SIZE){
                     let url=URL.createObjectURL(blob);
                     let a=document.createElement('a');
@@ -3774,10 +3812,10 @@
                     document.body.appendChild(a); a.click();
                     setTimeout(()=>{ try{URL.revokeObjectURL(url); a.remove();}catch(e){} },4000);
                     currentPdfBlob=blob;
-                    showToast('PDF دانلود شد','success');
-                    return;
+                    showToast('PDF ذخیره شد','success');
+                    return true;
                 }
-                console.log('pdf render blank (size '+(blob&&blob.size)+'), falling back to native print');
+                console.log('pdf render blank (size '+((blob&&blob.size)||0)+'), falling back to native print');
             } else {
                 showToast('کتابخانه PDF آفلاین در دسترس نیست - چاپ سیستمی','warning');
             }
@@ -3787,8 +3825,10 @@
         // Fallback: native print dialog (offline-safe, never blank) -> Save as PDF
         showToast('پنجره چاپ باز می‌شود - «ذخیره PDF» را بزن','warning');
         nativePrintPdf();
+        return false;
     }
     // Native system print showing ONLY the receipt template (offline-safe).
+
     function nativePrintPdf(){
         try{ window.print(); }
         catch(e){ showToast('چاپ ممکن نشد','error'); }

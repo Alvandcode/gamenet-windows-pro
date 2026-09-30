@@ -133,7 +133,12 @@ const waitFor = async (fn, ms = 3000) => {
   ok(!!doc.querySelector('#activeClientsList [data-cid="11"] .qa-start'), 'paused row now offers resume');
   window.dashboardAction(11, 'start');
   ok(window.clients.find(c => c.id === 11).status === 'online', 'dashboard start resumes the timer');
-  ok(Math.abs((window.clients.find(c => c.id === 11).elapsed) - 600) < 5, 'resumed elapsed preserved (~600s)');
+  // assert the value the app actually renders, not the stored one: on resume
+  // clientElapsed() derives the time from startTime, so the raw field can lag
+  const resumed = window.clients.find(c => c.id === 11);
+  const shown = window.clientElapsed(resumed);
+  ok(Math.abs(shown - 600) < 5, 'resumed elapsed preserved (~600s)', 'got ' + shown);
+  ok(resumed.status === 'online' && resumed.startTime > 0, 'resume re-armed startTime');
   // stale id must not crash
   window.dashboardAction(999, 'pause');
   window.dashboardAction(11, 'nonsense');

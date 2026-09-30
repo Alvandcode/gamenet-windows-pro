@@ -72,6 +72,13 @@ jobs:
         continue-on-error: true
         run: node tests/electron-gui.test.js
 
+      # Proves the saved PDF is not blank: generates one through the app's own
+      # export path and inspects the file on disk. continue-on-error for the
+      # same headless reason as the GUI test above.
+      - name: PDF export is not blank (non-blocking on a headless runner)
+        continue-on-error: true
+        run: node tests/pdf-output.test.js
+
       - name: Read app version
         id: pkgver
         shell: bash

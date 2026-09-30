@@ -40,7 +40,15 @@ async function boot() {
     s.textContent = fs.readFileSync(path.join(ROOT, 'src/js/' + f), 'utf8');
     doc.body.appendChild(s);
   }
-  await sleep(2000);          // patches.js migrates 1200ms after load
+  // patches.js migrates the seeded operator 1200ms after load, and the work is
+  // PBKDF2 at 210000 iterations. On a busy machine that lands well after 2s, and
+  // the suite then read an empty store and reported a phantom failure.
+  const opsKey = 'alvand_operators';
+  const seeded = () => {
+    try { return JSON.parse(window.localStorage.getItem(opsKey) || '[]').length > 0; } catch (e) { return false; }
+  };
+  for (let i = 0; i < 80 && !seeded(); i++) await sleep(250);
+  await sleep(200);
   return { window, doc, errors };
 }
 

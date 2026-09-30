@@ -12,12 +12,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gamenet Manager Pro</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <!-- Vazirmatn is bundled in assets/fonts so the UI and the exported PDFs look
+         the same with no internet. It used to load from fonts.googleapis.com
+         with media="print" + onload, which meant the stylesheet was skipped
+         entirely until the network answered - so an offline shop got a
+         different font everywhere, including inside every saved PDF. -->
+    <link rel="stylesheet" href="assets/fonts/vazirmatn.css">
     <!-- styles moved to src/styles/main.css -->
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer onerror="window.__pdfFailed=true"></script>
+    <!-- html2pdf is vendored in assets/vendor so PDF export works with no internet.
+     The CDN copy was removed: on a machine with no connection the script tag
+     failed, the buttons fell back to the print dialog, and a half-loaded
+     library produced a blank page. -->
+<script src="assets/vendor/html2pdf.bundle.min.js" defer onerror="window.__pdfFailed=true"></script>
     <!-- Firebase is optional (online license sync). App fully works offline without it. -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" defer onerror="window.__fbFailed=true"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js" defer onerror="window.__fbFailed=true"></script>
@@ -1565,9 +1572,14 @@
         </div>
     </div>
 
-    <!-- Hidden PDF Template (print wrapper keeps it printable for native print fallback) -->
-    <div id="pdfPrintWrap" style="height:0; overflow:hidden;">
-    <div id="pdfTemplate" style="position: absolute; left:-9999px; top:-9999px; width:800px; background:white; color:#1e293b; padding:40px; font-family: 'Vazirmatn', Tahoma, sans-serif; direction:rtl;">
+    <!-- PDF template. It must stay a real, laid-out block: html2canvas renders
+         the element where it actually is, so parking it at left:-9999px inside
+         a 0-height overflow:hidden wrapper produced an empty 3KB PDF. The
+         wrapper is only collapsed for the UI; the export path (see
+         withPdfTemplateVisible in app.js) reveals it on a real off-screen
+         island before rendering and hides it again right after. -->
+    <div id="pdfPrintWrap" style="position:absolute; left:0; top:0; width:0; height:0; overflow:hidden; visibility:hidden;">
+    <div id="pdfTemplate" style="width:700px; background:white; color:#1e293b; padding:24px; box-sizing:border-box; font-family: 'Vazirmatn', Tahoma, sans-serif; direction:rtl;">
         <div style="text-align:center; border-bottom:3px solid #6366f1; padding-bottom:16px; margin-bottom:20px;">
             <h1 style="color:#4f46e5; margin:0; font-size:28px;">🎮 Gamenet Manager Pro</h1>
             <p style="color:#64748b; margin:4px 0 0;">گزارش کارکرد کلاینت</p>
@@ -1575,7 +1587,7 @@
         <div id="pdfContentInner"></div>
         <div style="margin-top:30px; border-top:1px solid #e2e8f0; padding-top:12px; display:flex; justify-content:space-between; font-size:12px; color:#64748b;">
             <span id="pdfDate"></span>
-            <span>Gamenet Manager Pro v1.8.0</span>
+            <span>Gamenet Manager Pro <span id="pdfVersionText">v1.9.1</span></span>
         </div>
     </div>
     </div>
