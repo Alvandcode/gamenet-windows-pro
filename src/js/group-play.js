@@ -736,18 +736,20 @@
     }
     document.body.classList.add('gp-printing');
     showToast('در پنجرهٔ چاپ، «Save as PDF» را بزنید', 'warning');
-    // let the class apply and the browser lay the page out before the dialog
+    // the print view must stay marked for the whole time the dialog is open,
+    // and must come off again afterwards - otherwise the next print, or the
+    // screen behind it, is stuck in print mode
+    const clear = () => {
+      try { document.body.classList.remove('gp-printing'); } catch (e) {}
+      try { window.removeEventListener('afterprint', clear); } catch (e) {}
+    };
+    window.addEventListener('afterprint', clear);
+    // let the class apply and the page lay out before the dialog opens
     setTimeout(() => {
-      const done = () => {
-        try { window.print(); } catch (e) { showToast('چاپ ممکن نشد', 'error'); }
-        setTimeout(() => { try { document.body.classList.remove('gp-printing'); } catch (e) {} }, 1200);
-      };
-      if (typeof window.afterprint === 'undefined') { done(); return; }
-      let fired = false;
-      const once = () => { if (fired) return; fired = true; setTimeout(() => { try { document.body.classList.remove('gp-printing'); } catch (e) {} }, 400); };
-      window.addEventListener('afterprint', once, { once: true });
-      setTimeout(() => { if (!fired) { fired = true; try { window.print(); } catch (e) {} setTimeout(once, 1200); } }, 350);
+      try { window.print(); } catch (e) { showToast('چاپ ممکن نشد', 'error'); clear(); }
     }, 150);
+    // if the browser never fires afterprint, do not stay stuck in print mode
+    setTimeout(clear, 60000);
   }
   window.gpPrintReport = gpPrintReport;
 

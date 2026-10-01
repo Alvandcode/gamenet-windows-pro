@@ -11,8 +11,21 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const ROOT = 'C:/Users/Iran Novin/Documents/Default Project/gamenet-windows-pro';
-const EXE = path.join(ROOT, 'dist/win-unpacked/Gamenet Manager Pro.exe');
+/* resolve the repo from this file, so the check works on the CI runner too and
+ * not only on this machine */
+const ROOT = path.resolve(__dirname, '..');
+/* electron-builder names the unpacked folder after the package productName, so
+ * resolve it instead of hardcoding "Gamenet Manager Pro.exe" */
+function findExe() {
+  const dir = path.join(ROOT, 'dist/win-unpacked');
+  if (!fs.existsSync(dir)) return null;
+  const wanted = String(process.argv[2] || 'Gamenet Manager Pro');
+  const direct = path.join(dir, wanted + '.exe');
+  if (fs.existsSync(direct)) return direct;
+  const hit = fs.readdirSync(dir).find((f) => f.toLowerCase().endsWith('.exe') && !/unins|setup|updater/i.test(f));
+  return hit ? path.join(dir, hit) : null;
+}
+const EXE = findExe();
 const PROFILE = path.join(os.tmpdir(), 'opencode', 'packaged-print');
 const PORT = 9441;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21,7 +34,11 @@ let pass = 0, fail = 0;
 const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { fail++; console.log('  FAIL ' + l + (e !== undefined ? ' -> ' + e : '')); } };
 
 (async function () {
-  if (!fs.existsSync(EXE)) { console.log('  the packaged app is not built'); process.exit(1); }
+  if (!fs.existsSync(EXE)) {
+    console.log('  the packaged app is not built at ' + path.join(ROOT, 'dist/win-unpacked'));
+    console.log('  looked for: ' + EXE);
+    process.exit(1);
+  }
   if (fs.existsSync(PROFILE)) fs.rmSync(PROFILE, { recursive: true, force: true });
   fs.mkdirSync(PROFILE, { recursive: true });
 
@@ -75,6 +92,8 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
   })()`));
   await sleep(700);
   ok(Number(await ev('String(window.__calls)')) >= 1, 'the print path ran');
+  // the flag now stays until afterprint, so this check no longer races a timer
+  ok(/gp-printing/.test(String(await ev('document.body.className'))), 'the print view is marked');
 
   console.log('--- under print media, is the report the only thing on the page? ---');
   await send('Emulation.setEmulatedMedia', { media: 'print' });
@@ -111,8 +130,12 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
 
   await send('Emulation.setEmulatedMedia', { media: '' });
   await sleep(300);
-  console.log('--- and the screen is untouched afterwards ---');
-  ok(!/gp-printing/.test(String(await ev('document.body.className'))), 'the screen view is back to normal', await ev('document.body.className'));
+  console.log('--- the dialog closes, and the screen is normal again ---');
+  // stand in for the browser firing afterprint when the dialog is dismissed
+  await ev(`(function(){ window.dispatchEvent(new Event('afterprint')); return 1; })()`);
+  await sleep(300);
+  const after = String(await ev('document.body.className'));
+  ok(!/gp-printing/.test(after), 'the print view is cleared after printing', after);
 
   ws.close(); proc.kill();
   await sleep(600);

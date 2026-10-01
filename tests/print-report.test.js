@@ -85,9 +85,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(/\d{2}:\d{2}:\d{2}/.test(text), 'with the durations spelled out', text.slice(0, 80));
   ok(!/NaN|undefined|Infinity/.test(text), 'and no NaN or undefined anywhere', text.slice(0, 80));
 
-  console.log('--- the print view is cleaned up afterwards ---');
-  await sleep(1500);
+  console.log('--- the print view is cleared when the dialog closes ---');
+  // the flag now comes off on afterprint, not on a timer, so a slow print or a
+  // second click can never leave the screen stuck in print mode
+  ok(/gp-printing/.test(doc.body.className), 'still marked while the dialog is open', doc.body.className);
+  window.dispatchEvent(new window.Event('afterprint'));
+  await sleep(100);
   ok(!/gp-printing/.test(doc.body.className), 'the body flag is removed after printing', doc.body.className);
+
+  console.log('--- printing twice in a row is still fine ---');
+  // a second click while the first dialog is still open must not hide anything
+  window.gpPrintReport();
+  await sleep(600);
+  ok(modal.classList.contains('show'), 'the report survives a second print click', modal.className);
+  ok(/gp-printing/.test(doc.body.className), 'and is still marked for print', doc.body.className);
+  window.dispatchEvent(new window.Event('afterprint'));
+  await sleep(100);
 
   console.log('--- printing with no report open is refused, not blank ---');
   printed = 0;
