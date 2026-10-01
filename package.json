@@ -1,6 +1,6 @@
 {
   "name": "gamenet-manager-alvand",
-  "version": "1.10.5",
+  "version": "1.10.6",
   "description": "Gamenet Manager Pro - Desktop by Alvandcode (hardened modular build)",
   "author": "Alvand",
   "license": "MIT",
@@ -21,7 +21,7 @@
     "validate": "node tests/smoke.test.js && node tests/boot.test.js && node tests/license.test.js"
   },
   "build": {
-    "appId": "com.alvand.gamenet.manager",
+    "appId": "com.alvand.gamenet.pro",
     "productName": "Gamenet Manager Pro",
     "directories": {
       "output": "dist"
@@ -62,7 +62,13 @@
     },
     "portable": {
       "artifactName": "GamenetManager-Portable-${version}.exe"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "assets/icon.ico",
+        "to": "icon.ico"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "^31.0.0",

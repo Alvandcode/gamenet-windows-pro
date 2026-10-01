@@ -88,21 +88,61 @@ if (!gotLock) {
 // Stable taskbar identity: the installer shortcut and the running app must
 // share one AppUserModelId (same as electron-builder appId), otherwise Windows
 // shows a second/default icon once the app is pinned to the taskbar.
-try { app.setAppUserModelId('com.alvand.gamenet.manager'); } catch { /* ignore */ }
+//
+// The id is new on purpose. The shell caches a taskbar icon per AppUserModelId
+// and never re-reads it, so every shop that ran an older build has "no icon"
+// cached against the previous id and would keep the blank-page icon forever.
+try { app.setAppUserModelId('com.alvand.gamenet.pro'); } catch { /* ignore */ }
 
 let mainWindow = null;
 
+/* The shell - not Electron - decides the taskbar icon, and it reads it from the
+ * filesystem. A path inside app.asar does not exist for it, so the ico is also
+ * shipped unpacked next to the exe (extraResources in package.json) and that
+ * copy is preferred here. */
 function resolveIcon() {
   const candidates = [
+    path.join(process.resourcesPath || '', 'icon.ico'),
+    path.join(path.dirname(process.execPath || ''), 'icon.ico'),
     path.join(__dirname, 'assets', 'icon.ico'),
     path.join(__dirname, 'assets', 'logo.ico'),
   ];
   for (const p of candidates) {
     try {
-      if (fs.existsSync(p)) return p;
+      if (p && fs.existsSync(p)) return p;
     } catch { /* ignore */ }
   }
   return undefined;
+}
+
+/* Give the shell a shortcut whose icon it can resolve. Without one it has only
+ * the exe to work from, and a portable copy or a direct launch gives it nothing
+ * useful. Writing it here means the taskbar icon is right however the shop
+ * started the app. Uses PowerShell's WScript.Shell because Node cannot write
+ * .lnk files. */
+function ensureStartMenuShortcut(iconPath) {
+  if (!iconPath) return;
+  let exePath;
+  try { exePath = process.execPath; } catch { return; }
+  try {
+    if (process.env.PORTABLE_EXECUTABLE_DIR) return; // portable: no Start Menu entry
+  } catch { /* ignore */ }
+  const lnk = path.join(app.getPath('appData'), 'Microsoft', 'Windows',
+    'Start Menu', 'Programs', 'Gamenet Manager Pro.lnk');
+  const ps = [
+    '$sh = New-Object -ComObject WScript.Shell',
+    '$l = $sh.CreateShortcut(' + JSON.stringify(lnk) + ')',
+    '$l.TargetPath = ' + JSON.stringify(exePath),
+    '$l.WorkingDirectory = ' + JSON.stringify(path.dirname(exePath)),
+    '$l.IconLocation = ' + JSON.stringify(iconPath + ',0'),
+    "$l.Description = 'Gamenet Manager Pro'",
+    '$l.Save()',
+  ].join('; ');
+  try {
+    const { spawnSync } = require('child_process');
+    spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps],
+      { timeout: 15000, windowsHide: true });
+  } catch { /* a missing shortcut is cosmetic; never block startup on it */ }
 }
 
 function stateFile() {
@@ -432,6 +472,7 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     try { mainWindow.show(); } catch { /* ignore */ }
+    ensureStartMenuShortcut(icon);
   });
 
   mainWindow.on('closed', () => {

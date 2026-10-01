@@ -65,6 +65,10 @@ jobs:
           node tests/legacy-records.test.js
           node tests/coupon.test.js
           node tests/bulk-sms.test.js
+          # The taskbar showed a generic blank-page icon because Windows caches
+          # one icon per AppUserModelId and never re-reads it. This guards the
+          # id, the unpacked icon and the self-written shortcut.
+          node tests/taskbar-icon.test.js
 
       - name: Smoke-check the renderer boots in a real browser
         run: node tests/browser-smoke.test.js
