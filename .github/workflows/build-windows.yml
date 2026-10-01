@@ -95,9 +95,6 @@ jobs:
       - name: Usage report PDF is not blank (non-blocking headless)
         continue-on-error: true
         run: npx electron tests/print-pdf.js
-      - name: Packaged usage report print view (non-blocking headless)
-        continue-on-error: true
-        run: node tests/packaged-print.test.js
 
       - name: Read app version
         id: pkgver
@@ -106,6 +103,11 @@ jobs:
 
       - name: Build Windows Installer
         run: npm run dist:win -- --publish never
+
+      # needs dist/win-unpacked, so it has to run after the build step
+      - name: Packaged usage report print view (non-blocking headless)
+        continue-on-error: true
+        run: node tests/packaged-print.test.js
 
       - name: Upload EXE Artifact
         uses: actions/upload-artifact@v4
