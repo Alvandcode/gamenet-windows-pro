@@ -670,10 +670,10 @@
       + '<div class="gp-stat"><div>پرداختی</div><b>' + r.totalPaid.toLocaleString('fa-IR') + '</b></div>'
       + '</div>'
       + '<div style="font-weight:700;margin:12px 0 6px">خلاصه بر اساس تاریخ</div>'
-      + '<div style="max-height:190px;overflow:auto"><table class="gp-table"><thead><tr><th>تاریخ</th><th>دفعات</th><th>مدت</th><th>پرداخت</th></tr></thead><tbody>'
+      + '<div class="gp-scroll" style="max-height:190px;overflow:auto"><table class="gp-table"><thead><tr><th>تاریخ</th><th>دفعات</th><th>مدت</th><th>پرداخت</th></tr></thead><tbody>'
       + (dayRows || '<tr><td colspan="4">هنوز بازی‌ای ثبت نشده</td></tr>') + '</tbody></table></div>'
       + '<div style="font-weight:700;margin:16px 0 6px">جزئیات بازی‌ها</div>'
-      + '<div style="max-height:230px;overflow:auto"><table class="gp-table"><thead><tr><th>تاریخ</th><th>ساعت</th><th>مدت</th><th>نوع</th><th>پرداخت</th></tr></thead><tbody>'
+      + '<div class="gp-scroll" style="max-height:230px;overflow:auto"><table class="gp-table"><thead><tr><th>تاریخ</th><th>ساعت</th><th>مدت</th><th>نوع</th><th>پرداخت</th></tr></thead><tbody>'
       + (detail || '<tr><td colspan="5">رکوردی نیست</td></tr>') + '</tbody></table></div>'
       + '<div style="font-weight:700;margin:16px 0 6px">روزهایی که بازی نکرد</div>'
       + '<div style="font-size:0.78rem;line-height:2.1">' + absent + '</div>';
@@ -700,15 +700,54 @@
   /* Printing must work with no network and must not open a blank page, so the
    * modal is printed through the same revealed off-screen island the PDF export
    * uses, and the browser dialog is what actually saves the file. */
+  /* The print path is the native "Save as PDF" dialog, so the report has to be
+   * in the document AND the print stylesheet has to show it. Hiding the modal
+   * before printing - which is what this used to do - left the printer with an
+   * empty page. The modal is left open, marked for printing, and the rest of
+   * the UI is hidden by the print stylesheet alone. */
   function gpPrintReport() {
     const modal = document.getElementById('usageReportModal');
-    if (!modal) return;
-    try { modal.classList.remove('show'); } catch (e) {}
+    if (!modal) { showToast('گزارشی برای چاپ نیست', 'error'); return; }
+    if (!modal.classList.contains('show')) { showToast('اول گزارش کارکرد را باز کنید', 'error'); return; }
+    // a light-only print view: same numbers, on white, no dark background and
+    // no buttons, so the paper is readable
+    if (!document.getElementById('gpPrintStyle')) {
+      const st = document.createElement('style');
+      st.id = 'gpPrintStyle';
+      st.textContent =
+        '@media print {' +
+        '  body.gp-printing > *:not(#usageReportModal) { display: none !important; }' +
+        '  body.gp-printing #usageReportModal { position: static !important; display: block !important;' +
+        '     background: #fff !important; backdrop-filter: none !important; padding: 0 !important; }' +
+        '  body.gp-printing #usageReportModal .modal { position: static !important; display: block !important;' +
+        '     background: #fff !important; color: #000 !important; max-width: 100% !important;' +
+        '     width: 100% !important; max-height: none !important; overflow: visible !important;' +
+        '     border: 0 !important; box-shadow: none !important; }' +
+        '  body.gp-printing #usageReportModal .modal-close,' +
+        '  body.gp-printing #usageReportModal button { display: none !important; }' +
+        '  body.gp-printing #usageReportModal * { color: #111 !important; background: transparent !important;' +
+        '     border-color: #bbb !important; box-shadow: none !important; text-shadow: none !important;' +
+        '     max-height: none !important; overflow: visible !important; }' +
+        '  body.gp-printing #usageReportModal table { page-break-inside: auto; }' +
+        '  body.gp-printing #usageReportModal tr { page-break-inside: avoid; }' +
+        '  body.gp-printing #usageReportModal .gp-scroll { max-height: none !important; overflow: visible !important; }' +
+        '}';
+      document.head.appendChild(st);
+    }
+    document.body.classList.add('gp-printing');
     showToast('در پنجرهٔ چاپ، «Save as PDF» را بزنید', 'warning');
+    // let the class apply and the browser lay the page out before the dialog
     setTimeout(() => {
-      try { window.print(); } catch (e) { showToast('چاپ ممکن نشد', 'error'); }
-      setTimeout(() => { try { modal.classList.add('show'); } catch (e) {} }, 800);
-    }, 120);
+      const done = () => {
+        try { window.print(); } catch (e) { showToast('چاپ ممکن نشد', 'error'); }
+        setTimeout(() => { try { document.body.classList.remove('gp-printing'); } catch (e) {} }, 1200);
+      };
+      if (typeof window.afterprint === 'undefined') { done(); return; }
+      let fired = false;
+      const once = () => { if (fired) return; fired = true; setTimeout(() => { try { document.body.classList.remove('gp-printing'); } catch (e) {} }, 400); };
+      window.addEventListener('afterprint', once, { once: true });
+      setTimeout(() => { if (!fired) { fired = true; try { window.print(); } catch (e) {} setTimeout(once, 1200); } }, 350);
+    }, 150);
   }
   window.gpPrintReport = gpPrintReport;
 

@@ -86,6 +86,12 @@ jobs:
       - name: PDF export is not blank (non-blocking on a headless runner)
         continue-on-error: true
         run: node tests/pdf-output.test.js
+  # The usage report used to print as a blank page: gpPrintReport closed the
+  # modal before printing and the print stylesheet hid everything else. This
+  # prints it through Electron's own pipeline and reads the PDF back off disk.
+  run: node tests/print-report.test.js
+  continue-on-error: true
+  run: npx electron tests/print-pdf.js
 
       - name: Read app version
         id: pkgver
