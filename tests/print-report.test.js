@@ -52,6 +52,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(/مریم احمدی/.test(body.textContent), 'it names the customer');
   ok(/۰۱:۰۰|01:00/.test(body.textContent), 'it shows the hours');
 
+  console.log('--- the shop name and number head the report ---');
+  const store = window.localStorage;
+  // nothing configured: the block must not appear at all rather than show blanks
+  ok(!/gp-shop-head/.test(body.innerHTML), 'no shop block when nothing is configured');
+  store.setItem('alvand_shopName', 'گیم‌نت الماس');
+  store.setItem('alvand_shopPhone', '09121234567');
+  window.gpOpenReport('1');
+  await sleep(300);
+  ok(/gp-shop-head/.test(body.innerHTML), 'the shop block appears once configured');
+  ok(/گیم.?نت الماس/.test(body.textContent), 'it shows the shop name', body.textContent.slice(0, 60));
+  ok(/09121234567/.test(body.textContent), 'it shows the phone number');
+  ok(/گیم.?نت الماس[\s\S]{0,200}09121234567/.test(body.innerHTML),
+     'the name comes before the number, as a letterhead should');
+  ok(/تاریخ چاپ/.test(body.textContent), 'and it is dated');
+  // the name must not be escaped away or mangled
+  ok(!/&lt;|&amp;/.test(body.innerHTML.split('gp-shop-head')[1] || ''),
+     'the header is not broken by escaping', (body.innerHTML.split('gp-shop-head')[1] || '').slice(0, 90));
+  // a name with markup in it must not inject anything
+  store.setItem('alvand_shopName', '<img src=x onerror=alert(1)>');
+  window.gpOpenReport('1');
+  await sleep(300);
+  ok(!/<img src=x/.test(body.innerHTML), 'a hostile shop name is escaped, not injected');
+  ok(body.querySelectorAll('img').length === 0, 'and it adds no elements');
+  store.setItem('alvand_shopName', 'گیم‌نت الماس');
+
   console.log('--- printing must not hide the report ---');
   printed = 0;
   window.gpPrintReport();
@@ -69,6 +94,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(/body\.gp-printing\s*>\s*\*:not\(#usageReportModal\)/.test(css), 'everything except the report is hidden');
   ok(/body\.gp-printing\s+#usageReportModal/.test(css), 'the report itself is forced visible');
   ok(/gp-scroll/.test(css), 'the inner scroll boxes are expanded so no row is cut off');
+  // the letterhead has to survive into print, centred and big enough to read
+  ok(/gp-shop-head/.test(css), 'the print stylesheet handles the shop header');
+  ok(/gp-shop-name[^}]*font-size:\s*17pt/.test(css), 'the name prints large', css.match(/gp-shop-name[^}]*/) ? css.match(/gp-shop-name[^}]*/)[0].slice(0, 80) : 'no rule');
+  ok(/gp-shop-phone[^}]*direction:\s*ltr/.test(css), 'the phone keeps left-to-right digits');
+  ok(/gp-shop-head[^}]*text-align:\s*center/.test(css), 'the letterhead is centred');
 
   console.log('--- what would actually land on the paper ---');
   // emulate the print media query: which elements would still be laid out?

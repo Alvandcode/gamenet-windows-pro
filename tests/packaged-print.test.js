@@ -75,6 +75,8 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
 
   console.log('--- open a report with history ---');
   console.log('  ' + await ev(`(function(){
+    localStorage.setItem('alvand_shopName', 'گیم‌نت الماس');
+    localStorage.setItem('alvand_shopPhone', '09121234567');
     var day = 86400000, base = new Date(2026, 4, 1, 12, 0, 0);
     sessions = [];
     gpSave([
@@ -116,11 +118,21 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
     Array.prototype.forEach.call(m.querySelectorAll('button'), function(b){
       if (getComputedStyle(b).display !== 'none') btnVisible = true;
     });
+    var head = m.querySelector('.gp-shop-head');
+    var name = head && head.querySelector('.gp-shop-name');
+    var phone = head && head.querySelector('.gp-shop-phone');
+    function ink(sel){ var c = getComputedStyle(sel).color.match(/\\d+/g)||[]; return c.length>=3 ? (+c[0]+ +c[1]+ +c[2]) : -1; }
     return JSON.stringify({
       visible: vis, modalDisplay: cs.display,
       innerDisplay: inner ? getComputedStyle(inner).display : 'none',
       scrollMaxH: sc ? getComputedStyle(sc).maxHeight : '-',
-      chars: txt.length, buttonsVisible: btnVisible
+      chars: txt.length, buttonsVisible: btnVisible,
+      shopName: name ? name.textContent : '', shopPhone: phone ? phone.textContent : '',
+      nameInk: name ? ink(name) : -1, phoneInk: phone ? ink(phone) : -1,
+      nameSize: name ? getComputedStyle(name).fontSize : '-',
+      headTop: head ? Math.round(head.getBoundingClientRect().top) : -1,
+      headAlign: head ? getComputedStyle(head).textAlign : '-',
+      hasName: /الماس/.test(txt), hasPhone: /09121234567/.test(txt)
     });
   })()`));
   console.log('  ' + JSON.stringify(layout));
@@ -130,6 +142,15 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
   ok(layout.chars > 150, 'the printed page carries the report text', layout.chars + ' chars');
   ok(layout.scrollMaxH === 'none', 'the table boxes are not clipped, so no rows are cut', layout.scrollMaxH);
   ok(layout.buttonsVisible === false, 'the on-screen buttons stay off the paper');
+  console.log('--- the shop letterhead ---');
+  ok(/الماس/.test(layout.shopName || ''), 'the shop name prints', layout.shopName);
+  ok(/09121234567/.test(layout.shopPhone || ''), 'the phone number prints', layout.shopPhone);
+  ok(layout.hasName && layout.hasPhone, 'both are among the page text');
+  ok(layout.nameInk >= 0 && layout.nameInk < 200, 'the name is dark ink, not white', 'sum ' + layout.nameInk);
+  ok(layout.phoneInk >= 0 && layout.phoneInk < 200, 'the phone is dark ink', 'sum ' + layout.phoneInk);
+  ok(parseFloat(layout.nameSize) >= 22, 'the name prints large', layout.nameSize);
+  ok(layout.headTop <= 2, 'the letterhead is at the top of the page', layout.headTop + 'px');
+  ok(layout.headAlign === 'center', 'centred', layout.headAlign);
 
   await send('Emulation.setEmulatedMedia', { media: '' });
   await sleep(300);

@@ -637,6 +637,15 @@
   }
   window.gpTick = tick;
 
+  /* the shop name and number the owner typed into "shop info"; the thermal
+   * receipt already prints these, so keep one place that reads them */
+  function shopInfo() {
+    let name = '', phone = '';
+    try { name = String(localStorage.getItem('alvand_shopName') || '').trim(); } catch (e) {}
+    try { phone = String(localStorage.getItem('alvand_shopPhone') || '').trim(); } catch (e) {}
+    return { name: name, phone: phone };
+  }
+
   /* ---------- the report modal ---------- */
   function openReport(key) {
     const r = report(key);
@@ -662,8 +671,23 @@
       ? r.absent.slice(0, 40).map((d) => '<span class="gp-absent">' + d + '</span>').join(' ')
       : '<span style="color:rgba(255,255,255,0.5)">روز بدون بازی در بازهٔ فعالیت ثبت نشده</span>';
 
+    /* a printed page has to say which shop and which customer it belongs to,
+     * and the print stylesheet strips the buttons but keeps this block */
+    const shop = shopInfo();
+    const shopLine = (shop.name || shop.phone)
+      ? '<div class="gp-shop-head">'
+        + '<div class="gp-shop-name">' + esc(shop.name || 'گیم‌نت') + '</div>'
+        + (shop.phone ? '<div class="gp-shop-phone">' + esc(shop.phone) + '</div>' : '')
+        + '</div>'
+      : '';
+
+    const printedAt = new Date().toLocaleDateString('fa-IR') + ' '
+      + new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
+
     const html = ''
+      + shopLine
       + '<h3 style="margin:0 0 4px">' + esc(title) + '</h3>'
+      + '<div class="gp-report-sub">گزارش کارکرد · تاریخ چاپ: ' + esc(printedAt) + '</div>'
       + '<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:14px 0">'
       + '<div class="gp-stat"><div>امروز</div><b>' + hhmmss(r.today) + '</b></div>'
       + '<div class="gp-stat"><div>مجموع</div><b>' + hhmmss(r.totalSeconds) + '</b></div>'
@@ -716,6 +740,16 @@
       st.id = 'gpPrintStyle';
       st.textContent =
         '@media print {' +
+        '  body.gp-printing #usageReportModal .gp-shop-head {' +
+        '     display: block !important; text-align: center; border-bottom: 2px solid #111 !important;' +
+        '     padding-bottom: 8px; margin-bottom: 12px; }' +
+        '  body.gp-printing #usageReportModal .gp-shop-name {' +
+        '     font-size: 17pt !important; font-weight: 900 !important; margin: 0 0 2px !important; }' +
+        '  body.gp-printing #usageReportModal .gp-shop-phone {' +
+        '     font-size: 11pt !important; font-weight: 700 !important; direction: ltr !important; }' +
+        '  body.gp-printing #usageReportModal .gp-report-sub {' +
+        '     font-size: 9pt !important; opacity: 1 !important; margin-bottom: 10px !important; }' +
+        '  body.gp-printing #usageReportModal h3 { page-break-after: avoid; }' +
         '  body.gp-printing > *:not(#usageReportModal) { display: none !important; }' +
         '  body.gp-printing #usageReportModal { position: static !important; display: block !important;' +
         '     background: #fff !important; backdrop-filter: none !important; padding: 0 !important; }' +

@@ -45,7 +45,8 @@ function inspectPdf(file) {
     pos = e + 9;
   }
   const pages = (b.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
-  return { size: b.length, pages, textOps: (text.match(/\bTj|\bTJ/g) || []).length, images, fills, strokes,
+  const fonts = (b.toString('latin1').match(/\/Type\s*\/Font\b/g) || []).length;
+  return { size: b.length, pages, fonts, textOps: (text.match(/\bTj|\bTJ/g) || []).length, images, fills, strokes,
            header: b.toString('latin1', 0, 8) };
 }
 
@@ -69,6 +70,8 @@ app.whenReady().then(async () => {
 
   out('--- seed two real play sessions and open the report ---');
   const seed = await ev(`(function(){
+    localStorage.setItem('alvand_shopName', 'گیم‌نت الماس');
+    localStorage.setItem('alvand_shopPhone', '09121234567');
     var day = 86400000, base = new Date(2026, 4, 1, 12, 0, 0);
     sessions = [];
     gpSave([
@@ -94,6 +97,23 @@ app.whenReady().then(async () => {
   ok(d.hasName, 'the customer name is in it');
   ok(d.tables >= 2, 'both report tables are rendered', d.tables + ' tables');
 
+  const head = JSON.parse(await ev(`(function(){
+    var m = document.querySelector('#usageReportModal .gp-shop-head');
+    if (!m) return JSON.stringify({ present: false });
+    return JSON.stringify({
+      present: true,
+      name: (m.querySelector('.gp-shop-name')||{}).textContent || '',
+      phone: (m.querySelector('.gp-shop-phone')||{}).textContent || '',
+      nameSize: getComputedStyle(m.querySelector('.gp-shop-name')).fontSize,
+      centered: getComputedStyle(m).textAlign
+    });
+  })()`));
+  ok(head.present, 'the report carries a shop letterhead');
+  ok(/الماس/.test(head.name || ''), 'with the shop name', head.name);
+  ok(/09121234567/.test(head.phone || ''), 'and the phone number', head.phone);
+  ok(head.centered === 'center', 'centred on the page', head.centered);
+  ok(parseFloat(head.nameSize) >= 17, 'and large enough to read', head.nameSize);
+
   out('--- press the print button ---');
   // stub window.print for the whole run, otherwise a real print dialog opens
   // and blocks this headless check forever
@@ -113,7 +133,53 @@ app.whenReady().then(async () => {
   ok(/gp-printing/.test(flagged.body), 'body is marked for printing', flagged.body);
   ok(/show/.test(flagged.modal), 'the report is still open for the printer', flagged.modal);
 
+  // hold the print view for the rest of the check: the app clears it on
+  // afterprint, and a real dialog keeps it set for as long as it is open
+  await ev(`(function(){
+    window.addEventListener('afterprint', function(e){ e.stopImmediatePropagation(); }, true);
+    document.body.classList.add('gp-printing');
+    return 1;
+  })()`);
+
+  out('--- with print media on, read what is on the paper ---');
+  win.webContents.debugger.attach('1.3');
+  try { win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { media: 'print' }); } catch (e) { out('  could not emulate print: ' + e.message); }
+  await new Promise((r) => setTimeout(r, 500));
+
+  const ink = JSON.parse(await ev(`(function(){
+    var h = document.querySelector('#usageReportModal .gp-shop-head .gp-shop-name');
+    var ph = document.querySelector('#usageReportModal .gp-shop-head .gp-shop-phone');
+    var modal = document.getElementById('usageReportModal');
+    var m = modal.querySelector('.modal');
+    var t = document.getElementById('usageReportModalBody');
+    function sum(sel){ var c = getComputedStyle(sel).color.match(/\\d+/g)||[]; return c.length>=3 ? (+c[0]+ +c[1]+ +c[2]) : -1; }
+    var vis = [];
+    Array.prototype.forEach.call(document.body.children, function(el){ if (getComputedStyle(el).display !== 'none') vis.push(el.id || el.className || el.tagName); });
+    return JSON.stringify({
+      nameInk: sum(h), phoneInk: sum(ph),
+      nameSize: getComputedStyle(h).fontSize,
+      first: modal.getBoundingClientRect().top,
+      bodyFlag: document.body.className,
+      visible: vis,
+      chars: (t.innerText||'').replace(/\\s+/g,' ').trim().length,
+      nameOnPage: /الماس/.test(t.innerText||''),
+      phoneOnPage: /09121234567/.test(t.innerText||'')
+    });
+  })()`));
+  out('  ' + JSON.stringify(ink));
+  ok(ink.nameInk >= 0 && ink.nameInk < 200, 'the name prints in dark ink', 'sum ' + ink.nameInk);
+  ok(ink.phoneInk >= 0 && ink.phoneInk < 200, 'the phone prints in dark ink', 'sum ' + ink.phoneInk);
+  ok(parseFloat(ink.nameSize) >= 22, 'and larger on paper than on screen', ink.nameSize);
+  ok(ink.first <= 2, 'the letterhead is the first thing on the page', ink.first + 'px from the top');
+  ok(ink.visible.length === 1 && /usageReportModal/.test(String(ink.visible[0])),
+     'the letterhead is the only thing printed', JSON.stringify(ink.visible));
+  ok(ink.chars > 150, 'the page still carries the report', ink.chars + ' chars');
+  ok(ink.nameOnPage && ink.phoneOnPage, 'and the shop name and number are among the text');
+
   out('--- print to PDF with Electron, then read the file ---');
+  // back to screen media for the capture; printToPDF applies print CSS itself
+  try { win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { media: '' }); } catch (e) {}
+  await ev(`(function(){ document.body.classList.add('gp-printing'); return 1; })()`);
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   if (fs.existsSync(OUT)) fs.unlinkSync(OUT);
   let wrote = null;
@@ -138,6 +204,13 @@ app.whenReady().then(async () => {
     const painted = info.textOps > 20 || info.images >= 1 || (info.fills + info.strokes) > 20;
     ok(painted, 'it actually paints content on the page',
        info.textOps + ' text ops, ' + info.fills + '/' + info.strokes + ' fill/stroke, ' + info.images + ' images');
+    /* the letterhead must be ink on the paper, not just markup on the screen:
+     * a font has to be embedded and far more text than before the header existed */
+    const raw = fs.readFileSync(OUT).toString('latin1');
+    ok(/FontFile2|\/FontFile3|\/FontFile\b/.test(raw) || info.fonts > 0,
+       'a font is embedded in the PDF', info.fonts + ' fonts');
+    ok(info.textOps >= 250, 'the page carries the whole report in text', info.textOps + ' text ops');
+
   }
 
   out(fail === 0 ? '\nPRINT PDF VERIFIED (' + pass + ' checks)' : '\n' + fail + ' CHECK(S) FAILED (' + pass + ' passed)');
