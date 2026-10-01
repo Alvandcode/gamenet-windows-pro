@@ -67,8 +67,11 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
   };
 
   console.log('--- the packaged app version ---');
-  const ver = await ev('String(window.APP_VERSION)');
-  ok(/^1\.10\.3$/.test(String(ver)), 'it is the new build', ver);
+  // read the expected version from package.json instead of hardcoding it, so
+  // this check does not fail every time the version is bumped
+  const want = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+  const ver = String(await ev('String(window.APP_VERSION)'));
+  ok(ver === want, `it is the built version ${want}`, ver);
 
   console.log('--- open a report with history ---');
   console.log('  ' + await ev(`(function(){
