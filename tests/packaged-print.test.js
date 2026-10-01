@@ -103,6 +103,11 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
   console.log('--- under print media, is the report the only thing on the page? ---');
   await send('Emulation.setEmulatedMedia', { media: 'print' });
   await sleep(500);
+  /* give the hidden window a real viewport before measuring. Without this the
+   * page has no layout size yet, so getBoundingClientRect reports a transient
+   * position and every offset assertion is meaningless. */
+  await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await sleep(700);
   const layout = JSON.parse(await ev(`(function(){
     var vis = [];
     Array.prototype.forEach.call(document.body.children, function(el){

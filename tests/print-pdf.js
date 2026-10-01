@@ -144,7 +144,10 @@ app.whenReady().then(async () => {
   out('--- with print media on, read what is on the paper ---');
   win.webContents.debugger.attach('1.3');
   try { win.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { media: 'print' }); } catch (e) { out('  could not emulate print: ' + e.message); }
-  await new Promise((r) => setTimeout(r, 500));
+  // an offscreen window has no viewport until it is told its size; measuring
+  // before that gives transient offsets
+  try { win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }); } catch (e) {}
+  await new Promise((r) => setTimeout(r, 700));
 
   const ink = JSON.parse(await ev(`(function(){
     var h = document.querySelector('#usageReportModal .gp-shop-head .gp-shop-name');
