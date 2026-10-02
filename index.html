@@ -37,6 +37,44 @@
         .gp-chip input{width:16px; height:16px; cursor:pointer; accent-color:#6366f1;}
         .gp-chip-name{font-weight:700;}
         .gp-chip-meta{font-size:0.7rem; color:rgba(255,255,255,0.45);}
+        /* the multi-select dropdown in the "شروع بازی" box */
+        .gp-drop-btn{width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px;
+            padding:11px 14px; border-radius:12px; cursor:pointer; font-family:inherit; font-size:0.9rem;
+            background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14); color:inherit; text-align:right;}
+        .gp-drop-btn:hover{background:rgba(255,255,255,0.1); border-color:rgba(99,102,241,0.5);}
+        .gp-drop-btn:focus-visible{outline:2px solid #6366f1; outline-offset:2px;}
+        .gp-drop-caret{font-size:0.7rem; opacity:0.6; transition:transform 0.15s;}
+        .gp-drop-btn[aria-expanded="true"] .gp-drop-caret{transform:rotate(180deg);}
+        .gp-drop-panel{margin-top:8px; border-radius:14px; overflow:hidden; position:relative; z-index:5;
+            background:rgba(20,18,48,0.98); border:1px solid rgba(255,255,255,0.14);
+            box-shadow:0 18px 40px rgba(0,0,0,0.45);}
+        .gp-drop-panel[hidden]{display:none;}
+        .gp-drop-search{padding:10px; border-bottom:1px solid rgba(255,255,255,0.1);}
+        .gp-drop-search .glass-input{width:100%;}
+        .gp-drop-head{display:flex; align-items:center; justify-content:space-between; gap:10px;
+            padding:8px 12px; font-size:0.75rem; color:rgba(255,255,255,0.6);
+            border-bottom:1px solid rgba(255,255,255,0.08); flex-wrap:wrap;}
+        .gp-drop-mini{font-family:inherit; font-size:0.72rem; cursor:pointer; padding:4px 8px; border-radius:8px;
+            background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14); color:inherit;}
+        .gp-drop-mini:hover{background:rgba(255,255,255,0.14);}
+        .gp-drop-list{max-height:230px; overflow:auto; padding:6px;}
+        .gp-drop-row{display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px;
+            cursor:pointer; font-size:0.88rem; transition:background 0.12s;}
+        .gp-drop-row:hover{background:rgba(255,255,255,0.08);}
+        .gp-drop-row[aria-selected="true"]{background:rgba(99,102,241,0.22);}
+        .gp-drop-row input{width:16px; height:16px; accent-color:#6366f1; cursor:pointer; flex:none;}
+        .gp-drop-row-name{font-weight:600; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+        .gp-drop-row-meta{font-size:0.7rem; color:rgba(255,255,255,0.45); flex:none;}
+        .gp-drop-empty{padding:14px; font-size:0.82rem; color:rgba(255,255,255,0.5); text-align:center;}
+        .gp-drop-foot{padding:10px; border-top:1px solid rgba(255,255,255,0.1); display:flex; justify-content:flex-end;}
+        /* the chosen names, as removable tags, right under the dropdown */
+        .gp-chosen{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;}
+        .gp-chosen:empty{display:none;}
+        .gp-tag{display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px;
+            font-size:0.8rem; background:rgba(99,102,241,0.22); border:1px solid rgba(129,140,248,0.5);}
+        .gp-tag button{font-family:inherit; cursor:pointer; background:none; border:0; color:inherit;
+            font-size:0.95rem; line-height:1; padding:0 2px; opacity:0.75;}
+        .gp-tag button:hover{opacity:1;}
         /* the report */
         .gp-shop-head{text-align:center; border-bottom:1px solid rgba(255,255,255,0.14);
             padding-bottom:10px; margin-bottom:12px;}
@@ -322,6 +360,35 @@
                     </div>
 
                     <div id="gpSetup">
+                        <!-- the multi-select the shop asked for: one box, the
+                             customer names from the client list, pick as many
+                             as you like -->
+                        <div id="gpDrop" style="margin-bottom:12px;">
+                            <button type="button" id="gpDropBtn" class="gp-drop-btn"
+                                onclick="gpDropToggle()" aria-haspopup="listbox" aria-expanded="false">
+                                <span id="gpDropLabel">انتخاب مشتریان از فهرست</span>
+                                <span class="gp-drop-caret">&#9662;</span>
+                            </button>
+                            <div id="gpDropPanel" class="gp-drop-panel" hidden>
+                                <div class="gp-drop-search">
+                                    <input id="gpDropSearch" class="glass-input" type="text"
+                                        placeholder="جستجوی نام..." oninput="gpDropRender()" autocomplete="off">
+                                </div>
+                                <div class="gp-drop-head">
+                                    <span id="gpDropCount">۰ نفر انتخاب شده</span>
+                                    <span style="display:flex; gap:6px;">
+                                        <button type="button" class="gp-drop-mini" onclick="gpDropSelectAll()">انتخاب همهٔ نمایش‌داده‌شده‌ها</button>
+                                        <button type="button" class="gp-drop-mini" onclick="gpClearPick()">پاک کردن</button>
+                                    </span>
+                                </div>
+                                <div id="gpDropList" class="gp-drop-list" role="listbox"
+                                    aria-multiselectable="true"></div>
+                                <div class="gp-drop-foot">
+                                    <button type="button" class="glass-btn glass-btn-success" onclick="gpDropClose()">&#10003; تایید</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="gpChosen" class="gp-chosen"></div>
                         <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
                             <input id="gpSearch" class="glass-input" style="flex:1; min-width:200px;" placeholder="جستجوی نام مشتری..." oninput="gpSearch()">
                             <button class="glass-btn" onclick="gpSelectAllVisible()">انتخاب همهٔ نمایش‌داده‌شده‌ها</button>
@@ -1663,7 +1730,8 @@
         <div class="modal" style="max-width:820px; width:92%;">
             <button class="modal-close" onclick="closeModal('usageReportModal')">&times;</button>
             <div id="usageReportModalBody"></div>
-            <div style="display:flex; gap:10px; margin-top:18px; justify-content:flex-end;">
+            <div style="display:flex; gap:10px; margin-top:18px; justify-content:flex-end; flex-wrap:wrap;">
+                <button class="glass-btn" onclick="gpDownloadDetailPdf(window.gpReportKey||'')">&#128424; دریافت فایل PDF ریز کارکرد</button>
                 <button class="glass-btn glass-btn-danger" onclick="gpPrintReport()">&#128424; چاپ / ذخیره PDF</button>
                 <button class="glass-btn" onclick="closeModal('usageReportModal')">بستن</button>
             </div>

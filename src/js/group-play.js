@@ -216,6 +216,16 @@
       paymentMethod: 'cash',
     };
     setActive(g);
+    // the party is under way, so the picker must not still be showing them:
+    // left ticked, the next customer would start with yesterday's group and
+    // nobody would notice until the till
+    try {
+      selection.ids.length = 0;
+      renderPicker();
+      renderDrop();
+      renderChosen();
+      renderDropLabel();
+    } catch (e) { /* the picker may not exist yet */ }
     if (typeof saveData === 'function') { try { saveData(); } catch (e) {} }
     renderGroupPanel();
     showToast('بازی شروع شد (' + members.length + ' نفر)', 'success');
@@ -388,6 +398,245 @@
   }
   window.gpFinish = finish;
 
+  /* ---------- the detailed PDF a customer can be handed ---------- */
+  /* The shop needs this at the end of the month: a sheet with the date, the
+   * time, how long they played, how many were there, who they were with, and
+   * the money. The on-screen report has all of it but mixes in the summary and
+   * the absent days; this is the per-visit sheet, ready to print or save. */
+  function detailRowsFor(key) {
+    const rows = sessionsOf(key).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+    const out = [];
+    rows.forEach((r) => {
+      const d = new Date(r.date);
+      // who else was in the same party, so the sheet answers "with whom"
+      let withNames = '';
+      if (r.groupId) {
+        load().forEach((o) => {
+          if (!o || o.groupId !== r.groupId) return;
+          if (String(o.id) === String(r.id)) return;
+          const nm = o.clientName || o.memberName || '';
+          if (nm && withNames.indexOf(nm) < 0) withNames += (withNames ? '، ' : '') + nm;
+        });
+      }
+      out.push({
+        date: faDate(d),
+        time: faTime(d),
+        startedAt: r.startedAt || null,
+        duration: num(r.duration),
+        headcount: num(r.headcount, 1) || 1,
+        withNames: withNames,
+        ownName: r.clientName || r.memberName || '',
+        kind: r.memberKind,
+        cost: num(r.cost),
+        billed: !!r.billed,
+        tariff: r.tariff || 'single',
+        station: r.stationTypeName || '',
+      });
+    });
+    return out;
+  }
+  window.gpDetailRows = detailRowsFor;
+
+  function shopInfoForPdf() {
+    let name = '', phone = '';
+    try { name = String(localStorage.getItem('alvand_shopName') || '').trim(); } catch (e) {}
+    try { phone = String(localStorage.getItem('alvand_shopPhone') || '').trim(); } catch (e) {}
+    return { name: name || 'گیم‌نت', phone: phone };
+  }
+
+  /* Build the sheet as HTML. Kept separate from the printing so it can be
+   * asserted on without a browser. */
+  function detailHtml(key) {
+    const rows = detailRowsFor(key);
+    const isGuest = typeof key === 'string' && key.indexOf('guest:') === 0;
+    const who = isGuest ? key.slice(6) : (function () {
+      const c = allClients().find((x) => String(x.id) === String(key));
+      return c ? c.name : 'مشتری';
+    })();
+    const shop = shopInfoForPdf();
+    const totalSeconds = rows.reduce((a, r) => a + r.duration, 0);
+    const totalCost = rows.reduce((a, r) => a + r.cost, 0);
+    const days = {};
+    rows.forEach((r) => { days[r.date] = true; });
+
+    /* inline styles throughout: the <style> in this document never applies,
+     * because only its body is copied into the export island */
+    const CD = 'border:1px solid #bbb;padding:6px 5px;font-size:13px;word-wrap:break-word;';
+    const tr = rows.map((r) => '<tr>'
+      + '<td class="c" style="' + CD + 'text-align:center;">' + esc(r.date) + '</td>'
+      + '<td class="c" style="' + CD + 'text-align:center;">' + esc(r.time) + '</td>'
+      + '<td class="l" style="' + CD + 'text-align:right;">' + esc(hhmmss(r.duration)) + '</td>'
+      + '<td class="c" style="' + CD + 'text-align:center;">' + r.headcount.toLocaleString('fa-IR') + ' نفر</td>'
+      + '<td class="l" style="' + CD + 'text-align:right;">'
+      + (r.withNames ? esc(r.withNames) : (r.kind === 'guest' ? 'مهمان' : 'تنها')) + '</td>'
+      + '<td class="l" style="' + CD + 'text-align:right;">'
+      + (r.cost ? esc(r.cost.toLocaleString('fa-IR')) : '—') + '</td>'
+      + '</tr>').join('');
+
+    const today = faDate(new Date());
+    return '<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8">'
+      + '<title>گزارش کارکرد ' + esc(who) + '</title>'
+      + '<style>'
+      + '@page{size:A4;margin:14mm 12mm;}'
+      + '*{box-sizing:border-box;}'
+      + 'body{font-family:Vazirmatn,Tahoma,sans-serif;color:#111;margin:0;font-size:15px;line-height:1.7;}'
+      + '.head{text-align:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px;}'
+      + '.shop{font-size:23px;font-weight:900;}'
+      + '.phone{font-size:15px;font-weight:700;direction:ltr;}'
+      + '.sub{font-size:12px;color:#555;margin-top:2px;}'
+      + '.who{font-size:19px;font-weight:900;margin:10px 0 2px;}'
+      // html2canvas renders this, not a browser: percentages, flex and
+      // border-spacing are unreliable, so the summary is a plain four-cell
+      // table row with px sizes, which is the structure that does render
+      + '.sum{width:100%;border-collapse:collapse;margin:12px 0 16px;table-layout:fixed;}'
+      + '.sum td{border:1px solid #999;background:#f6f6f6;padding:8px 3px;'
+      + 'text-align:center;vertical-align:top;width:25%;}'
+      + '.sum .lb{display:block;font-size:11px;color:#555;line-height:16px;height:16px;}'
+      + '.sum .vl{display:block;font-size:17px;font-weight:900;line-height:23px;height:23px;margin-top:2px;}'
+
+      + 'table.data th,table.data td{border:1px solid #bbb;padding:6px 5px;word-wrap:break-word;}'
+      + 'table.data th{background:#ececec;font-weight:800;font-size:13px;}'
+      + 'table.data td.c{text-align:center;}'
+      + 'table.data td.l{text-align:right;}'
+      + 'table.data tr{page-break-inside:avoid;}'
+      // repeat the column titles on every page of a long month
+      + 'thead{display:table-header-group;}'
+      + '.foot{margin-top:14px;padding-top:8px;border-top:1px solid #ccc;font-size:11px;color:#555;}'
+      + '.foot div{padding:2px 0;}'
+      + '</style></head><body>'
+      + '<div class="head" style="text-align:center;border-bottom:2px solid #111;'
+      + 'padding-bottom:8px;margin-bottom:12px;">'
+      + '<div class="shop" style="font-size:22px;font-weight:900;line-height:30px;">'
+      + esc(shop.name) + '</div>'
+      + (shop.phone ? '<div class="phone" style="font-size:15px;font-weight:700;direction:ltr;'
+        + 'line-height:22px;">' + esc(shop.phone) + '</div>' : '')
+      + '<div class="sub" style="font-size:12px;color:#555;line-height:18px;margin-top:2px;">'
+      + 'گزارش ریز کارکرد · تاریخ تهیه: '
+      + esc(today) + ' ' + esc(new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }))
+      + '</div></div>'
+      + '<div class="who" style="font-size:19px;font-weight:900;line-height:26px;margin:10px 0 2px;">'
+      + 'گزارش کارکرد: ' + esc(who) + '</div>'
+      + '<table class="sum" style="width:100%;border-collapse:collapse;margin:12px 0 16px;">'
+      + '<tr>'
+      + '<td style="border:1px solid #999;background:#f6f6f6;padding:8px 3px;text-align:center;width:25%;vertical-align:top;">'
+      + '<span class="lb" style="display:block;font-size:11px;color:#555;line-height:16px;height:16px;">'
+      + 'مجموع زمان بازی</span>'
+      + '<span class="vl" style="display:block;font-size:17px;font-weight:900;line-height:23px;'
+      + 'height:23px;margin-top:2px;">' + esc(hhmmss(totalSeconds)) + '</span></td>'
+      + '<td style="border:1px solid #999;background:#f6f6f6;padding:8px 3px;text-align:center;width:25%;vertical-align:top;">'
+      + '<span class="lb" style="display:block;font-size:11px;color:#555;line-height:16px;height:16px;">'
+      + 'تعداد دفعات</span>'
+      + '<span class="vl" style="display:block;font-size:17px;font-weight:900;line-height:23px;'
+      + 'height:23px;margin-top:2px;">' + rows.length.toLocaleString('fa-IR') + '</span></td>'
+      + '<td style="border:1px solid #999;background:#f6f6f6;padding:8px 3px;text-align:center;width:25%;vertical-align:top;">'
+      + '<span class="lb" style="display:block;font-size:11px;color:#555;line-height:16px;height:16px;">'
+      + 'تعداد روز</span>'
+      + '<span class="vl" style="display:block;font-size:17px;font-weight:900;line-height:23px;'
+      + 'height:23px;margin-top:2px;">' + Object.keys(days).length.toLocaleString('fa-IR') + '</span></td>'
+      + '<td style="border:1px solid #999;background:#f6f6f6;padding:8px 3px;text-align:center;width:25%;vertical-align:top;">'
+      + '<span class="lb" style="display:block;font-size:11px;color:#555;line-height:16px;height:16px;">'
+      + 'مبلغ کل</span>'
+      + '<span class="vl" style="display:block;font-size:17px;font-weight:900;line-height:23px;'
+      + 'height:23px;margin-top:2px;">' + totalCost.toLocaleString('fa-IR') + '</span></td>'
+      + '</tr></table>'
+      + (rows.length
+        ? '<table class="data" style="width:100%;border-collapse:collapse;font-size:13px;">'
+          + '<thead style="display:table-header-group;">'
+          + '<tr><th style="' + CD + 'background:#ececec;font-weight:800;font-size:12px;">تاریخ</th>'
+          + '<th style="' + CD + 'background:#ececec;font-weight:800;font-size:12px;">ساعت</th>'
+          + '<th style="' + CD + 'background:#ececec;font-weight:800;font-size:12px;">مدت بازی</th>'
+          + '<th style="' + CD + 'background:#ececec;font-weight:800;font-size:12px;">تعداد نفر</th>'
+          + '<th style="' + CD + 'background:#ececec;font-weight:800;font-size:12px;">با چه کسانی</th>'
+          + '<th style="' + CD + 'background:#ececec;font-weight:800;font-size:12px;">مبلغ</th>'
+          + '</tr></thead><tbody>' + tr + '</tbody></table>'
+        : '<div class="empty" style="padding:18px;text-align:center;color:#666;font-size:13px;">'
+          + 'در این بازه زمانی بازی‌ای ثبت نشده است.</div>')
+      + '<div class="foot" style="margin-top:14px;padding-top:8px;border-top:1px solid #ccc;'
+      + 'font-size:12px;color:#555;line-height:19px;">'
+      + '<div>این گزارش به صورت خودکار از سوی سیستم تهیه شده است.</div>'
+      + '<div>امضای مشتری: ................................</div>'
+      + '</div>'
+      + '</body></html>';
+  }
+  window.gpDetailHtml = detailHtml;
+
+  /* Put the detail sheet into the app's PDF island and hand back a blob, the
+   * same path preparePdfForClient uses. Doing it here rather than in a popup
+   * means it works with no network and cannot come out blank. */
+  async function detailPdfBlob(key) {
+    const html = detailHtml(key);
+    const inner = document.getElementById('pdfContentInner');
+    if (!inner) throw new Error('no #pdfContentInner');
+    const isGuest = typeof key === 'string' && key.indexOf('guest:') === 0;
+    const who = isGuest ? key.slice(6) : (function () {
+      const c = allClients().find((x) => String(x.id) === String(key));
+      return c ? c.name : 'customer';
+    })();
+    /* The app's own PDF template wraps #pdfContentInner with a product header
+     * and a version footer. On this sheet they would print on top of the shop
+     * letterhead, and the version would be the template's, not this sheet's -
+     * the first version of this report came out stamped v1.10.2 while the app
+     * was already 1.10.6. Take the body only, then add our own header and
+     * footer inside it. */
+    const body = html
+      .replace(/[\s\S]*<body[^>]*>/i, '')
+      .replace(/<\/body>[\s\S]*/i, '');
+
+    /* hide the template's own banner and footer for this render only */
+    const tpl = document.getElementById('pdfTemplate');
+    const chrome = [];
+    if (tpl) {
+      Array.prototype.forEach.call(tpl.children, function (el) {
+        if (el === inner) return;
+        chrome.push({ el: el, display: el.style.display });
+        el.style.display = 'none';
+      });
+    }
+
+    // detailHtml() already carries the letterhead, inside its body - adding
+    // another one here printed the shop name twice
+    inner.innerHTML = body;
+    if (typeof window.setPdfFilename === 'function') {
+      try { window.setPdfFilename('usage-' + String(who).replace(/[\\/:*?"<>|]/g, '-') + '.pdf'); } catch (e) {}
+    } else {
+      window.currentPdfFilename = 'usage-' + String(who).replace(/[\\/:*?"<>|]/g, '-') + '.pdf';
+    }
+    let blob;
+    try {
+      blob = await renderPdfBlob();
+    } finally {
+      // put the app's PDF export back the way it was, even if the render threw
+      chrome.forEach(function (c) { try { c.el.style.display = c.display; } catch (e) {} });
+    }
+    return blob;
+  }
+  window.gpDetailPdfBlob = detailPdfBlob;
+
+  /* Save it, the way the other PDF actions do. */
+  window.gpDownloadDetailPdf = async function (key) {
+    try {
+      const blob = await detailPdfBlob(key);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const isGuest = typeof key === 'string' && key.indexOf('guest:') === 0;
+      const who = isGuest ? key.slice(6) : (function () {
+        const c = allClients().find((x) => String(x.id) === String(key));
+        return c ? c.name : 'customer';
+      })();
+      a.href = url;
+      a.download = 'usage-' + String(who).replace(/[\\/:*?"<>|]/g, '-') + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      try { document.body.removeChild(a); } catch (e) {}
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 20000);
+      showToast('فایل PDF گزارش آماده شد', 'success');
+      return true;
+    } catch (e) {
+      showToast('ساخت PDF ممکن نشد', 'error');
+      return false;
+    }
+  };
+
   /* ---------- the usage report ---------- */
   /* Read BOTH stores. A party is recorded in alvand_groupSessions (one row per
    * person) and a single-player session is recorded in alvand_sessions (one row
@@ -547,6 +796,200 @@
   }
   window.gpRenderPicker = renderPicker;
 
+  /* ---------- the multi-select dropdown ---------- */
+  /* One delegated listener on the list. Re-rendering rebuilds the rows, so a
+   * per-row onclick would either be lost or fire on a stale node. */
+  let dropBound = false;
+  let chosenBound = false;
+
+  function dropOpen() {
+    const panel = document.getElementById('gpDropPanel');
+    const btn = document.getElementById('gpDropBtn');
+    if (!panel || !btn) return;
+    panel.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    renderDrop();
+    const box = document.getElementById('gpDropSearch');
+    if (box) { try { box.focus(); } catch (e) {} }
+    // clicking anywhere else closes it
+    setTimeout(() => {
+      document.addEventListener('click', dropOutside, true);
+      document.addEventListener('keydown', dropKeys, true);
+    }, 0);
+  }
+
+  function dropClose() {
+    const panel = document.getElementById('gpDropPanel');
+    const btn = document.getElementById('gpDropBtn');
+    if (panel) panel.hidden = true;
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', dropOutside, true);
+    document.removeEventListener('keydown', dropKeys, true);
+  }
+
+  function dropIsOpen() {
+    const panel = document.getElementById('gpDropPanel');
+    return !!(panel && !panel.hidden);
+  }
+
+  function dropOutside(e) {
+    const wrap = document.getElementById('gpDrop');
+    if (wrap && e.target && wrap.contains(e.target)) return;
+    dropClose();
+  }
+
+  function dropKeys(e) {
+    if (e.key === 'Escape') { dropClose(); return; }
+    if (e.key === 'Enter' && e.target && e.target.id === 'gpDropSearch') {
+      e.preventDefault();
+      // Enter picks the single match when there is exactly one, otherwise it
+      // just closes - it must never silently pick the wrong person
+      const rows = document.querySelectorAll('#gpDropList .gp-drop-row');
+      if (rows.length === 1) { dropPickRow(rows[0]); return; }
+      dropClose();
+    }
+  }
+
+  window.gpDropToggle = function () { dropIsOpen() ? dropClose() : dropOpen(); };
+  window.gpDropClose = dropClose;
+
+  function dropList() {
+    const live = allClients().filter((c) => c.status !== 'online');
+    const term = String((document.getElementById('gpDropSearch') || {}).value || '').trim().toLowerCase();
+    return term ? live.filter((c) => String(c.name).toLowerCase().indexOf(term) !== -1) : live;
+  }
+
+  function dropPickRow(row) {
+    if (!row) return;
+    const input = row.querySelector('input');
+    if (!input) return;
+    input.checked = !input.checked;
+    const id = input.value;
+    const at = selection.ids.findIndex((x) => String(x) === String(id));
+    if (input.checked) { if (at < 0) selection.ids.push(id); }
+    else if (at >= 0) selection.ids.splice(at, 1);
+    // only this row is repainted; the whole list would steal the scroll position
+    row.setAttribute('aria-selected', input.checked ? 'true' : 'false');
+    renderDropCount();
+    renderChosen();
+    renderPicker();
+    updateEstimate();
+  }
+
+  window.gpDropPick = function (id, on) {
+    const at = selection.ids.findIndex((x) => String(x) === String(id));
+    if (on) { if (at < 0) selection.ids.push(id); }
+    else if (at >= 0) selection.ids.splice(at, 1);
+    renderDrop();
+    renderChosen();
+    renderPicker();
+    updateEstimate();
+  };
+
+  window.gpDropRemove = function (id) {
+    const at = selection.ids.findIndex((x) => String(x) === String(id));
+    if (at >= 0) selection.ids.splice(at, 1);
+    renderChosen();
+    renderDrop();
+    renderPicker();
+    updateEstimate();
+  };
+
+  window.gpDropSelectAll = function () {
+    const list = dropList();
+    list.forEach((c) => {
+      if (!selection.ids.some((x) => String(x) === String(c.id))) selection.ids.push(c.id);
+    });
+    renderDrop();
+    renderChosen();
+    renderPicker();
+    updateEstimate();
+  };
+
+  function renderDropCount() {
+    const el = document.getElementById('gpDropCount');
+    if (!el) return;
+    const n = selected().ids.length;
+    el.textContent = n ? n.toLocaleString('fa-IR') + ' نفر انتخاب شده' : 'هنوز کسی انتخاب نشده';
+  }
+  window.gpDropCount = renderDropCount;
+
+  function renderDrop() {
+    const box = document.getElementById('gpDropList');
+    if (!box) return;
+    const list = dropList();
+    const chosen = new Set(selected().ids.map(String));
+    if (!list.length) {
+      box.innerHTML = '<div class="gp-drop-empty">موردی با این نام پیدا نشد</div>';
+    } else {
+      box.innerHTML = list.map((c) => {
+        const st = (typeof getStationType === 'function') ? getStationType(c.stationType) : null;
+        const t = st ? st.icon + ' ' + st.name : (c.tariff === 'single' ? 'تک نفره' : 'دو نفره');
+        const on = chosen.has(String(c.id));
+        return '<div class="gp-drop-row" role="option" aria-selected="' + (on ? 'true' : 'false')
+          + '" data-id="' + esc(c.id) + '">'
+          + '<input type="checkbox" tabindex="-1"' + (on ? ' checked' : '') + ' value="' + esc(c.id) + '">'
+          + '<span class="gp-drop-row-name">' + esc(c.name) + '</span>'
+          + '<span class="gp-drop-row-meta">' + esc(t) + '</span>'
+          + '</div>';
+      }).join('');
+      if (!dropBound) {
+        box.addEventListener('click', function (e) {
+          const row = e.target.closest ? e.target.closest('.gp-drop-row') : null;
+          if (row) dropPickRow(row);
+        });
+        dropBound = true;
+      }
+    }
+    renderDropCount();
+  }
+  window.gpDropRender = renderDrop;
+
+  /* the chosen names as removable tags, so it is obvious who is in the party */
+  function renderChosen() {
+    const box = document.getElementById('gpChosen');
+    if (!box) return;
+    const ids = selected().ids;
+    if (!ids.length) { box.innerHTML = ''; return; }
+    const byId = {};
+    allClients().forEach((c) => { byId[String(c.id)] = c; });
+    /* data-id plus a delegated listener, not an inline onclick with a quoted
+     * id in it: a name containing a quote would otherwise break the markup */
+    box.innerHTML = ids.map((id) => {
+      const c = byId[String(id)];
+      const name = c ? c.name : String(id);
+      return '<span class="gp-tag">' + esc(name)
+        + '<button type="button" class="gp-tag-x" title="حذف" data-gp-remove="' + esc(id) + '">&times;</button>'
+        + '</span>';
+    }).join('');
+    if (!chosenBound) {
+      box.addEventListener('click', function (e) {
+        const b = e.target.closest ? e.target.closest('[data-gp-remove]') : null;
+        if (b) window.gpDropRemove(b.getAttribute('data-gp-remove'));
+      });
+      chosenBound = true;
+    }
+  }
+  window.gpDropRenderChosen = renderChosen;
+
+  /* keep the dropdown label honest: it must never say "nothing selected" while
+   * people are ticked, which is how a shop starts a party with the wrong
+   * people and finds out at the till */
+  function renderDropLabel() {
+    const el = document.getElementById('gpDropLabel');
+    if (!el) return;
+    const n = selected().ids.length;
+    if (!n) { el.textContent = 'انتخاب مشتریان از فهرست'; return; }
+    const byId = {};
+    allClients().forEach((c) => { byId[String(c.id)] = c; });
+    const names = selected().ids.map((id) => (byId[String(id)] || {}).name || '').filter(Boolean);
+    const head = names.slice(0, 2).join('، ');
+    el.textContent = names.length > 2
+      ? head + ' و ' + (names.length - 2).toLocaleString('fa-IR') + ' نفر دیگر'
+      : head;
+  }
+  window.gpDropRenderLabel = renderDropLabel;
+
   function selected() {
     // drop anyone who is now playing or no longer exists. Must read the live
     // list: reading the module-scoped `clients` here emptied the selection on
@@ -702,6 +1145,8 @@
       + '<div style="font-weight:700;margin:16px 0 6px">روزهایی که بازی نکرد</div>'
       + '<div style="font-size:0.78rem;line-height:2.1">' + absent + '</div>';
 
+    // the PDF button in the modal needs to know whose report is on screen
+    try { window.gpReportKey = key; } catch (e) {}
     openModalWithHtml('usageReportModal', html);
   }
   window.gpOpenReport = openReport;
@@ -718,6 +1163,12 @@
   function gpClearPick() {
     selection.ids.length = 0;
     renderPicker();
+    // the dropdown and the chosen-name tags live in the same box, so clearing
+    // the chips without clearing them would leave the shop looking at a list
+    // of people that are no longer in the party
+    renderDrop();
+    renderChosen();
+    renderDropLabel();
   }
   window.gpClearPick = gpClearPick;
 

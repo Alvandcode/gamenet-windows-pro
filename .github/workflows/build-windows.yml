@@ -69,6 +69,10 @@ jobs:
           # one icon per AppUserModelId and never re-reads it. This guards the
           # id, the unpacked icon and the self-written shortcut.
           node tests/taskbar-icon.test.js
+          # the multi-select in the "شروع بازی" box, and the per-person
+          # usage rows the detail PDF is built from
+          node tests/player-picker.test.js
+          node tests/detail-report.test.js
 
       - name: Smoke-check the renderer boots in a real browser
         run: node tests/browser-smoke.test.js
@@ -99,6 +103,11 @@ jobs:
       - name: Usage report PDF is not blank (non-blocking headless)
         continue-on-error: true
         run: npx electron tests/print-pdf.js
+        # the hand-over PDF: proves the file is not blank, and that the sheet is
+        # formatted with inline styles, which is what actually makes it readable
+        # once html2canvas has rendered it
+        continue-on-error: true
+        run: npx electron tests/detail-pdf.js
 
       - name: Read app version
         id: pkgver
