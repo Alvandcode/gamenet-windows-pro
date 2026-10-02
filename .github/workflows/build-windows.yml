@@ -23,9 +23,9 @@ jobs:
         uses: actions/checkout@v4
 
       # jsdom 30 (a devDependency, used by every DOM test) declares
-      # engines.node "^22.22.2 || ^24.15.0 || >=26.0.0". On Node 20 requiring
-      # it dies inside undici with "webidl.util.markAsUncloneable is not a
-      # function", so the E2E step failed and no release was ever produced.
+      # engines.node ^22.22.2 || ^24.15.0 || >=26.0.0. On Node 20 requiring
+      # it dies inside undici with webidl.util.markAsUncloneable is not a
+      # function, so the E2E step failed and no release was ever produced.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -69,8 +69,8 @@ jobs:
           # one icon per AppUserModelId and never re-reads it. This guards the
           # id, the unpacked icon and the self-written shortcut.
           node tests/taskbar-icon.test.js
-          # the multi-select in the "شروع بازی" box, and the per-person
-          # usage rows the detail PDF is built from
+          # the multi-select in the play box, and the per-person usage rows
+          # the detail PDF is built from
           node tests/player-picker.test.js
           node tests/detail-report.test.js
 
@@ -103,9 +103,10 @@ jobs:
       - name: Usage report PDF is not blank (non-blocking headless)
         continue-on-error: true
         run: npx electron tests/print-pdf.js
-        # the hand-over PDF: proves the file is not blank, and that the sheet is
-        # formatted with inline styles, which is what actually makes it readable
-        # once html2canvas has rendered it
+      # the hand-over PDF: proves the file is not blank, and that the sheet is
+      # formatted with inline styles, which is what actually makes it readable
+      # once html2canvas has rendered it
+      - name: Customer detail PDF is not blank (non-blocking headless)
         continue-on-error: true
         run: npx electron tests/detail-pdf.js
 
@@ -132,7 +133,7 @@ jobs:
           retention-days: 30
 
       # Only publish a release for a real version bump, otherwise every commit
-      # (and every re-run) produced a new tag and a new "latest" release.
+      # (and every re-run) produced a new tag and a new latest release.
       - name: Create Release (only on a version bump)
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
