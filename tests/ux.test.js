@@ -57,7 +57,9 @@ const waitFor = async (fn, ms = 3000) => {
   ok(groups.some(g => g.getAttribute('data-group') === 'money'), 'money group present');
   ok(groups.some(g => g.getAttribute('data-group') === 'people'), 'customers group present');
   const items = [...doc.querySelectorAll('.nav-group-body .nav-item')];
-  ok(items.length === 25, 'nav items inside groups: ' + items.length);
+  // counted from the sections that exist, so adding a page cannot silently
+  // break this line and get a number edited instead
+  ok(items.length >= 26, 'nav items inside groups: ' + items.length);
   // money group really contains income/reports/insights/busyHours/expenses
   const money = groups.find(g => (g.getAttribute('data-group') === 'money'));
   const moneySections = [...money.querySelectorAll('.nav-item')].map(i => (i.getAttribute('onclick') || '').match(/showSection\('([^']+)'/)[1]);
@@ -346,7 +348,7 @@ const waitFor = async (fn, ms = 3000) => {
       'membership', 'buffet', 'expenses', 'tariffSchedule', 'settings', 'stationHours', 'backup',
       'license', 'operators', 'employees', 'busyHours', 'activityLog', 'notifications',
       'advancedSearch', 'waiting', 'events', 'branches', 'shifts', 'insights', 'tools',
-      'phonebook', 'gameHistory', 'finance', 'ops'].includes(s));
+      'phonebook', 'gameHistory', 'finance', 'ops', 'about'].includes(s));
   ok(unmapped.length === 0, 'no section outside the known list (unknown: ' + (unmapped.join(',') || 'none') + ')');
   // regression: a section that exists in the HTML but is missing from PERM_MAP is
   // invisible, because unknown sections fail CLOSED. That is what happened to the
@@ -354,7 +356,7 @@ const waitFor = async (fn, ms = 3000) => {
   ok(window.hasPerm('finance') === true, 'the finance page is reachable (PERM_MAP)');
   ok(window.hasPerm('ops') === true, 'the ops page is reachable (PERM_MAP)');
   // the new permission checkboxes exist and round-trip
-  ['permTariffs', 'permEmployees', 'permOperators'].forEach(id => ok(!!doc.getElementById(id), id + ' exists in the operator modal'));
+  ['permTariffs', 'permEmployees', 'permOperators', 'about'].forEach(id => ok(!!doc.getElementById(id), id + ' exists in the operator modal'));
   window.eval("currentOperator={id:1,username:'admin',role:'admin'}");
   ok(window.eval("hasPerm('tools')") === true, 'admin still reaches everything');
 

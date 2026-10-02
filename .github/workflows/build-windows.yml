@@ -73,6 +73,8 @@ jobs:
           # the detail PDF is built from
           node tests/player-picker.test.js
           node tests/detail-report.test.js
+          # the about page, and the version it must read from the build
+          node tests/about-page.test.js
 
       - name: Smoke-check the renderer boots in a real browser
         run: node tests/browser-smoke.test.js

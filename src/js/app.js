@@ -2008,6 +2008,28 @@
     }
 
     
+    /* The about page states the version, so it must come from the build
+     * and not from the markup: the PDF report sheet once shipped stamped
+     * v1.10.2 while the app was on 1.10.6, because the string sat in the
+     * HTML. Reading APP_VERSION means this page cannot drift from what is
+     * actually running - and the version is the first thing a customer
+     * quotes when asking for support. */
+    function renderAbout(){
+        const v = (typeof window.APP_VERSION === 'string' && window.APP_VERSION)
+            ? window.APP_VERSION : 'نامشخص';
+        const el = document.getElementById('aboutVersionText');
+        if (el) el.textContent = 'نسخه ' + v;
+        const b = document.getElementById('aboutBuildText');
+        if (b) {
+            const st = window.__licState && window.__licState.status;
+            b.textContent = st === 'valid' ? 'این نسخه · لایسنس فعال' : 'این نسخه';
+        }
+        // keep the older version spot in step, in case a customer reads that one
+        const old = document.getElementById('currentVersionText');
+        if (old) old.textContent = v;
+    }
+    window.renderAbout = renderAbout;
+
     // NOTE: license issuance lives ONLY in license-tools/ (seller side).
     // There is intentionally no owner PIN / in-app minting in the customer app.
     function licCapacityError(what){
@@ -2376,6 +2398,10 @@
         tools: 'operators',
         advancedSearch: true,
         waiting: 'clients',
+        // the about page only describes the app and how to reach the maker,
+        // so every operator can open it. Without an entry here hasPerm()
+        // fails closed and the nav entry silently does nothing.
+        about: true,
     };
     function hasPerm(section){
         if(!currentOperator) return true;
@@ -2421,6 +2447,7 @@
 
         if (section === 'dashboard') { updateStats(); renderActiveClients(); renderWeeklyChart(); }
         if (section === 'clients') renderClients();
+        if (section === 'about') { try{ renderAbout(); }catch(e){} }
         if (section === 'tariffs') { try{loadTariffs();}catch(e){} try{renderStationTypes();}catch(e){} }
         if (section === 'stationHours') { try{renderStationHours();}catch(e){} }
         if (section === 'income') updateIncome(); try{renderTypeBreakdown();}catch(e){}

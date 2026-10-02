@@ -238,6 +238,9 @@
                         <div class="nav-item" onclick="showSection('tools', this)">
                             <span style="font-size: 1.3rem;">&#128296;</span> ابزارها
                         </div>
+                        <div class="nav-item" onclick="showSection('about', this)">
+                            <span style="font-size: 1.3rem;">&#128218;</span> درباره برنامه
+                        </div>
                         <div class="nav-item" onclick="showSection('advancedSearch', this)">
                             <span style="font-size: 1.3rem;">&#128269;</span> جستجو
                         </div>
@@ -1420,7 +1423,139 @@
             <!-- Yearly Reports Enhancement - will be injected into reports section via JS, placeholder for chart -->
             </section>
 
-            <!-- License Management Section -->
+            <!-- ===== درباره برنامه ===== -->
+                <section id="about-section" class="section" style="display: none;">
+                    <h1 style="font-size: 1.8rem; font-weight: 900; margin-bottom: 6px;">&#128218; درباره برنامه</h1>
+                    <p style="color:rgba(255,255,255,0.6); font-size:0.9rem; margin-bottom: 24px;">
+                        هر چیزی که لازم است دربارهٔ این نرم‌افزار بدانید: چه کاری انجام می‌دهد، برای چه کسب‌وکارهایی
+                        مناسب است، از کجا تهیه می‌شود و چطور با سازنده در تماس باشید.
+                    </p>
+
+                    <div class="glass" style="padding:20px; margin-bottom:16px; border-color:rgba(99,102,241,0.35);">
+                        <h3 style="margin:0 0 10px; font-size:1.05rem;">&#127918; این برنامه چیست؟</h3>
+                        <p style="font-size:0.9rem; line-height:2.1; color:rgba(255,255,255,0.82);">
+                            «Gamenet Manager Pro» یک نرم‌افزار مدیریت گیم‌نت و مجموعه‌های تفریحی است که کارهای روزانهٔ
+                            صندلی، پذیرش، صورت‌حساب و حسابداری را در یک برنامه جمع می‌کند. به‌جای اینکه ساعت بازی هر
+                            مشتری را دستی در دفتر بنویسید و آخر شبا غلط‌ها را جمع بزنید، هر سانس با تایمر شروع می‌شود،
+                            هزینهٔ آن با تعرفهٔ خودش محاسبه می‌شود و همان لحظه در درآمد روزانه ثبت می‌گردد.
+                        </p>
+                        <p style="font-size:0.9rem; line-height:2.1; color:rgba(255,255,255,0.82);">
+                            برنامه روی کامپیوتر خود شما اجرا می‌شود و برای کار کردن به اینترنت وابسته نیست؛
+                            گزارش‌ها و PDFها حتی بدون شبکه هم ساخته می‌شوند. اطلاعات مشتریان و مالی روی همان
+                            دستگاه نگهداری می‌شود و پشتیبان‌گیری از آن بر عهدهٔ خودتان است.
+                        </p>
+                    </div>
+
+                    <div class="glass" style="padding:20px; margin-bottom:16px;">
+                        <h3 style="margin:0 0 10px; font-size:1.05rem;">&#127979; برای چه کسب‌وکارهایی مناسب است؟</h3>
+                        <p style="font-size:0.88rem; line-height:2.1; color:rgba(255,255,255,0.7);">
+                            برای هر مجموعه‌ای که مشتری را روی صندلی یا سانس می‌نشاند و لازم است مدت و هزینهٔ
+                            هر نوبت دقیق ثبت شود:
+                        </p>
+                        <ul style="font-size:0.88rem; line-height:2.2; color:rgba(255,255,255,0.82); padding-right:20px; margin:6px 0 0;">
+                            <li>&#127918; گیم‌نت، کافه گیم و مجموعه‌های بازی کامپیوتری</li>
+                            <li>&#127903; شطرنجی، بیلیارد و مراکز سرگرمی</li>
+                            <li>&#127909; سالن‌های کنسول، پلی‌استیشن و VR با تعرفهٔ ساعتی</li>
+                            <li>&#127974; بوفه و کافهٔ داخل مجموعه، برای فروش و موجودی</li>
+                            <li>&#127970; مجموعه‌های چند شعبه‌ای که درآمد هر شعبه جدا حساب می‌شود</li>
+                        </ul>
+                        <p style="font-size:0.85rem; line-height:2; color:rgba(255,255,255,0.6); margin-top:12px;">
+                            اگر کسب‌وکار شما عضویت ماهانه می‌فروشد، بازی چندنفره و مهمان دارد، یا می‌خواهد
+                            آخر ماه به هر مشتری ریز کارکردش را به‌صورت PDF بدهد، این برنامه برای همان
+                            کار ساخته شده است.
+                        </p>
+                    </div>
+
+                    <div class="glass" style="padding:20px; margin-bottom:16px;">
+                        <h3 style="margin:0 0 10px; font-size:1.05rem;">&#9881; بازی چندنفره و گزارش کارکرد</h3>
+                        <p style="font-size:0.88rem; line-height:2.1; color:rgba(255,255,255,0.78);">
+                            چند نفر را از فهرست مشتریان انتخاب کنید و یک سانس مشترک شروع کنید؛ یا برای
+                            کسانی که عضویت ندارند با عنوان «مهمان» بنویسید. در پایان، زمان هر نفر جداگانه در
+                            کارکرد خودش ثبت می‌شود و می‌توانید گزارش ریز آن را با تاریخ، ساعت، مدت، تعداد نفر،
+                            اسامی همبازی‌ها و مبلغ به‌صورت PDF تحویل مشتری بدهید.
+                        </p>
+                    </div>
+
+                    <div class="glass" style="padding:20px; margin-bottom:16px; border-color:rgba(34,197,94,0.3);">
+                        <h3 style="margin:0 0 10px; font-size:1.05rem;">&#128229; دانلود نسخهٔ رایگان</h3>
+                        <p style="font-size:0.88rem; line-height:2.1; color:rgba(255,255,255,0.78);">
+                            نسخهٔ رایگان برای آشنایی و آزمایش در اختیار است. برای دانلود به صفحهٔ انتشارهای
+                            برنامه بروید و آخرین نسخه را بگیرید:
+                        </p>
+                        <p style="margin:10px 0;">
+                            <a id="aboutDownloadLink" href="https://github.com/Alvandcode/gamenet-windows-pro/releases"
+                               target="_blank" rel="noopener"
+                               style="display:inline-block; padding:10px 18px; border-radius:10px; font-weight:700; font-size:0.88rem;
+                                      background:rgba(34,197,94,0.22); border:1px solid rgba(34,197,94,0.5); color:#bbf7d0; text-decoration:none;">
+                                &#11015; صفحهٔ دانلود Gamenet Manager Pro
+                            </a>
+                        </p>
+                        <p style="font-size:0.82rem; line-height:2; color:rgba(255,255,255,0.6);">
+                            نسخهٔ رایگان محدودیت دارد؛ برای استفادهٔ کامل و فعال‌سازی روی بیش از سه دستگاه،
+                            لایسنس تهیه کنید.
+                        </p>
+                    </div>
+
+                    <div class="glass" style="padding:20px; margin-bottom:16px; border-color:rgba(250,204,21,0.28);">
+                        <h3 style="margin:0 0 10px; font-size:1.05rem;">&#128176; خرید لایسنس</h3>
+                        <p style="font-size:0.88rem; line-height:2.1; color:rgba(255,255,255,0.78);">
+                            هر لایسنس به تعداد دستگاه محدود است. ساخت و تمدید لایسنس فقط توسط سازنده انجام
+                            می‌شود و در خودِ برنامه امکان ساخت لایسنس وجود ندارد.
+                        </p>
+                        <p style="font-size:0.85rem; line-height:2.1; color:rgba(255,255,255,0.72);">
+                            پایه (۳ دستگاه): <b style="color:#facc15;">۱,۰۰۰,۰۰۰ تومان</b> —
+                            هر دستگاه اضافه: <b style="color:#facc15;">۲۰۰,۰۰۰ تومان</b>.
+                            مدت لایسنس می‌تواند ماهانه یا مادام‌العمر باشد.
+                        </p>
+                        <p style="font-size:0.85rem; line-height:2.1; color:rgba(255,255,255,0.6);">
+                            برای خرید، افزایش ظرفیت یا تمدید، از راه‌های تماس زیر با سازنده در ارتباط باشید.
+                            نام مشتری و شمارهٔ تماسی که باید روی لایسنس ثبت شود را همراه داشته باشید.
+                        </p>
+                    </div>
+
+                    <div class="glass" style="padding:20px; margin-bottom:16px; border-color:rgba(56,189,248,0.28);">
+                        <h3 style="margin:0 0 10px; font-size:1.05rem;">&#128172; ارتباط با سازنده و پشتیبانی</h3>
+                        <p style="font-size:0.88rem; line-height:2.1; color:rgba(255,255,255,0.78);">
+                            برای خرید لایسنس، مشکل فنی، درخواست قابلیت جدید یا گزارش مشکل، از این راه‌ها استفاده کنید:
+                        </p>
+                        <ul style="font-size:0.88rem; line-height:2.3; color:rgba(255,255,255,0.82); padding-right:20px; margin:8px 0 0;">
+                            <li>
+                                &#128279; صفحهٔ پروژه در گیت‌هاب:
+                                <a id="aboutRepoLink" href="https://github.com/Alvandcode/gamenet-windows-pro"
+                                   target="_blank" rel="noopener"
+                                   style="color:#7dd3fc; text-decoration:underline; word-break:break-all;">
+                                   github.com/Alvandcode/gamenet-windows-pro
+                                </a>
+                            </li>
+                            <li>
+                                &#128206; صفحهٔ انتشارها (دانلود نسخه‌های جدید):
+                                <a id="aboutReleasesLink" href="https://github.com/Alvandcode/gamenet-windows-pro/releases"
+                                   target="_blank" rel="noopener"
+                                   style="color:#7dd3fc; text-decoration:underline; word-break:break-all;">
+                                   صفحهٔ Releases
+                                </a>
+                            </li>
+                            <li>&#128190; هنگام تماس با پشتیبانی، شمارهٔ نسخه را از پایین همین صفحه یادداشت کنید و متن خطا را دقیق بنویسید.</li>
+                            <li>&#128190; برای بررسی مشکل، از بخش «پشتیبان‌گیری» یک نسخهٔ پشتیبان بگیرید و همراه پیام بفرستید.</li>
+                        </ul>
+                    </div>
+
+                    <div class="glass" style="padding:18px; margin-bottom:16px;">
+                        <h3 style="margin:0 0 10px; font-size:1rem;">&#128202; نسخهٔ برنامه</h3>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                            <span style="padding:6px 14px; border-radius:999px; font-weight:800; font-size:0.9rem;
+                                         background:rgba(99,102,241,0.22); border:1px solid rgba(129,140,248,0.45);"
+                                  id="aboutVersionText">در حال خواندن…</span>
+                            <span style="font-size:0.82rem; color:rgba(255,255,255,0.55);" id="aboutBuildText"></span>
+                        </div>
+                        <p style="font-size:0.82rem; line-height:2; color:rgba(255,255,255,0.55); margin-top:12px;">
+                            هر نسخهٔ جدید از همان صفحهٔ انتشارها قابل دریافت است. پیش از به‌روزرسانی،
+                            یک نسخهٔ پشتیبان از اطلاعات بگیرید.
+                        </p>
+                    </div>
+                </section>
+
+                <!-- License Management Section -->
             <section id="license-section" class="section" style="display: none;">
                 <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">&#128274; مدیریت لایسنس</h1>
                 <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">هر لایسنس = ظرفیت دستگاه. پایه 3 کاربره 1,000,000 تومان + هر کاربر اضافه 200,000 تومان</p>
