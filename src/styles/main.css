@@ -570,29 +570,29 @@
 
         /* ========== PHASE 3: 20 THEMES + LIGHTS + ALARM ========== */
         /* Themes - CSS variables per theme class on body */
-        :root.theme-ocean { --app-bg: linear-gradient(135deg, #001f3f 0%, #003366 50%, #00509d 100%); }
-        :root.theme-forest { --app-bg: linear-gradient(135deg, #0d1b0d 0%, #1a3a1a 50%, #2d5a2d 100%); }
-        :root.theme-sunset { --app-bg: linear-gradient(135deg, #4a0e0e 0%, #8b2500 50%, #ff6b35 100%); }
-        :root.theme-neon { --app-bg: linear-gradient(135deg, #0f0c29 0%, #ff00cc 50%, #333399 100%); }
-        :root.theme-gold { --app-bg: linear-gradient(135deg, #3a2a00 0%, #b8860b 45%, #ffd700 70%, #ffec9e 100%); }
-        :root.theme-cyber { --app-bg: linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #0f3460 100%); }
-        :root.theme-candy { --app-bg: linear-gradient(135deg, #ff6b9d 0%, #c44dff 50%, #6a82fb 100%); }
-        :root.theme-arctic { --app-bg: linear-gradient(135deg, #e0f7fa 0%, #80deea 50%, #00838f 100%); }
+        :root.theme-ocean { --app-bg: linear-gradient(135deg, #001f3f 0%, #003366 50%, #00509d 100%); --tint: #003366; }
+        :root.theme-forest { --app-bg: linear-gradient(135deg, #0d1b0d 0%, #1a3a1a 50%, #2d5a2d 100%); --tint: #1a3a1a; }
+        :root.theme-sunset { --app-bg: linear-gradient(135deg, #4a0e0e 0%, #8b2500 50%, #ff6b35 100%); --tint: #8b2500; }
+        :root.theme-neon { --app-bg: linear-gradient(135deg, #0f0c29 0%, #ff00cc 50%, #333399 100%); --tint: #333399; }
+        :root.theme-gold { --app-bg: linear-gradient(135deg, #3a2a00 0%, #b8860b 45%, #ffd700 70%, #ffec9e 100%); --tint: #6b5200; }
+        :root.theme-cyber { --app-bg: linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #0f3460 100%); --tint: #1a1a2e; }
+        :root.theme-candy { --app-bg: linear-gradient(135deg, #ff6b9d 0%, #c44dff 50%, #6a82fb 100%); --tint: #7a3fd6; }
+        :root.theme-arctic { --app-bg: linear-gradient(135deg, #e0f7fa 0%, #80deea 50%, #00838f 100%); --tint: #bfeef5; }
 
         body.theme-arctic { color:#004d40; }
-        :root.theme-volcano { --app-bg: linear-gradient(135deg, #1a0000 0%, #4a0000 50%, #8b0000 100%); }
-        :root.theme-midnight { --app-bg: linear-gradient(135deg, #000000 0%, #0f0f0f 50%, #1a1a1a 100%); }
-        :root.theme-emerald { --app-bg: linear-gradient(135deg, #004d40 0%, #00796b 50%, #00bfa5 100%); }
-        :root.theme-royal { --app-bg: linear-gradient(135deg, #1a0033 0%, #4a148c 50%, #7c4dff 100%); }
-        :root.theme-fire { --app-bg: linear-gradient(135deg, #ff3d00 0%, #ff6d00 50%, #ff9e00 100%); }
-        :root.theme-ice { --app-bg: linear-gradient(135deg, #0d47a1 0%, #1976d2 50%, #64b5f6 100%); }
-        :root.theme-matrix { --app-bg: linear-gradient(135deg, #001100 0%, #003300 50%, #00ff00 100%); }
-        :root.theme-luxury { --app-bg: linear-gradient(135deg, #212121 0%, #424242 50%, #bdbdbd 100%); }
-        :root.theme-retro { --app-bg: linear-gradient(135deg, #3e2723 0%, #5d4037 50%, #8d6e63 100%); }
-        :root.theme-galaxy { --app-bg: linear-gradient(135deg, #0b0c2a 0%, #1a1a40 50%, #4a148c 100%); }
-        :root.theme-desert { --app-bg: linear-gradient(135deg, #3e2723 0%, #bf360c 50%, #ffab40 100%); }
-        :root.theme-club { --app-bg: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); } /* default */
-        :root.theme-roshan { --app-bg: linear-gradient(135deg, #fffdf5 0%, #f9edd2 45%, #ecd9ac 100%); }
+        :root.theme-volcano { --app-bg: linear-gradient(135deg, #1a0000 0%, #4a0000 50%, #8b0000 100%); --tint: #4a0000; }
+        :root.theme-midnight { --app-bg: linear-gradient(135deg, #000000 0%, #0f0f0f 50%, #1a1a1a 100%); --tint: #141414; }
+        :root.theme-emerald { --app-bg: linear-gradient(135deg, #004d40 0%, #00796b 50%, #00bfa5 100%); --tint: #00695c; }
+        :root.theme-royal { --app-bg: linear-gradient(135deg, #1a0033 0%, #4a148c 50%, #7c4dff 100%); --tint: #4a148c; }
+        :root.theme-fire { --app-bg: linear-gradient(135deg, #ff3d00 0%, #ff6d00 50%, #ff9e00 100%); --tint: #b23c00; }
+        :root.theme-ice { --app-bg: linear-gradient(135deg, #0d47a1 0%, #1976d2 50%, #64b5f6 100%); --tint: #1565c0; }
+        :root.theme-matrix { --app-bg: linear-gradient(135deg, #001100 0%, #003300 50%, #00ff00 100%); --tint: #003300; }
+        :root.theme-luxury { --app-bg: linear-gradient(135deg, #212121 0%, #424242 50%, #bdbdbd 100%); --tint: #333333; }
+        :root.theme-retro { --app-bg: linear-gradient(135deg, #3e2723 0%, #5d4037 50%, #8d6e63 100%); --tint: #5d4037; }
+        :root.theme-galaxy { --app-bg: linear-gradient(135deg, #0b0c2a 0%, #1a1a40 50%, #4a148c 100%); --tint: #1a1a40; }
+        :root.theme-desert { --app-bg: linear-gradient(135deg, #3e2723 0%, #bf360c 50%, #ffab40 100%); --tint: #7a2f10; }
+        :root.theme-club { --app-bg: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); --tint: #302b63; } /* default */
+        :root.theme-roshan { --app-bg: linear-gradient(135deg, #fffdf5 0%, #f9edd2 45%, #ecd9ac 100%); --tint: #ecd9ac; }
 
         body.theme-roshan { color:#3f3a2a; }
 
@@ -612,7 +612,10 @@
         body.theme-roshan .profit-badge { color:#15803d; }
         body.theme-roshan .countdown-badge { color:#b91c1c; }
         body.theme-roshan .active-pill { color:#fff; }
-        body.theme-roshan .settings-sub-item { color:#2a2519; background:rgba(255,255,255,0.55); border-color:rgba(120,90,20,0.2); }
+        /* the submenu used to be pinned to a translucent white here, which is
+           not the roshan panel. The panel variables already give this theme the
+           right surface and dark ink, so the override only fought them. */
+        body.theme-roshan .settings-sub-item { color: var(--panel-text); background: var(--panel-bg); border-color: var(--panel-border); }
         body.theme-roshan [style*="4ade80"] { color:#15803d !important; }
         body.theme-roshan [style*="fca5a5"] { color:#b91c1c !important; }
         body.theme-roshan [style*="fbbf24"] { color:#92400e !important; }
@@ -755,14 +758,18 @@
         .slot-fill { height:100%; background:linear-gradient(90deg, #22c55e, #6366f1); border-radius:50px; transition:width 0.6s; }
 
 
-        /* ========== FIX v1.8: dropdown options + settings submenu ========== */
-        input, select { color-scheme: dark; }
-        select option, select optgroup { background-color: #1e1b4b !important; color: #ffffff !important; }
+        /* ========== FIX v1.8: dropdown options + settings submenu ==========
+           color-scheme now comes from :root with the panel colours, so a native
+           select popup follows the theme instead of always asking for dark. */
+        /* the option list was pinned to one navy for every theme, in a light
+           theme included, which is what "the menu does not match the theme"
+           looked like. Follow the panel instead. */
+        select option, select optgroup { background-color: var(--panel-bg) !important; color: var(--panel-text) !important; }
         .glass-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
-        .settings-submenu { display: none; flex-direction: column; gap: 6px; margin: 0 10px 10px 0; padding-right: 12px; border-right: 2px solid rgba(99,102,241,0.3); }
+        .settings-submenu { display: none; flex-direction: column; gap: 6px; margin: 0 10px 10px 0; padding-right: 12px; border-right: 2px solid var(--panel-border); }
         .settings-submenu.open { display: flex; }
-        .settings-sub-item { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 10px 14px; color: #e2e8f0; font-size: 0.85rem; text-align: right; cursor: pointer; transition: all 0.25s; font-family: inherit; }
-        .settings-sub-item:hover { background: rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.3); }
+        .settings-sub-item { background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 14px; padding: 10px 14px; color: var(--panel-text); font-size: 0.85rem; text-align: right; cursor: pointer; transition: all 0.25s; font-family: inherit; }
+        .settings-sub-item:hover { background: var(--panel-hover); border-color: var(--panel-border); }
 
 
         /* ========== v1.8.1 visual polish ========== */
@@ -847,27 +854,33 @@ body.theme-roshan, body.theme-arctic {
    colour two shades darker than the surface it sits on, and the text follows
    the theme: light text on a dark theme, dark text on a light one.
 
-   Derived from --app-bg, which every theme already declares, so a new theme
-   gets a matching panel for free and none of this can go stale. The two light
-   themes set their text explicitly, because deriving a readable ink from a pale
-   background is not something a formula can be trusted for. */
+   Derived from --tint, the one solid colour each theme declares beside its
+   gradient, so a new theme gets a matching panel by setting that single value.
+   --app-bg cannot be used here: it is a linear-gradient, and a gradient cannot
+   be mixed into a solid colour. */
 :root {
-    --panel-bg:      color-mix(in srgb, #141230 92%, #000 8%);
-    --panel-bg-2:    color-mix(in srgb, #141230 82%, #000 18%);
-    --panel-border:  rgba(255,255,255,0.16);
+    color-scheme: dark;
+    --tint: #302b63;
+    --panel-bg:      color-mix(in srgb, var(--tint) 86%, #000 14%);
+    --panel-bg-2:    color-mix(in srgb, var(--tint) 72%, #000 28%);
+    --panel-border:  color-mix(in srgb, var(--tint) 72%, #fff 28%);
     --panel-text:    rgba(255,255,255,0.92);
     --panel-text-2:  rgba(255,255,255,0.68);
-    --panel-hover:   rgba(255,255,255,0.10);
-    --panel-row-on:  rgba(99,102,241,0.26);
+    --panel-hover:   color-mix(in srgb, var(--tint) 78%, #fff 22%);
+    --panel-row-on:  color-mix(in srgb, var(--tint) 74%, #6366f1 26%);
 }
+/* the light themes: the panel is a shade deeper than their surface, and the ink
+   is dark. Deriving a readable ink from a pale background is not something a
+   formula can be trusted for, so it is stated. */
 body.theme-roshan, body.theme-arctic {
-    --panel-bg:      color-mix(in srgb, #e8d5a8 88%, #6b5420 12%);
-    --panel-bg-2:    color-mix(in srgb, #dcc491 84%, #6b5420 16%);
-    --panel-border:  rgba(120,90,20,0.30);
+    color-scheme: light;
+    --panel-bg:      color-mix(in srgb, var(--tint) 86%, #6b5420 14%);
+    --panel-bg-2:    color-mix(in srgb, var(--tint) 74%, #6b5420 26%);
+    --panel-border:  color-mix(in srgb, var(--tint) 58%, #6b5420 42%);
     --panel-text:    #2f2a1c;
     --panel-text-2:  #4a4433;
     --panel-hover:   rgba(255,255,255,0.55);
-    --panel-row-on:  rgba(79,70,229,0.20);
+    --panel-row-on:  color-mix(in srgb, var(--tint) 72%, #4f46e5 28%);
 }
 /* the group-play dropdown, now entirely in variables */
 .gp-drop-panel {

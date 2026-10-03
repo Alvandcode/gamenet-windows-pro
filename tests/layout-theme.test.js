@@ -161,10 +161,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // the light themes have to say so explicitly: dark ink on a pale panel is not
   // something a formula should be trusted with
-  // find the rule that actually declares the panel, not the first one with
-  // that selector (the theme-text block shares the prefix)
-  const lightRule = (css.match(/body\.theme-roshan[^{]*\{[^}]*--panel-text[^}]*\}/) || [''])[0];
-  ok(!!lightRule, 'the light themes have their own panel rule');
+  // Anchor on the exact selector AND require the panel variables inside it. The
+  // theme-text block uses the same selector and comes first, and
+  // body.theme-roshan .settings-sub-item mentions --panel-text without declaring
+  // anything: matching either of those finds a rule that is not the panel.
+  const lightRule = (css.match(/body\.theme-roshan,\s*body\.theme-arctic\s*\{[^}]*--panel-text[^}]*\}/) || [''])[0];
+  ok(!!lightRule, 'the light themes have their own panel rule', lightRule.slice(0, 40));
   if (lightRule && lightRule.length > 1) {
     const d = lightRule;
     const pt = (d.match(/--panel-text\s*:[^;]+/) || [''])[0];
@@ -172,6 +174,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     ok(/#/.test(pt.replace(/^[^#]*#/, '#')), 'roshan panel text is a dark hex', pt);
     ok(/color-mix/.test(pb), 'and the background is derived, not hard-coded', pb);
     ok(/--panel-bg-2\s*:/.test(d), 'a second shade for the inputs and buttons');
+    // a light theme has to ask the browser for a light menu, or the native
+    // select popup is drawn dark whatever the option colours say
+    ok(/color-scheme\s*:\s*light/.test(d), 'and it asks for a light native menu');
     // dark ink, and it must not be white
     const hex = (pt.match(/#([0-9a-f]{6})/i) || [])[1];
     if (hex) {
@@ -179,6 +184,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       ok(r + g2 + b < 330, 'and it really is dark', 'rgb(' + [r, g2, b].join(',') + ')');
     }
   }
+
+  // Every theme declares one solid colour of its own, and the panels are mixed
+  // from that. --app-bg is a gradient, so it can never be the source of a solid
+  // panel colour no matter what the comment says.
+  const themesWithoutTint = themeNames.filter((t) => {
+    const block = (css.match(new RegExp(':root\\.theme-' + t + '\\s*\\{[^}]*\\}')) || [''])[0];
+    return !/--tint\s*:/.test(block);
+  });
+  ok(themesWithoutTint.length === 0,
+     'every theme declares a solid --tint for its panels to come from',
+     themesWithoutTint.join(',') || 'all ' + themeNames.length);
+  const rootPanelDecl = (css.match(/:root\s*\{[^}]*--panel-bg[^}]*\}/) || [''])[0];
+  ok(/--panel-bg\s*:[^;]*var\(--tint\)/.test(rootPanelDecl),
+     'the panel is mixed from that colour, per theme',
+     (rootPanelDecl.match(/--panel-bg\s*:[^;]+/) || [''])[0]);
+  ok(!/--panel-bg\s*:[^;]*#141230/.test(css), 'and no fixed navy is hiding in it');
   const rootPanel = (css.match(/:root\s*\{[^}]*--panel-bg[^}]*\}/) || [''])[0];
   ok(/--panel-text\s*:\s*rgba\(255/.test(rootPanel),
      'the default panel text is light, for the dark themes',

@@ -211,6 +211,72 @@ const ok = (cond, label, extra) => {
     ok(/کارکرد/.test(G.report), 'the report is about the customer', G.report.slice(0, 100));
   }
 
+  console.log('--- every dropdown follows its theme ---');
+  /* The panel colours were one hardcoded navy for all 23 themes while the comment
+   * above them claimed they were derived from --app-bg - which is a gradient, and
+   * a gradient cannot be mixed into a solid colour at all. Each theme now declares
+   * one solid --tint and the panels are derived from it, so this walks a spread of
+   * themes and checks what the renderer actually paints rather than what the
+   * stylesheet claims. */
+  const THEMES = ['ocean', 'forest', 'sunset', 'neon', 'gold', 'candy', 'volcano', 'emerald',
+    'royal', 'fire', 'ice', 'matrix', 'luxury', 'galaxy', 'desert', 'club', 'roshan', 'arctic'];
+  /* Colours are parsed, never painted: a color-mix result reads back as
+   * color(srgb r g b) with 0..1 parts and a plain rule as rgb(), and both are
+   * exact. Normalising by drawing into a canvas returned values one step behind,
+   * which is worse than not measuring at all. */
+  const colourMath = `function __c(v){
+      var s = String(v||'').trim();
+      var m = s.match(/color\\(srgb\\s+([\\d.eE+-]+)\\s+([\\d.eE+-]+)\\s+([\\d.eE+-]+)/);
+      if (m) return [ +m[1]*255, +m[2]*255, +m[3]*255 ];
+      m = s.match(/rgba?\\(\\s*([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)/);
+      if (m) return [ +m[1], +m[2], +m[3] ];
+      return null;
+    }
+    function __lum(c){ if(!c) return null; var f=c.map(function(x){x/=255; return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4);}); return 0.2126*f[0]+0.7152*f[1]+0.0722*f[2]; }
+    function __contrast(a,b){ var p=__lum(__c(a)), q=__lum(__c(b)); if(p===null||q===null) return null; var x=p+0.05, y=q+0.05; return Math.round(Math.max(x,y)/Math.min(x,y)*100)/100; }
+    function __same(a,b){ var p=__c(a), q=__c(b); return !!p && !!q && p.every(function(v,i){ return Math.abs(v-q[i])<1.5; }); }`;
+
+  const panels = [];
+  for (const th of THEMES) {
+    const raw = await evaluate(`(function(){ ${colourMath}
+      // the app puts the theme class on <html> and on <body>: --tint comes from
+      // the root rule and the light-theme ink from the body rule, so setting only
+      // one of them would measure a state the app is never in
+      document.body.className = 'theme-${th}';
+      var r = document.documentElement;
+      r.className = r.className.replace(/theme-\\w+/g,'').trim(); r.classList.add('theme-${th}');
+      try { showSection('clients'); gpDropRender(); } catch (e) {}
+      var list = document.getElementById('gpDropList');
+      var panel = list ? list.closest('.gp-drop-panel') : null;
+      var opt = document.querySelector('select option');
+      var sub = document.querySelector('.settings-sub-item');
+      var sel = document.querySelector('select');
+      var cs = getComputedStyle(r);
+      var pc = panel ? getComputedStyle(panel) : null;
+      return JSON.stringify({
+        tint: cs.getPropertyValue('--tint').trim(),
+        scheme: sel ? getComputedStyle(sel).colorScheme : cs.colorScheme,
+        panelBg: pc ? pc.backgroundColor : null,
+        cr: pc ? __contrast(pc.color, pc.backgroundColor) : null,
+        optSame: (opt && pc) ? __same(getComputedStyle(opt).backgroundColor, pc.backgroundColor) : null,
+        subSame: (sub && pc) ? __same(getComputedStyle(sub).backgroundColor, pc.backgroundColor) : null
+      });
+    })()`);
+    panels.push(Object.assign({ theme: th }, JSON.parse(raw)));
+  }
+  const distinct = new Set(panels.map((p) => p.panelBg)).size;
+  const tints = new Set(panels.map((p) => p.tint));
+  const worst = Math.min(...panels.map((p) => p.cr || 0));
+  const light = panels.filter((p) => p.scheme === 'light').map((p) => p.theme);
+  ok(tints.size === panels.length, 'all ' + panels.length + ' sampled themes declare their own --tint', tints.size + ' distinct');
+  ok(distinct === panels.length, 'each theme paints its own panel colour', distinct + '/' + panels.length + ' distinct');
+  ok(worst >= 4.5, 'panel text is readable on every theme (worst ' + worst + ':1)');
+  ok(panels.every((p) => p.optSame), 'native select option lists follow the panel');
+  ok(panels.every((p) => p.subSame), 'the settings submenu follows the panel',
+    panels.filter((p) => !p.subSame).map((p) => p.theme).join(',') || 'all');
+  ok(light.length === 2 && light.indexOf('roshan') >= 0 && light.indexOf('arctic') >= 0,
+    'the light themes ask the browser for a light menu', light.join(','));
+
   console.log('--- console is clean ---');
   const csp = errors.filter((e) => /Content Security Policy/.test(e));
   ok(csp.length === 0, 'no invalid CSP sources (' + csp.length + ')');
