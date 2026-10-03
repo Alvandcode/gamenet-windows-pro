@@ -35,13 +35,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   await sleep(1500);
 
-  window.clients = [
-    { id: 1, name: 'مریم احمدی', tariff: 'single', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
-    { id: 2, name: 'رضا کریمی', tariff: 'double', stationType: 'ps5', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
-    { id: 3, name: 'سارا محمدی', tariff: 'single', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
-    { id: 4, name: 'امیر حسینی', tariff: 'single', stationType: 'ps5', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
-    { id: 5, name: 'نگار رضایی', tariff: 'double', stationType: 'vr', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
+  /* The picker reads the customers register, so seed that. The session list
+   * (window.clients) is the dashboard's per-station rows and is a different
+   * store - see the "two stores" case below. */
+  window.customers = [
+    { id: 1, name: 'مریم احمدی', phone: '09121110001', wallet: 50000, debt: 0, totalHours: 12, totalSpent: 320000, createdAt: '2026-01-05' },
+    { id: 2, name: 'رضا کریمی', phone: '09121110002', wallet: 0, debt: 150000, totalHours: 8, totalSpent: 180000, createdAt: '2026-02-11' },
+    { id: 3, name: 'سارا محمدی', phone: '09121110003', wallet: 200000, debt: 0, totalHours: 30, totalSpent: 950000, createdAt: '2025-11-02' },
+    { id: 4, name: 'امیر حسینی', phone: '09121110004', wallet: 0, debt: 0, totalHours: 0, totalSpent: 0, createdAt: '2026-05-20' },
+    { id: 5, name: 'نگار رضایی', phone: '09121110005', wallet: 75000, debt: 0, totalHours: 4, totalSpent: 95000, createdAt: '2026-03-30' },
   ];
+  window.clients = [];
 
   console.log('--- the dropdown exists and is wired up ---');
   const btn = doc.getElementById('gpDropBtn');
@@ -179,16 +183,63 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   window.gpDropClose();
 
   console.log('--- a customer who is already playing is not offered ---');
-  window.clients[1].status = 'online';
+  // the register holds everyone; the session list holds whoever is at a station
+  window.clients = [
+    { id: 2, customerId: 2, name: 'رضا کریمی', status: 'online', elapsed: 300, startTime: Date.now(), totalCost: 0 },
+  ];
   window.gpDropToggle();
   await sleep(200);
   const names = doc.getElementById('gpDropList').textContent;
   ok(!/رضا کریمی/.test(names), 'someone mid-session is left out');
   ok(/مریم احمدی/.test(names), 'the others are still there');
   window.gpDropClose();
-  window.clients[1].status = 'offline';
+  window.clients = [];
 
-  console.log('--- ending the session writes a row for every one of them ---');
+  console.log('--- the register and the session list are different stores ---');
+  /* The bug: the picker read window.clients, which is the dashboard's
+     per-station rows, so it listed whoever was at a machine instead of the
+     people in the register. Seed both stores with different names. */
+  window.customers = [
+    { id: 11, name: 'زهرا عضویت', phone: '09120000011', wallet: 0, debt: 0, totalHours: 3, totalSpent: 90000 },
+    { id: 12, name: 'بهرام عضویت', phone: '09120000012', wallet: 0, debt: 0, totalHours: 5, totalSpent: 150000 },
+  ];
+  window.clients = [
+    { id: 77, name: 'کاربر کارت', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
+  ];
+  window.gpClearPick();
+  window.gpDropToggle();
+  await sleep(250);
+  const regNames = Array.prototype.map.call(
+    doc.querySelectorAll('#gpDropList .gp-drop-row-name'), (e) => e.textContent.trim());
+  ok(regNames.length === 2, 'it lists the register, not the session cards', regNames.join(' / '));
+  ok(/زهرا عضویت/.test(regNames.join('|')) && /بهرام عضویت/.test(regNames.join('|')),
+     'and those are the registered customers', regNames.join(' / '));
+  ok(!/کاربر کارت/.test(regNames.join('|')),
+     'the person who only has a session card is not listed', regNames.join(' / '));
+  window.gpDropClose();
+
+  console.log('--- search finds a customer by phone too ---');
+  window.gpDropToggle();
+  await sleep(200);
+  doc.getElementById('gpDropSearch').value = '09120000012';
+  window.gpDropRender();
+  await sleep(150);
+  ok(doc.querySelectorAll('#gpDropList .gp-drop-row').length === 1,
+     'a phone number narrows to one row',
+     String(doc.querySelectorAll('#gpDropList .gp-drop-row').length));
+  doc.getElementById('gpDropSearch').value = '';
+  window.gpDropRender();
+  window.gpDropClose();
+
+  // back to the main register for the rest of the file
+  window.customers = [
+    { id: 1, name: 'مریم احمدی', phone: '09121110001', wallet: 50000, debt: 0, totalHours: 12, totalSpent: 320000 },
+    { id: 3, name: 'سارا محمدی', phone: '09121110003', wallet: 200000, debt: 0, totalHours: 30, totalSpent: 950000 },
+    { id: 5, name: 'نگار رضایی', phone: '09121110005', wallet: 75000, debt: 0, totalHours: 4, totalSpent: 95000 },
+  ];
+  window.clients = [];
+
+console.log('--- ending the session writes a row for every one of them ---');
   window.gpClearPick();
   await sleep(100);
   window.gpStart({ clientIds: ['1', '3', '5'], guestLabel: '', guestCount: 0 });

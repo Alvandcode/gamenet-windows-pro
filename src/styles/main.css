@@ -794,3 +794,99 @@
             #pdfPrintWrap { height: auto !important; overflow: visible !important; }
             #pdfTemplate { position: static !important; left: auto !important; top: auto !important; width: 100% !important; }
         }
+
+/* ================= theme text colours =================
+   The light themes needed dark text on a light card, and the fix used to be an
+   attribute-matched list of four exact rgba values - so any new shade stayed
+   white on white. These variables are the real answer: a new page writes
+   var(--th-text) and both themes do the right thing. */
+:root {
+    --th-text:   rgba(255,255,255,0.88);
+    --th-text-2: rgba(255,255,255,0.72);
+    --th-text-3: rgba(255,255,255,0.55);
+    --th-ok:     #bbf7d0;
+    --th-link:   #7dd3fc;
+}
+/* the light themes: dark ink on light cards */
+body.theme-roshan, body.theme-arctic {
+    --th-text:   #2f2a1c;
+    --th-text-2: #4a4433;
+    --th-text-3: #6f6653;
+    --th-ok:     #14532d;
+    --th-link:   #0e5f7a;
+}
+
+/* ================= compact cards =================
+   Independent blocks were stacked one per row, each a full-width card, so a
+   page of seven of them needed scrolling to read two lines of text. These let
+   the same blocks sit side by side and wrap when they run out of room. */
+.compact-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px;
+    align-items: start;
+}
+.compact-cards > .glass { margin-bottom: 0 !important; }
+@media (max-width: 700px) {
+    .compact-cards { grid-template-columns: 1fr; }
+}
+/* a narrower variant for the short fact cards in the backup screen */
+.fact-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px;
+    align-items: start;
+}
+.fact-cards > .glass { margin-bottom: 0 !important; }
+@media (max-width: 620px) {
+    .fact-cards { grid-template-columns: 1fr; }
+}
+
+/* ================= dropdown panels =================
+   Every dropdown and popup panel takes these. The panel is the theme's own
+   colour two shades darker than the surface it sits on, and the text follows
+   the theme: light text on a dark theme, dark text on a light one.
+
+   Derived from --app-bg, which every theme already declares, so a new theme
+   gets a matching panel for free and none of this can go stale. The two light
+   themes set their text explicitly, because deriving a readable ink from a pale
+   background is not something a formula can be trusted for. */
+:root {
+    --panel-bg:      color-mix(in srgb, #141230 92%, #000 8%);
+    --panel-bg-2:    color-mix(in srgb, #141230 82%, #000 18%);
+    --panel-border:  rgba(255,255,255,0.16);
+    --panel-text:    rgba(255,255,255,0.92);
+    --panel-text-2:  rgba(255,255,255,0.68);
+    --panel-hover:   rgba(255,255,255,0.10);
+    --panel-row-on:  rgba(99,102,241,0.26);
+}
+body.theme-roshan, body.theme-arctic {
+    --panel-bg:      color-mix(in srgb, #e8d5a8 88%, #6b5420 12%);
+    --panel-bg-2:    color-mix(in srgb, #dcc491 84%, #6b5420 16%);
+    --panel-border:  rgba(120,90,20,0.30);
+    --panel-text:    #2f2a1c;
+    --panel-text-2:  #4a4433;
+    --panel-hover:   rgba(255,255,255,0.55);
+    --panel-row-on:  rgba(79,70,229,0.20);
+}
+/* the group-play dropdown, now entirely in variables */
+.gp-drop-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    color: var(--panel-text);
+}
+.gp-drop-search .glass-input { color: var(--panel-text); background: var(--panel-bg-2);
+    border-color: var(--panel-border); }
+.gp-drop-search .glass-input::placeholder { color: var(--panel-text-2); }
+.gp-drop-head { color: var(--panel-text-2); border-bottom-color: var(--panel-border); }
+.gp-drop-mini { background: var(--panel-bg-2); border-color: var(--panel-border); color: var(--panel-text); }
+.gp-drop-mini:hover { background: var(--panel-hover); }
+.gp-drop-list { color: var(--panel-text); }
+.gp-drop-row:hover { background: var(--panel-hover); }
+.gp-drop-row[aria-selected="true"] { background: var(--panel-row-on); }
+.gp-drop-row-name { color: var(--panel-text); }
+.gp-drop-row-meta { color: var(--panel-text-2); }
+.gp-drop-empty { color: var(--panel-text-2); }
+.gp-drop-foot { border-top-color: var(--panel-border); }
+.gp-drop-caret { color: var(--panel-text-2); }
+.gp-drop-caret { color: var(--panel-text-2); }

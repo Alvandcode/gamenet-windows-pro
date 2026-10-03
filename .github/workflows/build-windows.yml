@@ -75,6 +75,8 @@ jobs:
           node tests/detail-report.test.js
           # the about page, and the version it must read from the build
           node tests/about-page.test.js
+          # the telegram backup removal, the theme panel colours, and the card grids
+          node tests/layout-theme.test.js
 
       - name: Smoke-check the renderer boots in a real browser
         run: node tests/browser-smoke.test.js

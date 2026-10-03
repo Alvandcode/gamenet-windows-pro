@@ -38,11 +38,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   });
 
   console.log('--- two customers, three parties between them ---');
-  window.clients = [
-    { id: 1, name: 'مریم احمدی', tariff: 'single', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
-    { id: 2, name: 'رضا کریمی', tariff: 'double', stationType: 'ps5', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
-    { id: 3, name: 'سارا محمدی', tariff: 'single', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
+  window.customers = [
+    { id: 1, name: 'مریم احمدی', phone: '09121110001', wallet: 0, debt: 0, totalHours: 9, totalSpent: 135000 },
+    { id: 2, name: 'رضا کریمی', phone: '09121110002', wallet: 0, debt: 0, totalHours: 9, totalSpent: 135000 },
+    { id: 3, name: 'سارا محمدی', phone: '09121110003', wallet: 0, debt: 0, totalHours: 9, totalSpent: 135000 },
   ];
+  window.clients = [];
   window.localStorage.setItem('alvand_shopName', 'گیم‌نت الماس');
   window.localStorage.setItem('alvand_shopPhone', '09121234567');
 
@@ -53,7 +54,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     id: gid + '-' + who, groupId: gid,
     date: new Date(base.getTime() + day * when).toISOString(),
     duration: secs, cost: cost, billed: billed,
-    memberKind: 'client', clientId: Number(who), clientName: window.clients[Number(who) - 1].name,
+    memberKind: 'client', clientId: Number(who),
+    clientName: (window.customers[Number(who) - 1] || {}).name || '',
     headcount: head, tariff: head > 1 ? 'double' : 'single', stationTypeName: 'کامپیوتر',
   });
   const rows = [
@@ -99,7 +101,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   console.log('--- a customer with no history must not produce a broken page ---');
   // customer 3 was in the party, so use somebody who has never played
-  window.clients.push({ id: 9, name: 'مشتری تازه', tariff: 'single', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 });
+  window.customers.push({ id: 9, name: 'مشتری تازه', phone: '09121110009', wallet: 0, debt: 0, totalHours: 0, totalSpent: 0 });
   const empty = window.gpDetailHtml('9');
   ok(empty.length > 600, 'it still builds a document', empty.length + ' chars');
   ok(/ثبت نشده/.test(empty), 'and says there is nothing to show');
@@ -112,12 +114,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(/page-break-inside:avoid/.test(sheet), 'and no row is split across a page');
 
   console.log('--- names with markup cannot break into the sheet ---');
-  window.clients[0].name = '<img src=x onerror=alert(1)>';
+  window.customers[0].name = '<img src=x onerror=alert(1)>';
   const evil = window.gpDetailHtml('1');
   ok(!/<img src=x/.test(evil), 'a hostile name is escaped, not injected',
      (evil.match(/.{0,50}<img.{0,50}/) || [''])[0]);
   ok(/&lt;img/.test(evil), 'and shows up as text instead');
-  window.clients[0].name = 'مریم احمدی';
+  window.customers[0].name = 'مریم احمدی';
 
   console.log('--- the modal remembers whose report is open ---');
   window.gpOpenReport('2');

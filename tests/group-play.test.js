@@ -44,11 +44,14 @@ const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
   // publishState() defines window.clients with a real setter, so this is the
   // app's own supported way to seed the shop's list
-  window.clients = [
-    { id: 1, name: 'رضا محمدی', tariff: 'single', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
-    { id: 2, name: 'سارا احمدی', tariff: 'double', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
-    { id: 3, name: 'کیان شریفی', tariff: 'single', stationType: 'ps', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
+    /* the picker reads the register; window.clients is the dashboard's
+     per-station rows and is a different store */
+  window.customers = [
+    { id: 1, name: 'رضا محمدی', phone: '09120001', wallet: 0, debt: 0, totalHours: 4, totalSpent: 120000, tariff: 'single' },
+    { id: 2, name: 'سارا احمدی', phone: '09120002', wallet: 0, debt: 0, totalHours: 4, totalSpent: 120000, tariff: 'double' },
+    { id: 3, name: 'کیان شریفی', phone: '09120003', wallet: 0, debt: 0, totalHours: 4, totalSpent: 120000, tariff: 'single' }
   ];
+  window.clients = [];
   window.tariffs = { single: 20000, double: 35000, extra: 15000 };
   window.stationTypes = [{ id: 'pc', name: 'PC', icon: '🖥' }, { id: 'ps', name: 'PS', icon: '🎮' }];
   window.renderGroupPanel();

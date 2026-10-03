@@ -49,6 +49,52 @@
      publishState, so it must be read through window at the moment of use.
      Caching the array in a local would hand us a stale copy as soon as the
      app re-assigned it. */
+  /* The picker lists the people in the "مشتریان و اعضا" register, not the live
+   * play sessions. allClients() returns window.clients, which is one entry per
+   * occupied station, so it showed whoever happened to be at a machine rather
+   * than who the sheet is about. */
+  /* The name for an id, whichever store it came from: the register first (that
+   * is what the picker produces now), then a live session row for ids written
+   * by older builds, then the stored usage rows as a last resort. Without this
+   * the report and the PDF printed "مشتری" for anyone the register did not
+   * already know. */
+  function nameOf(key) {
+    if (key === null || key === undefined || key === '') return '';
+    const k = String(key);
+    const m = allMembers().find((x) => String(x.id) === k);
+    if (m && m.name) return String(m.name);
+    const c = allClients().find((x) => String(x.id) === k || (x.customerId && String(x.customerId) === k));
+    if (c && c.name) return String(c.name);
+    const hit = sessionsOf(k)[0];
+    if (hit && (hit.clientName || hit.memberName)) return String(hit.clientName || hit.memberName);
+    return '';
+  }
+  window.gpNameOf = nameOf;
+
+  function allMembers() {
+    const w = (typeof window !== 'undefined') ? window : {};
+    let list = null;
+    if (Array.isArray(w.customers)) list = w.customers;
+    else if (Array.isArray(w.getCustomers)) { try { list = w.getCustomers() || []; } catch (e) {} }
+    if (!Array.isArray(list)) {
+      try { list = JSON.parse(localStorage.getItem('alvand_customers') || '[]'); } catch (e) { list = []; }
+    }
+    return Array.isArray(list) ? list : [];
+  }
+  window.gpAllMembers = allMembers;
+
+  /* A live session record for this person, if they are at a station now. The
+   * usage report and the ledger key off clientId, so the party has to end up
+   * pointing at one. */
+  function clientRowFor(member) {
+    if (!member) return null;
+    const mid = String(member.id);
+    return allClients().find((c) => String(c.id) === mid
+      || String(c.customerId) === mid
+      || String(c.name || '').trim() === String(member.name || '').trim()) || null;
+  }
+  window.gpClientRowFor = clientRowFor;
+
   function allClients() {
     const w = (typeof window !== 'undefined') ? window : {};
     if (Array.isArray(w.clients)) return w.clients;
@@ -171,12 +217,24 @@
   function start(opts) {
     const members = [];
     (opts.clientIds || []).forEach((id) => {
-      const c = allClients().find((x) => String(x.id) === String(id));
+      /* the id comes from the register, so resolve it there first; the live
+       * session list is only the fallback for a row that has no register entry
+       */
+      let c = allMembers().find((m) => String(m.id) === String(id)) || null;
+      let row = c ? clientRowFor(c) : null;
+      if (!c && !row) {
+        row = allClients().find((x) => String(x.id) === String(id)) || null;
+        if (row) c = { id: row.id, name: row.name, phone: row.phone };
+      }
       if (!c) return;
-      if (c.status === 'online') { showToast(c.name + ' هم‌اکنون در حال بازی است', 'warning'); return; }
+      if (row && row.status === 'online') {
+        showToast(c.name + ' هم‌اکنون در حال بازی است', 'warning');
+        return;
+      }
       members.push({
         kind: 'client', id: c.id, name: c.name, tariff: c.tariff || 'single',
-        stationType: c.stationType || null, typeLabel: '',
+        stationType: (row && row.stationType) || c.stationType || null, typeLabel: '',
+        customerId: c.id, phone: c.phone || '',
       });
     });
     const guestLabel = (opts.guestLabel || '').trim();
@@ -193,18 +251,6 @@
     }
     if (!members.length) { showToast('حداقل یک نفر را انتخاب کنید', 'error'); return null; }
 
-    // mark the real clients as playing so the rest of the app agrees
-    members.forEach((m) => {
-      if (m.kind !== 'client') return;
-      const c = allClients().find((x) => String(x.id) === String(m.id));
-      if (!c) return;
-      c.status = 'online';
-      c.startTime = Date.now();
-      c.elapsed = 0;
-      c._lastElapsed = null;
-      c.notified = false;
-    });
-
     const g = {
       id: uid(),
       members: members,
@@ -216,6 +262,32 @@
       paymentMethod: 'cash',
     };
     setActive(g);
+
+    /* Mark the live client row as playing so the dashboard and the rest of the
+     * app agree. A register entry may have no row yet - the dashboard cards are
+     * per station - so create one, otherwise the session would be invisible
+     * everywhere except the group panel. */
+    members.forEach((m) => {
+      if (m.kind !== 'client') return;
+      let c = allClients().find((x) => String(x.id) === String(m.id)
+        || (x.customerId && String(x.customerId) === String(m.id)));
+      if (!c) {
+        c = {
+          id: m.id, customerId: m.id, name: m.name, phone: m.phone || '',
+          tariff: m.tariff || 'single', stationType: m.stationType || null,
+          status: 'online', elapsed: 0, startTime: Date.now(), totalCost: 0,
+          groupId: g.id,
+        };
+        if (typeof window.clients !== 'undefined' && Array.isArray(window.clients)) window.clients.push(c);
+      }
+      c.status = 'online';
+      c.startTime = Date.now();
+      c.elapsed = 0;
+      c._lastElapsed = null;
+      c.notified = false;
+      c.customerId = m.customerId || m.id;
+    });
+
     // the party is under way, so the picker must not still be showing them:
     // left ticked, the next customer would start with yesterday's group and
     // nobody would notice until the till
@@ -449,10 +521,7 @@
   function detailHtml(key) {
     const rows = detailRowsFor(key);
     const isGuest = typeof key === 'string' && key.indexOf('guest:') === 0;
-    const who = isGuest ? key.slice(6) : (function () {
-      const c = allClients().find((x) => String(x.id) === String(key));
-      return c ? c.name : 'مشتری';
-    })();
+    const who = isGuest ? key.slice(6) : (nameOf(key) || 'مشتری');
     const shop = shopInfoForPdf();
     const totalSeconds = rows.reduce((a, r) => a + r.duration, 0);
     const totalCost = rows.reduce((a, r) => a + r.cost, 0);
@@ -568,10 +637,7 @@
     const inner = document.getElementById('pdfContentInner');
     if (!inner) throw new Error('no #pdfContentInner');
     const isGuest = typeof key === 'string' && key.indexOf('guest:') === 0;
-    const who = isGuest ? key.slice(6) : (function () {
-      const c = allClients().find((x) => String(x.id) === String(key));
-      return c ? c.name : 'customer';
-    })();
+    const who = isGuest ? key.slice(6) : (nameOf(key) || 'customer');
     /* The app's own PDF template wraps #pdfContentInner with a product header
      * and a version footer. On this sheet they would print on top of the shop
      * letterhead, and the version would be the template's, not this sheet's -
@@ -619,10 +685,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       const isGuest = typeof key === 'string' && key.indexOf('guest:') === 0;
-      const who = isGuest ? key.slice(6) : (function () {
-        const c = allClients().find((x) => String(x.id) === String(key));
-        return c ? c.name : 'customer';
-      })();
+      const who = isGuest ? key.slice(6) : (nameOf(key) || 'customer');
       a.href = url;
       a.download = 'usage-' + String(who).replace(/[\\/:*?"<>|]/g, '-') + '.pdf';
       document.body.appendChild(a);
@@ -758,8 +821,33 @@
   window.gpSelectionSize = function () { return selection.ids.length; };
   window.gpSelectionIds = function () { return selection.ids.slice(); };
 
+  /* What is worth showing next to a name in the picker: the phone if there is
+   * one, otherwise what they have played and spent. A register entry has no
+   * station type - it is a person, not a machine. */
+  function memberMeta(m) {
+    if (!m) return '';
+    const bits = [];
+    if (m.phone) bits.push(String(m.phone));
+    const spent = num(m.totalSpent, 0);
+    const hours = num(m.totalHours, 0);
+    if (spent > 0) bits.push(spent.toLocaleString('fa-IR') + ' تومان');
+    else if (hours > 0) bits.push(Math.round(hours) + ' ساعت');
+    if (m.debt > 0) bits.push('بدهی ' + num(m.debt, 0).toLocaleString('fa-IR'));
+    else if (m.wallet > 0) bits.push('کیف پول ' + num(m.wallet, 0).toLocaleString('fa-IR'));
+    return bits.join(' · ');
+  }
+  window.gpMemberMeta = memberMeta;
+
   function pickerOptions() {
-    const sel = allClients().filter((c) => c.status !== 'online');
+    // everyone in the register, minus whoever is already mid-session
+    const busy = new Set();
+    allClients().forEach((c) => {
+      if (c.status === 'online') {
+        busy.add(String(c.id));
+        if (c.customerId) busy.add(String(c.customerId));
+      }
+    });
+    const sel = allMembers().filter((m) => m && m.name && !busy.has(String(m.id)));
     const book = guestBook();
     return { sel: sel, book: book };
   }
@@ -776,13 +864,11 @@
       html = '<p style="color:rgba(255,255,255,0.5);font-size:0.85rem;padding:12px">کلاینتی برای نمایش نیست</p>';
     } else {
       html = list.map((c) => {
-        const st = (typeof getStationType === 'function') ? getStationType(c.stationType) : null;
-        const t = st ? st.icon + ' ' + st.name : (c.tariff === 'single' ? 'تک نفره' : 'دو نفره');
         const on = selection.ids.some((id) => String(id) === String(c.id)) ? ' checked' : '';
         return '<label class="gp-chip" data-gp-opt="' + esc(c.id) + '">'
           + '<input type="checkbox" onchange="gpTogglePick(this)" value="' + esc(c.id) + '"' + on + '>'
           + '<span class="gp-chip-name">' + esc(c.name) + '</span>'
-          + '<span class="gp-chip-meta">' + esc(t) + '</span></label>';
+          + '<span class="gp-chip-meta">' + esc(memberMeta(c)) + '</span></label>';
       }).join('');
     }
     box.innerHTML = html;
@@ -854,9 +940,13 @@
   window.gpDropClose = dropClose;
 
   function dropList() {
-    const live = allClients().filter((c) => c.status !== 'online');
+    // the register, same as the chips - the two lists must never disagree
+    const { sel } = pickerOptions();
     const term = String((document.getElementById('gpDropSearch') || {}).value || '').trim().toLowerCase();
-    return term ? live.filter((c) => String(c.name).toLowerCase().indexOf(term) !== -1) : live;
+    if (!term) return sel;
+    // also match on phone, so a shop can find someone by number
+    return sel.filter((m) => String(m.name).toLowerCase().indexOf(term) !== -1
+      || String(m.phone || '').indexOf(term) !== -1);
   }
 
   function dropPickRow(row) {
@@ -923,14 +1013,12 @@
       box.innerHTML = '<div class="gp-drop-empty">موردی با این نام پیدا نشد</div>';
     } else {
       box.innerHTML = list.map((c) => {
-        const st = (typeof getStationType === 'function') ? getStationType(c.stationType) : null;
-        const t = st ? st.icon + ' ' + st.name : (c.tariff === 'single' ? 'تک نفره' : 'دو نفره');
         const on = chosen.has(String(c.id));
         return '<div class="gp-drop-row" role="option" aria-selected="' + (on ? 'true' : 'false')
           + '" data-id="' + esc(c.id) + '">'
           + '<input type="checkbox" tabindex="-1"' + (on ? ' checked' : '') + ' value="' + esc(c.id) + '">'
           + '<span class="gp-drop-row-name">' + esc(c.name) + '</span>'
-          + '<span class="gp-drop-row-meta">' + esc(t) + '</span>'
+          + '<span class="gp-drop-row-meta">' + esc(memberMeta(c)) + '</span>'
           + '</div>';
       }).join('');
       if (!dropBound) {
@@ -952,7 +1040,10 @@
     const ids = selected().ids;
     if (!ids.length) { box.innerHTML = ''; return; }
     const byId = {};
-    allClients().forEach((c) => { byId[String(c.id)] = c; });
+    // the register is the source, so look names up there; fall back to a live
+    // session row for an id that is not in the register
+    allMembers().forEach((m) => { byId[String(m.id)] = m; });
+    allClients().forEach((c) => { if (!byId[String(c.id)]) byId[String(c.id)] = c; });
     /* data-id plus a delegated listener, not an inline onclick with a quoted
      * id in it: a name containing a quote would otherwise break the markup */
     box.innerHTML = ids.map((id) => {
@@ -981,7 +1072,10 @@
     const n = selected().ids.length;
     if (!n) { el.textContent = 'انتخاب مشتریان از فهرست'; return; }
     const byId = {};
-    allClients().forEach((c) => { byId[String(c.id)] = c; });
+    // the register is the source, so look names up there; fall back to a live
+    // session row for an id that is not in the register
+    allMembers().forEach((m) => { byId[String(m.id)] = m; });
+    allClients().forEach((c) => { if (!byId[String(c.id)]) byId[String(c.id)] = c; });
     const names = selected().ids.map((id) => (byId[String(id)] || {}).name || '').filter(Boolean);
     const head = names.slice(0, 2).join('، ');
     el.textContent = names.length > 2
@@ -991,11 +1085,18 @@
   window.gpDropRenderLabel = renderDropLabel;
 
   function selected() {
-    // drop anyone who is now playing or no longer exists. Must read the live
-    // list: reading the module-scoped `clients` here emptied the selection on
-    // every tick, because the app owns that variable.
-    const live = new Set(allClients().filter((c) => c.status !== 'online').map((c) => String(c.id)));
-    selection.ids = selection.ids.filter((id) => live.has(String(id)));
+    // drop anyone deleted from the register, or who is already mid-session.
+    // Read the live arrays: the app owns both, and reading a module-scoped
+    // copy emptied the selection on every tick.
+    const live = new Set(allMembers().map((m) => String(m.id)));
+    const busy = new Set();
+    allClients().forEach((c) => {
+      if (c.status === 'online') {
+        busy.add(String(c.id));
+        if (c.customerId) busy.add(String(c.customerId));
+      }
+    });
+    selection.ids = selection.ids.filter((id) => live.has(String(id)) && !busy.has(String(id)));
     return selection;
   }
   window.gpTogglePick = function (input) {
@@ -1093,10 +1194,7 @@
   function openReport(key) {
     const r = report(key);
     const isGuest = typeof key === 'string' && key.indexOf('guest:') === 0;
-    const title = isGuest ? 'کارکرد ' + key.slice(6) : (function () {
-      const c = allClients().find((x) => String(x.id) === String(key));
-      return 'کارکرد ' + (c ? c.name : 'مشتری');
-    })();
+    const title = isGuest ? 'کارکرد ' + key.slice(6) : 'کارکرد ' + (nameOf(key) || 'مشتری');
 
     const dayRows = r.days.map((d) => {
       const b = r.byDay[d];
@@ -1152,9 +1250,14 @@
   window.gpOpenReport = openReport;
 
   function gpSelectAllVisible() {
-    const live = allClients().filter((c) => c.status !== 'online');
+    // the register, same as the dropdown: "select all" has to mean the same
+    // thing in both places or the chips and the dropdown disagree
+    const live = pickerOptions().sel;
     const term = ((document.getElementById('gpSearch') || {}).value || '').trim().toLowerCase();
-    const list = term ? live.filter((c) => String(c.name).toLowerCase().indexOf(term) !== -1) : live;
+    const list = term
+      ? live.filter((c) => String(c.name).toLowerCase().indexOf(term) !== -1
+                     || String(c.phone || '').indexOf(term) !== -1)
+      : live;
     list.forEach((c) => { if (!selection.ids.some((x) => String(x) === String(c.id))) selection.ids.push(c.id); });
     renderPicker();
   }

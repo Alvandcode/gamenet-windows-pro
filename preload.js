@@ -20,10 +20,14 @@ contextBridge.exposeInMainWorld('gamenet', {
     fingerprint: () => ipcRenderer.invoke('gamenet:device-fingerprint'),
   },
   openExternal: (url) => ipcRenderer.invoke('gamenet:open-external', url),
-    sms: {
-      send: (opts) => ipcRenderer.invoke('gamenet:sms-send', opts),
-    },
-    agent: {
-      request: (ip, path) => ipcRenderer.invoke('gamenet:agent-request', { ip, path }),
-    },
-  });
+  /* sms and agent used to sit inside the backup object, so the real path was
+     window.gamenet.backup.sms.send while every caller asked for
+     window.gamenet.sms.send. Both were undefined: SMS silently returned
+     {ok:false, error:'no-ipc'} and the panel looked like it was working. */
+  sms: {
+    send: (opts) => ipcRenderer.invoke('gamenet:sms-send', opts),
+  },
+  agent: {
+    request: (ip, path) => ipcRenderer.invoke('gamenet:agent-request', { ip, path }),
+  },
+});
