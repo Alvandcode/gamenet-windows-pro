@@ -1113,6 +1113,11 @@
     return Math.max(0, Math.floor(num((document.getElementById('gpGuestCount') || {}).value, 0)));
   }
   function updateEstimate() {
+    /* Every pick, remove, select-all and clear ends here, so the label is
+     * refreshed from the same place the estimate is. It used to be left alone
+     * while ticking, which left the button reading "nothing selected" with two
+     * people chosen - exactly the state where a shop starts the wrong party. */
+    renderDropLabel();
     const el = document.getElementById('gpEstimate');
     if (!el) return;
     const n = selected().ids.length + guestCount();

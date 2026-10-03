@@ -135,19 +135,28 @@ const ok = (cond, label, extra) => {
   // entry points the UI buttons call rather than by clicking behind the gate.
   const gp = await evaluate(`(async () => {
     try {
-      clients = [
-        { id: 1, name: 'رضا محمدی', tariff: 'single', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
-        { id: 2, name: 'سارا احمدی', tariff: 'double', stationType: 'pc', status: 'offline', elapsed: 0, startTime: null, totalCost: 0 },
+      /* The picker reads the customer register, while the running-session list
+       * is a separate thing, so seed both the way a real shop looks: people in
+       * the register, no station rows yet. */
+      customers = [
+        { id: 1, name: 'رضا محمدی', phone: '09121110001', wallet: 0, debt: 0, totalHours: 9, totalSpent: 135000 },
+        { id: 2, name: 'سارا احمدی', phone: '09121110002', wallet: 0, debt: 0, totalHours: 5, totalSpent: 90000 },
       ];
+      clients = [];
       tariffs = { single: 20000, double: 35000, extra: 15000 };
       showSection('clients');
-      gpRenderPicker();
-      const chips = document.querySelectorAll('#gpPicker .gp-chip').length;
+      gpDropRender();
+      gpDropToggle();
+      const chips = document.querySelectorAll('#gpDropList .gp-drop-row').length;
 
-      const boxes = document.querySelectorAll('#gpPicker input[type=checkbox]');
-      boxes[0].checked = true; boxes[0].dispatchEvent(new Event('change', { bubbles: true }));
-      boxes[1].checked = true; boxes[1].dispatchEvent(new Event('change', { bubbles: true }));
+      /* Click the rows rather than calling the API, so the delegated handler,
+       * the button label, the tags and the estimate are all exercised. Each
+       * click repaints the list, so the node has to be looked up again. */
+      document.querySelectorAll('#gpDropList .gp-drop-row')[0].click();
+      document.querySelectorAll('#gpDropList .gp-drop-row')[1].click();
       const picked = gpSelectionSize();
+      const label = document.getElementById('gpDropLabel').textContent;
+      const tags = document.querySelectorAll('#gpChosen .gp-tag').length;
       const estimate = document.getElementById('gpEstimate').textContent;
 
       const g = gpStart({ clientIds: gpSelectionIds(), guestLabel: 'مهمان', guestCount: 1 });
@@ -166,7 +175,7 @@ const ok = (cond, label, extra) => {
       const reportText = document.getElementById('usageReportModalBody').innerText.replace(/\\s+/g, ' ');
 
       return JSON.stringify({
-        chips, picked, estimate, clock, running: running.slice(0, 120),
+        chips, picked, label, tags, estimate, clock, running: running.slice(0, 120),
         seconds: sum.seconds, headcount: sum.headcount, total: sum.total,
         added: after.length - before, billed: after.filter(function(r){ return r.billed; }).length,
         reportOpen: document.getElementById('usageReportModal').classList.contains('show'),
@@ -180,6 +189,9 @@ const ok = (cond, label, extra) => {
   } else {
     ok(G.chips === 2, 'the picker offers the shop customers', G.chips);
     ok(G.picked === 2, 'both could be selected at once', G.picked);
+    ok(G.tags === 2, 'each one became a removable tag', G.tags);
+    // the label must name who is in the party, not still read "nothing chosen"
+    ok(/رضا/.test(G.label) && /سارا/.test(G.label), 'the button names both players', G.label);
     ok(/نفر/.test(G.estimate), 'the hourly estimate is shown', G.estimate);
     ok(/^01:20:0\d$/.test(G.clock), 'the shared clock reached 1h20m', G.clock);
     ok(/در حال بازی/.test(G.running) && /مهمان/.test(G.running), 'the panel names every player, walk-in included', G.running);
@@ -213,8 +225,13 @@ const ok = (cond, label, extra) => {
   }
 
   const shot = await send('Page.captureScreenshot', { format: 'png' });
-  fs.writeFileSync('C:/Users/IRANNO~1/AppData/Local/Temp/opencode/gui-shot2.png', Buffer.from(shot.data, 'base64'));
-  console.log('  screenshot: C:/Users/IRANNO~1/AppData/Local/Temp/opencode/gui-shot2.png');
+  // os.tmpdir, not a path from the machine that wrote this: a hardcoded one
+  // does not exist on the runner and the write threw, killing the run before it
+  // could print a verdict
+  const shotFile = path.join(os.tmpdir(), 'opencode', 'gui-shot2.png');
+  fs.mkdirSync(path.dirname(shotFile), { recursive: true });
+  fs.writeFileSync(shotFile, Buffer.from(shot.data, 'base64'));
+  console.log('  screenshot: ' + shotFile);
 
   ws.close();
   child.kill();
