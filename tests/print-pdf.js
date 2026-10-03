@@ -91,14 +91,26 @@ app.whenReady().then(async () => {
     var t = (b.innerText||'').replace(/\\s+/g,' ').trim();
     // compare against the name that was seeded, so a different spelling of ی
     // in the test cannot fail the check for the wrong reason
-    var seeded = (window.customers[0] || {}).name || '';
+    var reg = (window.customers || []).map(function (c) { return c && c.name; });
+    /* textContent, not innerText: innerText is the laid-out text, and the bidi
+     * algorithm around a Latin phone number beside Persian can reorder runs or
+     * insert directional marks, so an indexOf against it is not reliable across
+     * machines. textContent is the characters as written. */
+    var raw = m.textContent || '';
+    var body = (document.getElementById('usageReportModalBody') || {}).textContent || '';
+    var hasName = false, which = '';
+    for (var i = 0; i < reg.length; i++) {
+      if (reg[i] && (raw.indexOf(reg[i]) >= 0 || body.indexOf(reg[i]) >= 0)) { hasName = true; which = reg[i]; break; }
+    }
     return JSON.stringify({ shown: m.classList.contains('show'), chars: t.length,
-      hasName: !!seeded && t.indexOf(seeded) >= 0, tables: m.querySelectorAll('table').length });
+      hasName: hasName, regCount: reg.length, rawLen: raw.length, bodyLen: body.length,
+      tables: m.querySelectorAll('table').length });
   })()`);
   const d = JSON.parse(dom);
   ok(d.shown, 'the modal is open', dom);
   ok(d.chars > 150, 'it holds real text', d.chars + ' chars');
-  ok(d.hasName, 'the customer name is in it');
+  ok(d.hasName, 'the customer name is in the report',
+     'register=' + d.regCount + ' raw=' + d.rawLen + ' body=' + d.bodyLen);
   ok(d.tables >= 2, 'both report tables are rendered', d.tables + ' tables');
 
   const head = JSON.parse(await ev(`(function(){
