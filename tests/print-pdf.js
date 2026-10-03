@@ -111,6 +111,7 @@ app.whenReady().then(async () => {
   ok(d.chars > 150, 'it holds real text', d.chars + ' chars');
   ok(d.hasName, 'the customer name is in the report',
      'register=' + d.regCount + ' raw=' + d.rawLen + ' body=' + d.bodyLen);
+  ok(d.regCount >= 3, 'the register was seeded before the check', 'register=' + d.regCount);
   ok(d.tables >= 2, 'both report tables are rendered', d.tables + ' tables');
 
   const head = JSON.parse(await ev(`(function(){
