@@ -89,7 +89,11 @@ app.whenReady().then(async () => {
     var m = document.getElementById('usageReportModal');
     var b = document.getElementById('usageReportModalBody');
     var t = (b.innerText||'').replace(/\\s+/g,' ').trim();
-    return JSON.stringify({ shown: m.classList.contains('show'), chars: t.length, hasName: /احمدي/.test(t), tables: m.querySelectorAll('table').length });
+    // compare against the name that was seeded, so a different spelling of ی
+    // in the test cannot fail the check for the wrong reason
+    var seeded = (window.customers[0] || {}).name || '';
+    return JSON.stringify({ shown: m.classList.contains('show'), chars: t.length,
+      hasName: !!seeded && t.indexOf(seeded) >= 0, tables: m.querySelectorAll('table').length });
   })()`);
   const d = JSON.parse(dom);
   ok(d.shown, 'the modal is open', dom);
@@ -111,8 +115,29 @@ app.whenReady().then(async () => {
   ok(head.present, 'the report carries a shop letterhead');
   ok(/الماس/.test(head.name || ''), 'with the shop name', head.name);
   ok(/09121234567/.test(head.phone || ''), 'and the phone number', head.phone);
-  ok(head.centered === 'center', 'centred on the page', head.centered);
-  ok(parseFloat(head.nameSize) >= 17, 'and large enough to read', head.nameSize);
+  // the sheet that gets handed over is built separately with inline styles, so
+  // that is what has to be measured - the on-screen modal is a different element
+  const sheetStyle = await ev(`(function(){
+    var h = gpDetailHtml('1');
+    // parse the attributes off the elements rather than pattern-matching the
+    // source: the order of class= and style= is not guaranteed
+    function grab(cls){
+      var re = new RegExp('<div[^>]*class="' + cls + '"[^>]*>', '');
+      var m = h.match(re);
+      if (!m) return '';
+      var st = m[0].match(/style="([^"]*)"/);
+      return st ? st[1] : '';
+    }
+    return JSON.stringify({ head: grab('head'), shop: grab('shop'), phone: grab('phone') });
+  })()`);
+  const ss = JSON.parse(sheetStyle);
+  ok(/text-align:\s*center/.test(ss.head), 'the printed letterhead is centred', ss.head.slice(0, 70));
+  ok(/border-bottom/.test(ss.head), 'with a rule under it', ss.head.slice(0, 90));
+  const shopPx = (ss.shop.match(/font-size:\s*(\d+)px/) || [])[1];
+  ok(Number(shopPx) >= 20, 'the shop name prints large in px, not pt', shopPx + 'px');
+  const phonePx = (ss.phone.match(/font-size:\s*(\d+)px/) || [])[1];
+  ok(Number(phonePx) >= 14, 'and the number is readable', phonePx + 'px');
+  ok(/direction:\s*ltr/.test(ss.phone), 'the number keeps left-to-right digits', ss.phone.slice(0, 60));
 
   out('--- press the print button ---');
   // stub window.print for the whole run, otherwise a real print dialog opens
