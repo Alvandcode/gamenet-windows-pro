@@ -74,6 +74,14 @@ app.whenReady().then(async () => {
     localStorage.setItem('alvand_shopPhone', '09121234567');
     var day = 86400000, base = new Date(2026, 4, 1, 12, 0, 0);
     sessions = [];
+    /* seed the register as well as the session list: the report names people
+     * from the register now, and a check that compares against an empty list
+     * only passes by accident when storage happens to hold something */
+    customers = [
+      { id:1, name:'مريم احمدي', phone:'09121110001', wallet:0, debt:0, totalHours:9, totalSpent:135000 },
+      { id:2, name:'رضا کريمي', phone:'09121110002', wallet:0, debt:0, totalHours:5, totalSpent:90000 },
+      { id:3, name:'سارا محمدي', phone:'09121110003', wallet:0, debt:0, totalHours:12, totalSpent:180000 }
+    ];
     gpSave([
       { id:'a', date:new Date(base.getTime()).toISOString(), duration:5400, cost:45000, billed:true, memberKind:'client', clientId:1, clientName:'مريم احمدي', headcount:1 },
       { id:'b', date:new Date(base.getTime()+day*2).toISOString(), duration:3600, cost:0, billed:false, memberKind:'client', clientId:1, clientName:'مريم احمدي', headcount:2 }
