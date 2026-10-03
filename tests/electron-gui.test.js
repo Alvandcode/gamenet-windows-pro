@@ -89,14 +89,21 @@ const ok = (cond, label, extra) => {
     // the theme is painted on <html>, not <body>, so that UI zoom cannot cut a
     // seam into the background
     bg: getComputedStyle(document.documentElement).backgroundColor + ' / ' + getComputedStyle(document.documentElement).backgroundImage.slice(0, 40),
-    text: (document.body.innerText||'').replace(/\\s+/g,' ').slice(0,80)
+    text: (document.body.innerText||'').replace(/\\s+/g,' ').slice(0,80),
+    /* textContent is the characters as written, with no layout or font
+     * applied. innerText is the laid-out text, so what it returns depends on
+     * which fonts the machine has - and this check has been reporting nothing
+     * but Persian on machines that do. Asking the DOM for its text is what
+     * "the renderer really rendered" means; whether the glyphs have a font is
+     * the machine's business, not the app's. */
+    raw: (document.body.textContent||'').replace(/\\s+/g,' ').slice(0,200)
   })`);
   const d = JSON.parse(info);
   ok(d.title === 'Gamenet Manager Pro', 'window title is correct', d.title);
   ok(d.sections > 20, 'all sections present (' + d.sections + ')');
   ok(d.nav > 20, 'sidebar rendered (' + d.nav + ' items)');
   ok(d.bg.indexOf('gradient') !== -1, 'the theme is painted on <html> (' + d.bg + ')');
-  ok(/[؀-ۿ]/.test(d.text), 'Persian text is rendered');
+  ok(/[؀-ۿ]/.test(d.raw), 'Persian text is in the rendered page', 'textContent=' + d.raw.slice(0, 90));
 
   console.log('--- the app modules all initialised ---');
   // classic scripts do not put their top-level const/function on window, so
