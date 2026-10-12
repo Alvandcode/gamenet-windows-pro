@@ -933,7 +933,28 @@ body.theme-roshan, body.theme-arctic {
    on the light themes (white text on a pale card) and washed out on the dark
    ones, and a log nobody can read is not a log. These colours are deliberately
    not theme variables. */
-#activityLogList { overflow-x: auto; padding: 12px !important; }
+#activityLogList { 
+    overflow-x: auto; 
+    padding: 12px !important; 
+    /* Ensure horizontal scroll is always accessible */
+    -webkit-overflow-scrolling: touch;
+    /* Visual scroll indicator for narrow screens */
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) transparent;
+}
+#activityLogList::-webkit-scrollbar {
+    height: 8px;
+}
+#activityLogList::-webkit-scrollbar-track {
+    background: transparent;
+}
+#activityLogList::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 4px;
+}
+#activityLogList::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-glow);
+}
 .log-table {
     width: 100%;
     min-width: 720px;
@@ -959,8 +980,8 @@ body.theme-roshan, body.theme-arctic {
 .log-table tbody tr:hover { background: #e5e9f3; }
 .log-table td { color: #111111; }
 .log-type { width: 132px; font-weight: 700; }
-.log-what { width: auto; font-weight: 700; }
-.log-detail { width: 26%; font-weight: 400; }
+.log-what { width: auto; font-weight: 700; min-width: 180px; }
+.log-detail { width: 26%; font-weight: 400; min-width: 150px; }
 .log-who { width: 110px; }
 .log-when { width: 116px; white-space: nowrap; }
 .log-date { display: block; font-weight: 700; }
@@ -974,6 +995,25 @@ body.theme-roshan, body.theme-arctic {
     .log-table th, .log-table td { padding: 6px 8px; }
     .log-type, .log-who { width: 96px; }
     .log-when { width: 92px; }
+    .log-what { min-width: 140px; }
+    .log-detail { min-width: 120px; }
+}
+
+/* Responsive table wrapper for very narrow screens */
+@media (max-width: 500px) {
+    #activityLogList { padding: 8px !important; }
+    .log-table { min-width: 100%; font-size: 0.72rem; }
+    .log-table th, .log-table td { padding: 6px 8px; }
+    .log-type { width: 80px; font-size: 0.7rem; }
+    .log-what { min-width: 100px; font-size: 0.72rem; }
+    .log-detail { min-width: 80px; font-size: 0.7rem; }
+    .log-who { width: 70px; font-size: 0.7rem; }
+    .log-when { width: 80px; font-size: 0.65rem; }
+    .log-date { font-size: 0.65rem; }
+    .log-time { font-size: 0.6rem; }
+    .log-table th { font-size: 0.7rem; padding: 4px 5px; }
+    .log-table td { padding: 4px 5px; }
+}
 }
 
 /* ================= dropdown panels =================

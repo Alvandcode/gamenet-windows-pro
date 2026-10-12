@@ -4473,6 +4473,14 @@
             // getDay(): 0=Sunday ... 6=Saturday, so this is the Persian week
             const idx = (day.d.getDay() + 1) % 7;
             const ink = day.isToday ? 'var(--th-text)' : 'var(--th-text-2)';
+            // Use Jalali date (formatDateSmart) instead of Gregorian day number.
+            // Construct a local ISO string at noon to avoid UTC timezone shift.
+            const localISO = day.d.getFullYear() + '-' +
+                String(day.d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(day.d.getDate()).padStart(2, '0') + 'T12:00:00';
+            const jalaliDate = (typeof window.formatDateSmart === 'function')
+                ? window.formatDateSmart(localISO).split('/').pop()
+                : day.d.getDate();
             const barHeight = Math.max((day.income / max) * 150, day.isToday ? 4 : 0);
             return `
             <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0;">
@@ -4482,7 +4490,7 @@
                     ${names[idx]}
                     ${day.isToday ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--panel-row-on);display:inline-block;"></span>' : ''}
                 </div>
-                <div style="font-size: 0.7rem; color: var(--th-text-3);">${day.d.getDate()}</div>
+                <div style="font-size: 0.7rem; color: var(--th-text-3);">${jalaliDate}</div>
             </div>`;
         }).join('');
     }

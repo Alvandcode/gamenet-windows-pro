@@ -219,7 +219,7 @@ const ok = (cond, label, extra) => {
    * their names from one calendar week, so this seeds a known amount on the
    * Saturday of the current week, checks it lands under شنبه, and then checks
    * each column's name against the date it is summing. */
-  const weekRaw = await evaluate(`(function(){
+const weekRaw = await evaluate(`(function(){
     var base = new Date(); base.setHours(0,0,0,0);
     var sat = weekStart(base);
     sessions = [];
@@ -233,10 +233,17 @@ const ok = (cond, label, extra) => {
     var want = [];
     for (var i=0;i<7;i++){
       var d = new Date(sat.getTime()); d.setDate(d.getDate()+i);
-      want.push({ name: FA[(d.getDay()+1)%7], date: String(d.getDate()), value: i===0 ? '1k' : '0k' });
+      // Use the same local ISO format as the chart (noon local time) for formatDateSmart
+      var localISO = d.getFullYear() + '-' +
+          String(d.getMonth() + 1).padStart(2, '0') + '-' +
+          String(d.getDate()).padStart(2, '0') + 'T12:00:00';
+      var jalali = (typeof window.formatDateSmart === 'function') ? window.formatDateSmart(localISO) : String(d.getDate());
+      var jalaliDay = jalali.split('/').pop();
+      want.push({ name: FA[(d.getDay()+1)%7], date: jalaliDay, value: i===0 ? '1k' : '0k' });
     }
     return JSON.stringify({ columns: cols.length, got: got, want: want,
-      todayDate: String(base.getDate()), todayName: FA[(base.getDay()+1)%7] });
+      todayDate: String(base.getDate()), todayName: FA[(base.getDay()+1)%7],
+      todayJalaliDate: (typeof window.formatDateSmart === 'function') ? window.formatDateSmart(new Date().toISOString()).split('/').pop() : String(base.getDate()) });
   })()`);
   // the old markup had two children per column and the labels in a separate row,
   // so reading a name off a column threw. Say so instead of dying silently.
@@ -254,9 +261,9 @@ const ok = (cond, label, extra) => {
       week.got.map((g) => g.date).join('/') + ' vs ' + week.want.map((w) => w.date).join('/'));
     ok(badValue.length === 0, "one day's money is under that day only",
       week.got.map((g) => g.value).join(' '));
-    const todayCol = week.got.findIndex((g) => g.name === week.todayName && g.date === week.todayDate);
+    const todayCol = week.got.findIndex((g) => g.name === week.todayName && g.date === week.todayJalaliDate);
     ok(todayCol >= 0, 'today sits in the column labelled with today',
-      week.todayName + ' ' + week.todayDate + ' -> index ' + todayCol + ', names ' + week.got.map((g) => g.name).join(' '));
+      week.todayName + ' ' + week.todayJalaliDate + ' -> index ' + todayCol + ', names ' + week.got.map((g) => g.name).join(' '));
   }
 
   console.log('--- the sidebar groups all open and close the same way ---');
