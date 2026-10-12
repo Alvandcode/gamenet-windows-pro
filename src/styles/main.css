@@ -957,14 +957,15 @@ body.theme-roshan, body.theme-arctic {
 }
 .log-table {
     width: 100%;
-    min-width: 720px;
+    /* Remove min-width - let table shrink to fit content.
+       table-layout: auto lets columns size to content. */
     border-collapse: collapse;
     background: #ffffff;
     font-size: 0.82rem;
     color: #111111;
-    table-layout: fixed;
+    table-layout: auto;
 }
-.log-table th, .log-table td { border: 1px solid #d7dade; padding: 8px 10px; vertical-align: top; }
+.log-table th, .log-table td { border: 1px solid #d7dade; padding: 6px 8px; vertical-align: top; }
 .log-table th {
     background: #e4e7ea;
     color: #000000;
@@ -973,17 +974,19 @@ body.theme-roshan, body.theme-arctic {
     position: sticky;
     top: 0;
     z-index: 1;
+    white-space: nowrap;
 }
 /* the banding the eye scans by */
 .log-table tbody tr:nth-child(odd)  { background: #ffffff; }
 .log-table tbody tr:nth-child(even) { background: #f3f4f6; }
 .log-table tbody tr:hover { background: #e5e9f3; }
 .log-table td { color: #111111; }
-.log-type { width: 132px; font-weight: 700; }
-.log-what { width: auto; font-weight: 700; min-width: 180px; }
-.log-detail { width: 26%; font-weight: 400; min-width: 150px; }
-.log-who { width: 110px; }
-.log-when { width: 116px; white-space: nowrap; }
+/* Column sizing - auto for content, min/max constraints */
+.log-type { width: 1%; white-space: nowrap; font-weight: 700; min-width: 70px; max-width: 100px; }
+.log-what { width: auto; font-weight: 700; min-width: 150px; }
+.log-detail { width: 1%; white-space: nowrap; min-width: 80px; max-width: 300px; }
+.log-who { width: 1%; white-space: nowrap; min-width: 70px; max-width: 100px; }
+.log-when { width: 1%; white-space: nowrap; min-width: 100px; max-width: 140px; }
 .log-date { display: block; font-weight: 700; }
 .log-time { display: block; color: #333333; font-size: 0.78rem; }
 /* the "showing N of M" note sits under the table and must stay legible on the
@@ -991,24 +994,23 @@ body.theme-roshan, body.theme-arctic {
 .log-more { margin: 10px 2px 0; font-size: 0.78rem; color: var(--th-text-3); }
 
 @media (max-width: 700px) {
-    .log-table { min-width: 560px; font-size: 0.78rem; }
-    .log-table th, .log-table td { padding: 6px 8px; }
-    .log-type, .log-who { width: 96px; }
-    .log-when { width: 92px; }
-    .log-what { min-width: 140px; }
-    .log-detail { min-width: 120px; }
+    .log-table { font-size: 0.78rem; }
+    .log-table th, .log-table td { padding: 5px 6px; }
+    .log-type, .log-who { min-width: 60px; max-width: 90px; }
+    .log-when { min-width: 85px; max-width: 120px; }
+    .log-what { min-width: 120px; }
+    .log-detail { min-width: 80px; max-width: 250px; }
 }
 
-/* Responsive table wrapper for very narrow screens */
 @media (max-width: 500px) {
     #activityLogList { padding: 8px !important; }
-    .log-table { min-width: 100%; font-size: 0.72rem; }
-    .log-table th, .log-table td { padding: 6px 8px; }
-    .log-type { width: 80px; font-size: 0.7rem; }
+    .log-table { font-size: 0.72rem; }
+    .log-table th, .log-table td { padding: 4px 5px; }
+    .log-type { width: 1%; min-width: 50px; max-width: 80px; font-size: 0.7rem; }
     .log-what { min-width: 100px; font-size: 0.72rem; }
-    .log-detail { min-width: 80px; font-size: 0.7rem; }
-    .log-who { width: 70px; font-size: 0.7rem; }
-    .log-when { width: 80px; font-size: 0.65rem; }
+    .log-detail { min-width: 70px; max-width: 200px; font-size: 0.7rem; }
+    .log-who { width: 1%; min-width: 55px; max-width: 85px; font-size: 0.7rem; }
+    .log-when { width: 1%; min-width: 75px; max-width: 100px; font-size: 0.65rem; }
     .log-date { font-size: 0.65rem; }
     .log-time { font-size: 0.6rem; }
     .log-table th { font-size: 0.7rem; padding: 4px 5px; }
