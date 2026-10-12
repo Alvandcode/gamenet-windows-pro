@@ -94,15 +94,28 @@ const waitFor = async (fn, ms = 3000) => {
   ok(money.classList.contains('has-active') === true, 'money group marked has-active');
   const activeItem = doc.querySelector('.nav-item.active');
   ok(!!activeItem && /reports/.test(activeItem.getAttribute('onclick')), 'nav item marked active');
-  // settings group: first click opens, second click navigates
+  // settings: an ordinary group, toggling like the other seven
   const setHead = doc.getElementById('navSettings');
   const setGroup = setHead.closest('.nav-group');
   ok(setGroup.classList.contains('open') === false, 'settings group starts collapsed');
-  window.toggleSettingsMenu(setHead);
-  ok(setGroup.classList.contains('open') === true, '1st settings click opens the group');
-  ok(doc.getElementById('settings-section').style.display === 'none', '1st settings click does NOT navigate');
-  window.toggleSettingsMenu(setHead);
-  ok(doc.getElementById('settings-section').style.display === 'block', '2nd settings click navigates to settings');
+  // the whole head is the button: the arrow, the name, anything in between
+  ok(/toggleNavGroup\('settings'\)/.test(setHead.getAttribute('onclick')),
+    'the settings head toggles like every other group', setHead.getAttribute('onclick'));
+  ok(typeof window.toggleSettingsMenu === 'undefined',
+    'the open-only settings handler is gone');
+  setHead.click();
+  ok(setGroup.classList.contains('open') === true, 'clicking the settings head opens it');
+  ok(doc.getElementById('settings-section').style.display === 'none', 'opening does NOT navigate');
+  setHead.click();
+  ok(setGroup.classList.contains('open') === false, 'clicking again closes it, as with every other group');
+  setHead.click();
+  ok(setGroup.classList.contains('open') === true, 'and it can be opened again');
+  ok(JSON.parse(window.localStorage.getItem('alvand_navGroups')).settings === 1, 'settings state persisted like the rest');
+  // the submenu stacks like the other groups rather than flowing inline
+  const subBtns = doc.querySelectorAll('#settingsSubmenu .settings-sub-item');
+  ok(subBtns.length === 4, 'the settings submenu still lists its four pages', String(subBtns.length));
+  ok(subBtns[0].getAttribute('onclick').indexOf('showSection') >= 0,
+    'each one navigates to its page');
 
   console.log('--- 3. dashboard quick actions ---');
   window.showSection('dashboard');

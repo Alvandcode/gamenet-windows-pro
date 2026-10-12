@@ -412,6 +412,50 @@ function checkBirthdayNotifications(){
 // (renderCustomers) is the single owner of the customer UI.
 
 // ===== PHASE 2: ACTIVITY LOG =====
+/* Each entry used to be a flex row: an emoji, a paragraph, and a time with a
+ * name in the corner, with the two halves drifting apart at any window width so
+ * the eye could not line entries up or find one. There was no header row and no
+ * columns, so scanning for a kind of event or a person meant reading all of it.
+ *
+ * It is a table now, one row per entry, every field in its own cell: what kind
+ * of event, what happened, the detail, who did it, and when. The banding is
+ * white and a very light grey with black ink on every theme - a log is read, not
+ * admired, and theme-coloured rows were unreadable on the light themes and
+ * washed out on the dark ones. */
+var LOG_TYPE_ICONS = {
+    session:'🎮', membership:'🎫', timer:'⏰', payment:'💰', client:'👤', clients:'👤',
+    reservation:'📅', backup:'💾', operator:'🔑', employee:'🧑‍💼', buffet:'🍕',
+    expense:'💸', package:'📦', coupon:'🎟️', amanat:'🤝', maintenance:'🔧',
+    broadcast:'📢', handover:'💼', sms:'✉️', phonebook:'📇', export:'⬇️',
+    print:'🖨️', waiting:'⏳', loyalty:'⭐', survey:'📊', branch:'🏬', shift:'🕐',
+    pos:'💳', event:'📅', security:'🔐', system:'⚙️'
+};
+var LOG_TYPE_NAMES = {
+    session:'سشن', membership:'عضویت', timer:'تایمر', payment:'پرداخت',
+    client:'مشتری', clients:'مشتری', reservation:'رزرو', backup:'بکاپ',
+    operator:'اپراتور', employee:'کارمند', buffet:'بوفه', expense:'هزینه',
+    package:'پکیج', coupon:'کوپن', amanat:'امانت', maintenance:'تعمیرات',
+    broadcast:'اعلام', handover:'تحویل صندوق', sms:'پیامک', phonebook:'دفترچه',
+    export:'خروجی', print:'چاپ', waiting:'انتظار', loyalty:'وفاداری',
+    survey:'نظرسنجی', branch:'شعبه', shift:'شیفت', pos:'کارتخوان',
+    event:'رویداد', security:'امنیت', system:'سیستم'
+};
+var LOG_ROWS_SHOWN = 200;
+
+function logWhen(iso){
+    var d = new Date(iso);
+    if(isNaN(d.getTime())) return { date:'-', time:'-' };
+    // formatDateSmart gives the Jalali date the shop reads, and falls back to
+    // ISO on the other languages
+    var date = (typeof window.formatDateSmart === 'function') ? window.formatDateSmart(d.toISOString()) : d.toLocaleDateString('fa-IR');
+    return { date: date, time: d.toLocaleTimeString('fa-IR', { hour:'2-digit', minute:'2-digit' }) };
+}
+
+// exported so the guard can be tested directly: an entry with a corrupt date
+// cannot be written through logActivity, which always stamps the time, but one
+// can arrive from an import, a backup or an older build
+window.logWhen = logWhen;
+
 function renderActivityLog(){
     var container = document.getElementById('activityLogList');
     if(!container) return;
@@ -419,20 +463,33 @@ function renderActivityLog(){
         container.innerHTML = '<p style="text-align:center; color:rgba(255,255,255,0.5); padding:20px;">لاگی ثبت نشده</p>';
         return;
     }
-    var typeIcons = {session:'🎮', membership:'🎫', timer:'⏰', payment:'💰', client:'👤', reservation:'📅', backup:'💾', operator:'🔑', buffet:'🍕', expense:'💸'};
-    container.innerHTML = activityLog.slice(0, 50).map(function(log){
-        return '<div style="display:flex; gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.85rem;">' +
-            '<span style="font-size:1.2rem;">' + (typeIcons[log.type] || '📋') + '</span>' +
-            '<div style="flex:1;">' +
-                '<p><b>' + esc(log.description) + '</b></p>' +
-                (log.details ? '<p style="font-size:0.75rem; color:rgba(255,255,255,0.5);">' + esc(log.details) + '</p>' : '') +
-            '</div>' +
-            '<div style="text-align:left;">' +
-                '<p style="font-size:0.7rem; color:rgba(255,255,255,0.4);">' + new Date(log.date).toLocaleTimeString('fa-IR') + '</p>' +
-                '<p style="font-size:0.7rem; color:rgba(255,255,255,0.5);">' + esc(log.operator) + '</p>' +
-            '</div>' +
-        '</div>';
+    var rows = activityLog.slice(0, LOG_ROWS_SHOWN);
+    var shown = rows.map(function(log){
+        var type = String(log.type || '');
+        var icon = LOG_TYPE_ICONS[type] || '📋';
+        var name = LOG_TYPE_NAMES[type] || (type || '—');
+        var when = logWhen(log.date);
+        return '<tr>' +
+            '<td class="log-type">' + icon + ' ' + esc(name) + '</td>' +
+            '<td class="log-what">' + esc(log.description || '—') + '</td>' +
+            '<td class="log-detail">' + (log.details ? esc(log.details) : '—') + '</td>' +
+            '<td class="log-who">' + esc(log.operator || 'سیستم') + '</td>' +
+            '<td class="log-when"><span class="log-date">' + esc(when.date) + '</span><span class="log-time">' + esc(when.time) + '</span></td>' +
+        '</tr>';
     }).join('');
+    var note = '';
+    if(activityLog.length > rows.length){
+        // never hide rows silently: say how many are left behind
+        note = '<p class="log-more">نمایش ' + rows.length.toLocaleString('fa-IR')
+            + ' مورد از ' + activityLog.length.toLocaleString('fa-IR') + ' مورد ثبت‌شده</p>';
+    }
+    container.innerHTML =
+        '<table class="log-table">' +
+            '<thead><tr>' +
+                '<th>نوع</th><th>شرح</th><th>جزئیات</th><th>کاربر</th><th>تاریخ و ساعت</th>' +
+            '</tr></thead>' +
+            '<tbody>' + shown + '</tbody>' +
+        '</table>' + note;
 }
 window.renderActivityLog = renderActivityLog;
 

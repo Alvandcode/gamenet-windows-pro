@@ -137,6 +137,80 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
      'scheduled backup is in the same grid');
   ok(/compact-cards[\s\S]{0,6000}دسترسی سریع/.test(settings), 'quick access is in it too');
 
+  console.log('--- the settings and tools cards sit in rows ---');
+  /* Both pairs the shop asked for. A pair only counts if the two cards share one
+   * wrapper: without that they are back to one row each, whatever the CSS says.
+   * So split the section at each grid wrapper and look at what falls between two
+   * of them - a regex cannot tell which grid a card belongs to. */
+  function rowsIn(sectionHtml) {
+    const parts = sectionHtml.split('<div class="compact-cards">').slice(1);
+    // each part runs until the next wrapper, which is close enough: what matters
+    // is which cards share a wrapper, not where the wrapper ends
+    return parts.map((p) => (p.split('<div class="compact-cards">')[0]));
+  }
+  const settingsSec = html.slice(html.indexOf('id="settings-section"'), html.indexOf('id="stationHours-section"'));
+  const setRows = rowsIn(settingsSec);
+  const langRow = setRows.findIndex((r) => r.includes('id="langFA"'));
+  const liteRow = setRows.findIndex((r) => r.includes('liteModeToggle'));
+  ok(langRow >= 0, 'the language card sits inside a card grid');
+  ok(liteRow >= 0, 'the lite-mode card sits inside a card grid');
+  ok(langRow >= 0 && langRow === liteRow, 'and they share that one row, saving a row of scrolling',
+     'language in row ' + langRow + ', lite in row ' + liteRow);
+  ok((settingsSec.match(/id="liteModeToggle"/g) || []).length === 1,
+     'there is only one lite-mode card, not a leftover copy');
+
+  const toolsSec = html.slice(html.indexOf('id="tools-section"'), html.indexOf('id="phonebook-section"'));
+  const toolRows = rowsIn(toolsSec);
+  const rowOf = (needle) => toolRows.findIndex((r) => r.includes(needle));
+  const receipt = rowOf('چاپ رسید حرارتی');
+  const portal = rowOf('پورتال مشتری');
+  const security = rowOf('امنیت و رمزنگاری');
+  ok(receipt >= 0 && receipt === portal && portal === security,
+     'receipt, customer portal and security share one row',
+     [receipt, portal, security].join('/'));
+  const loyalty = rowOf('امتیاز وفاداری');
+  const qr = rowOf('QR مشتری');
+  ok(loyalty >= 0 && loyalty === qr, 'loyalty points and the customer QR share a row',
+     loyalty + '/' + qr);
+  ok(receipt !== loyalty, 'and those are two different rows', receipt + ' vs ' + loyalty);
+  // the receipt and the portal are siblings in one grid. The old wrapper was a
+  // 1fr 1fr grid holding a single child, so half the width sat empty.
+  ok(!/grid-template-columns:\s*1fr 1fr[^>]*>\s*<div class="compact-cards">/.test(toolsSec),
+     'the half-empty outer grid is gone');
+  for (const c of ['posConfigContent', 'portalContent', 'securityPanelContent',
+    'loyaltyCustomerSelect', 'qrCustomerSelect', 'customerQRContent', 'loyaltyPointsContent']) {
+    ok(new RegExp('id="' + c + '"').test(toolsSec), c + ' survived the reshuffle');
+  }
+
+  console.log('--- the activity log is a table that can be read ---');
+  /* Each entry used to be a flex row whose two halves drifted apart at any
+   * width, with no header and no columns. It is a table now, banded white and
+   * very light grey with black ink - deliberately not theme colours, because a
+   * log nobody can read is not a log. */
+  ok(/\.log-table\s*\{[^}]*border-collapse/.test(css), 'the log is a real table');
+  const oddRow = (css.match(/\.log-table tbody tr:nth-child\(odd\)\s*\{([^}]*)\}/) || ['', ''])[1];
+  const evenRow = (css.match(/\.log-table tbody tr:nth-child\(even\)\s*\{([^}]*)\}/) || ['', ''])[1];
+  ok(/#fff/i.test(oddRow), 'odd rows white', oddRow.trim());
+  ok(/#f3f4f6/i.test(evenRow), 'even rows a very light grey', evenRow.trim());
+  ok(/color:\s*#111111/.test(css), 'the ink is black');
+  const logHead = (css.match(/\.log-table th\s*\{([^}]*)\}/) || ['', ''])[1];
+  ok(/color:\s*#000000/.test(logHead), 'and the headings are black too',
+     logHead.replace(/\s+/g, ' ').trim());
+  const nf = fs.readFileSync(path.join(ROOT, 'src/js/new-features.js'), 'utf8');
+  const logRender = nf.slice(nf.indexOf('function renderActivityLog'));
+  // every field the writer stores has to get its own cell, not just a sentence
+  for (const field of ['type', 'description', 'details', 'operator', 'date']) {
+    ok(logRender.includes('log.' + field), 'the table has a column for ' + field);
+  }
+  ok(/<th>نوع<\/th>[\s\S]*?<th>شرح<\/th>[\s\S]*?<th>جزئیات<\/th>[\s\S]*?<th>کاربر<\/th>[\s\S]*?<th>تاریخ و ساعت<\/th>/.test(logRender),
+     'and a header row naming all five');
+  ok(/LOG_ROWS_SHOWN/.test(logRender) && /log-more/.test(logRender),
+     'and it admits when it shows only some of the entries');
+  const appSrc = fs.readFileSync(path.join(ROOT, 'src/js/app.js'), 'utf8');
+  for (const k of ['نوع', 'شرح', 'جزئیات', 'کاربر', 'تاریخ و ساعت']) {
+    ok(new RegExp('"' + k + '":\\s*\\{en:').test(appSrc), 'the "' + k + '" column is translated');
+  }
+
   console.log('--- the panel colours are per theme, not one hard-coded navy ---');
   ok(/--panel-bg\s*:/.test(css), '--panel-bg exists');
   ok(/--panel-border\s*:/.test(css), '--panel-border exists');

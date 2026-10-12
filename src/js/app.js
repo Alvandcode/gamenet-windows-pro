@@ -1353,14 +1353,12 @@
     // "current version" label stuck on the old number.
     const APP_VERSION = (typeof window.APP_VERSION === 'string' && window.APP_VERSION) ? window.APP_VERSION : '1.8.1';
     let latestRelease = null;
-    function toggleSettingsMenu(el){
-        // The settings block is a normal sidebar group now: same open/close logic,
-        // kept under its own function name because the nav markup calls it.
-        // Closed -> just open it; already open -> jump to the settings page.
-        const g=document.querySelector('.nav-group[data-group="settings"]');
-        if(g && !g.classList.contains('open')){ setNavGroupOpen('settings', true); return; }
-        showSection('settings', el||document.getElementById('navSettings'));
-    }
+    /* The settings group used to have its own open-only handler: the first click
+     * opened it and every click after that navigated to the settings page, so it
+     * was the one group in the sidebar that could not be collapsed. There was no
+     * code path anywhere that removed `open` from it - and since showSection()
+     * re-opens a collapsed group, it was pinned open for good. It is an ordinary
+     * group now, like the other seven, and the whole head is the button. */
     // ---------- Sidebar groups ----------
     // The sidebar is one flat list of ~28 entries; related features (money,
     // customers, tools...) were impossible to tell apart. Items are grouped and
@@ -1803,6 +1801,12 @@
         "آخرین بازی‌ها": {en:"Recent Sessions", ar:"الجلسات الأخيرة"},
         "سابقه‌ای ثبت نشده": {en:"No history recorded", ar:"لا يوجد سجل مسجل"},
         "لاگی ثبت نشده": {en:"No logs yet", ar:"لا توجد سجلات"},
+        // the activity log table headers
+        "نوع": {en:"Type", ar:"النوع"},
+        "شرح": {en:"What happened", ar:"ما حدث"},
+        "جزئیات": {en:"Details", ar:"التفاصيل"},
+        "کاربر": {en:"User", ar:"المستخدم"},
+        "تاریخ و ساعت": {en:"Date and time", ar:"التاريخ والوقت"},
         "فایل CSV دانلود شد": {en:"CSV file downloaded", ar:"تم تنزيل ملف CSV"},
         "ذخیره شد": {en:"Saved", ar:"تم الحفظ"},  // careful: substring of "مشخصات مدیر ذخیره شد"? contains "ذخیره شد" ✓ translates part — fine.
         "شعبه اضافه شد": {en:"Branch added", ar:"تمت إضافة الفرع"},

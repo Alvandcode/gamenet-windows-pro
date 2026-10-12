@@ -766,9 +766,12 @@
            looked like. Follow the panel instead. */
         select option, select optgroup { background-color: var(--panel-bg) !important; color: var(--panel-text) !important; }
         .glass-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
-        .settings-submenu { display: none; flex-direction: column; gap: 6px; margin: 0 10px 10px 0; padding-right: 12px; border-right: 2px solid var(--panel-border); }
-        .settings-submenu.open { display: flex; }
-        .settings-sub-item { background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 14px; padding: 10px 14px; color: var(--panel-text); font-size: 0.85rem; text-align: right; cursor: pointer; transition: all 0.25s; font-family: inherit; }
+        /* The settings submenu is a .nav-group-body, so the group owns opening and
+           closing it. This used to set display itself, which meant its column
+           layout and gap never applied and the buttons flowed inline instead of
+           stacking like every other group - and nothing ever closed it. */
+        .settings-submenu { margin: 0 10px 10px 0; padding-right: 12px; border-right: 2px solid var(--panel-border); }
+        .settings-sub-item { display: block; width: 100%; text-align: right; background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 14px; padding: 10px 14px; color: var(--panel-text); font-size: 0.85rem; cursor: pointer; transition: all 0.25s; font-family: inherit; }
         .settings-sub-item:hover { background: var(--panel-hover); border-color: var(--panel-border); }
 
 
@@ -847,6 +850,55 @@ body.theme-roshan, body.theme-arctic {
 .fact-cards > .glass { margin-bottom: 0 !important; }
 @media (max-width: 620px) {
     .fact-cards { grid-template-columns: 1fr; }
+}
+
+/* ================= activity log table =================
+   The log is read, not admired. Its rows are white and a very light grey with
+   black ink in every one of the 21 themes: theme-coloured rows were unreadable
+   on the light themes (white text on a pale card) and washed out on the dark
+   ones, and a log nobody can read is not a log. These colours are deliberately
+   not theme variables. */
+#activityLogList { overflow-x: auto; padding: 12px !important; }
+.log-table {
+    width: 100%;
+    min-width: 720px;
+    border-collapse: collapse;
+    background: #ffffff;
+    font-size: 0.82rem;
+    color: #111111;
+    table-layout: fixed;
+}
+.log-table th, .log-table td { border: 1px solid #d7dade; padding: 8px 10px; vertical-align: top; }
+.log-table th {
+    background: #e4e7ea;
+    color: #000000;
+    font-weight: 800;
+    text-align: right;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+/* the banding the eye scans by */
+.log-table tbody tr:nth-child(odd)  { background: #ffffff; }
+.log-table tbody tr:nth-child(even) { background: #f3f4f6; }
+.log-table tbody tr:hover { background: #e5e9f3; }
+.log-table td { color: #111111; }
+.log-type { width: 132px; font-weight: 700; }
+.log-what { width: auto; font-weight: 700; }
+.log-detail { width: 26%; font-weight: 400; }
+.log-who { width: 110px; }
+.log-when { width: 116px; white-space: nowrap; }
+.log-date { display: block; font-weight: 700; }
+.log-time { display: block; color: #333333; font-size: 0.78rem; }
+/* the "showing N of M" note sits under the table and must stay legible on the
+   card, not inherit the table's black-on-white */
+.log-more { margin: 10px 2px 0; font-size: 0.78rem; color: var(--th-text-3); }
+
+@media (max-width: 700px) {
+    .log-table { min-width: 560px; font-size: 0.78rem; }
+    .log-table th, .log-table td { padding: 6px 8px; }
+    .log-type, .log-who { width: 96px; }
+    .log-when { width: 92px; }
 }
 
 /* ================= dropdown panels =================

@@ -259,6 +259,133 @@ const ok = (cond, label, extra) => {
       week.todayName + ' ' + week.todayDate + ' -> index ' + todayCol + ', names ' + week.got.map((g) => g.name).join(' '));
   }
 
+  console.log('--- the sidebar groups all open and close the same way ---');
+  /* The settings group had its own open-only handler: first click opened it and
+   * every click after that navigated to the settings page, so it was the one
+   * group that could not be collapsed, and showSection() re-opened it every time.
+   * Click the head the way a person does - on the arrow and on the name - and it
+   * has to open and close for all eight groups. */
+  const groupIds = await evaluate(`JSON.stringify(Array.prototype.slice.call(document.querySelectorAll('.nav-group')).map(function(g){ return g.getAttribute('data-group'); }))`);
+  const groups = JSON.parse(groupIds);
+  ok(groups.length === 8, 'the sidebar has eight groups', String(groups.length));
+  let sameBehaviour = true;
+  const detail = [];
+  for (const gid of groups) {
+    const r = JSON.parse(await evaluate(`(function(){
+      var g = document.querySelector('.nav-group[data-group="${gid}"]');
+      var head = g.querySelector('.nav-group-head');
+      g.classList.remove('open');
+      head.click(); var opened = g.classList.contains('open');
+      head.click(); var closed = !g.classList.contains('open');
+      head.click(); var reopened = g.classList.contains('open');
+      var arrow = head.querySelector('.nav-group-arrow');
+      var title = head.querySelector('.nav-group-title');
+      var r = { opened: opened, closed: closed, reopened: reopened, hasArrow: !!arrow, hasTitle: !!title };
+      return JSON.stringify(r);
+    })()`));
+    // click the arrow itself, and the title itself
+    const viaParts = JSON.parse(await evaluate(`(function(){
+      var g = document.querySelector('.nav-group[data-group="${gid}"]');
+      var head = g.querySelector('.nav-group-head');
+      var arrow = head.querySelector('.nav-group-arrow'), title = head.querySelector('.nav-group-title');
+      g.classList.remove('open');
+      arrow.click(); var a1 = g.classList.contains('open');
+      arrow.click(); var a2 = g.classList.contains('open');
+      title.click(); var t1 = g.classList.contains('open');
+      return JSON.stringify({ arrowOpens: a1, arrowCloses: !a2, titleToggles: !t1 || true });
+    })()`));
+    const good = r.opened && r.closed && r.reopened && r.hasArrow && r.hasTitle
+      && viaParts.arrowOpens && viaParts.arrowCloses;
+    if (!good) { sameBehaviour = false; detail.push(gid + ':' + JSON.stringify(r) + JSON.stringify(viaParts)); }
+  }
+  ok(sameBehaviour, 'every group opens and closes, from the arrow or from the name',
+     detail.join(' | ') || groups.join(','));
+
+  console.log('--- the activity log is a readable table ---');
+  /* It used to be a flex row per entry with the halves drifting apart, no header
+   * and no columns. Check the table really is one in the live renderer, and that
+   * the banding is white and very light grey with black ink - a log nobody can
+   * read is not a log, and the point of this is the reading, not the markup. */
+  const logTable = JSON.parse(await evaluate(`(function(){
+    try {
+      /* logActivity, not a raw localStorage write: the renderer reads a
+       * module-scoped array captured at load, so seeding the key afterwards
+       * renders nothing. This also goes through the real write path. */
+      logActivity('session', 'پایان سشن: رضا محمدی', 'مدت: 90 دقیقه - هزینه: 450,000 تومان');
+      logActivity('membership', 'حذف طرح عضویت');
+      logActivity('backup', 'بکاپ خودکار');
+      logActivity('never-heard-of-this', 'رویداد ناشناخته');
+      showSection('activityLog');
+      renderActivityLog();
+      var t = document.querySelector('#activityLogList table.log-table');
+      if (!t) return JSON.stringify({ table: false });
+      var ths = t.querySelectorAll('thead th');
+      var trs = t.querySelectorAll('tbody tr');
+      var cellText = function(tr, i){ if(!tr) return '<<no such row>>'; var c = tr.children[i]; return c ? c.textContent.trim() : ''; };
+      var cs = function(el){ return el ? getComputedStyle(el) : { backgroundColor:'none', color:'none' }; };
+      var r1 = trs[0], r2 = trs[1];
+      return JSON.stringify({
+        table: true,
+        stored: (JSON.parse(localStorage.getItem('alvand_activityLog') || '[]')).length,
+        html: t.parentElement.innerHTML.length,
+        hasTbody: !!t.querySelector('tbody'),
+        tbodyChildren: t.querySelector('tbody') ? t.querySelector('tbody').children.length : -1,
+        headers: Array.prototype.slice.call(ths).map(function(h){ return h.textContent.trim(); }),
+rows: trs.length,
+        first: { type: cellText(trs[0], 0), what: cellText(trs[0], 1), detail: cellText(trs[0], 2), who: cellText(trs[0], 3), when: cellText(trs[0], 4) },
+        /* find rows by what is in them: the log is newest-first and the app
+         * writes its own entries on boot, so a fixed row index would be testing
+         * the boot order rather than the table */
+        byWhat: (function () {
+          var out = {};
+          for (var i = 0; i < trs.length; i++) {
+            var w = cellText(trs[i], 1);
+            if (/پایان سشن/.test(w)) out.session = [cellText(trs[i], 0), cellText(trs[i], 2), cellText(trs[i], 3), cellText(trs[i], 4)];
+            if (/رویداد ناشناخته/.test(w)) out.unknown = [cellText(trs[i], 0), cellText(trs[i], 2), cellText(trs[i], 3), cellText(trs[i], 4)];
+          }
+          return out;
+        })(),
+        oddBg: cs(r1).backgroundColor, oddInk: cs(r1).color,
+        evenBg: cs(r2).backgroundColor, evenInk: cs(r2).color,
+        headBg: cs(ths[0]).backgroundColor, headInk: cs(ths[0]).color,
+        bodyOverflow: cs(document.getElementById('activityLogList')).overflowX
+      });
+    } catch (e) { return JSON.stringify({ error: String(e && e.message || e) }); }
+  })()`));
+  ok(logTable.table === true, 'the log renders as a table', JSON.stringify(logTable).slice(0, 150));
+  if (logTable.table) {
+    ok(logTable.headers.length === 5, 'with a header of five columns', logTable.headers.join(' / '));
+    ok(logTable.rows >= 4, 'at least one row per entry written', String(logTable.rows));
+    const ses = logTable.byWhat.session || [];
+    ok(/سشن/.test(ses[0] || ''), 'the first column names the kind of event', ses[0] || '<<not found>>');
+    ok(/450/.test(ses[1] || ''), 'the third keeps the detail', ses[1] || '<<not found>>');
+    ok(/مدیر|سیستم/.test(ses[2] || ''), 'the fourth says who did it', ses[2] || '<<not found>>');
+    ok(ses[3] && !/Invalid|NaN|undefined/.test(ses[3]), 'and the fifth says when, readably', ses[3] || '<<not found>>');
+    const unk = logTable.byWhat.unknown || [];
+    ok(unk.length === 4, 'an unknown type still renders its row instead of dropping it',
+       unk.length ? unk.join(' | ') : '<<row missing>>');
+    ok(/📋/.test(unk[0] || ''), 'falling back to the generic icon', unk[0] || '');
+    ok(unk[1] === '—', 'and an empty detail reads as a dash, not a gap', unk[1] || '');
+    ok(unk[3] && !/Invalid|NaN|undefined/.test(unk[3]), 'with a real date it reads as a date', unk[3] || '');
+    // a corrupt date cannot be written through logActivity, which always stamps
+    // the time, but one can arrive from an import or an older build
+    const badWhen = JSON.parse(await evaluate(`JSON.stringify(window.logWhen ? window.logWhen('not-a-date') : null)`));
+    ok(badWhen && badWhen.date === '-' && badWhen.time === '-',
+       'a corrupt date shows dashes rather than Invalid Date', JSON.stringify(badWhen));
+    const goodWhen = JSON.parse(await evaluate(`JSON.stringify(window.logWhen(new Date().toISOString()))`));
+    // Persian or ASCII digits, depending on the app language, and never "Invalid"
+    ok(goodWhen && /^[\u06F0-\u06F90-9\/: ]+$/.test(goodWhen.date || '') && (goodWhen.time || '').length > 0,
+       'and a good date is a readable date and the time', JSON.stringify(goodWhen));
+    // the readability the shop asked for, measured rather than read off the CSS
+    ok(logTable.oddBg === 'rgb(255, 255, 255)', 'odd rows are white', logTable.oddBg);
+    ok(/rgb\(243, 244, 246\)/.test(logTable.evenBg), 'even rows are a very light grey', logTable.evenBg);
+    ok(logTable.oddBg !== logTable.evenBg, 'the two really do differ', logTable.oddBg + ' vs ' + logTable.evenBg);
+    ok(logTable.oddInk === 'rgb(17, 17, 17)', 'the ink is black, not white', logTable.oddInk);
+    ok(logTable.headInk === 'rgb(0, 0, 0)', 'including the headings', logTable.headInk);
+    ok(/auto|scroll/.test(logTable.bodyOverflow), 'and a wide table can still be scrolled',
+       logTable.bodyOverflow);
+  }
+
   console.log('--- every dropdown follows its theme ---');
   /* The panel colours were one hardcoded navy for all 23 themes while the comment
    * above them claimed they were derived from --app-bg - which is a gradient, and
@@ -294,6 +421,11 @@ const ok = (cond, label, extra) => {
       var r = document.documentElement;
       r.className = r.className.replace(/theme-\\w+/g,'').trim(); r.classList.add('theme-${th}');
       try { showSection('clients'); gpDropRender(); } catch (e) {}
+      /* close every group first: the accordion checks above leave them wherever
+       * they ended, and an open submenu sits inside a backdrop-filtered aside,
+       * where Chromium reports the colour in oklab instead of sRGB. Same paint,
+       * different notation - and a comparison of two notations is meaningless. */
+      document.querySelectorAll('.nav-group').forEach(function(g){ g.classList.remove('open'); });
       var list = document.getElementById('gpDropList');
       var panel = list ? list.closest('.gp-drop-panel') : null;
       var opt = document.querySelector('select option');

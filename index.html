@@ -267,7 +267,7 @@
                 </div>
 
                 <div class="nav-group" data-group="settings">
-                    <div class="nav-group-head" onclick="toggleSettingsMenu(this)" id="navSettings">
+                    <div class="nav-group-head" onclick="toggleNavGroup('settings')" id="navSettings">
                         <span class="nav-group-icon">&#9881;</span><span class="nav-group-title">تنظیمات</span><span class="nav-group-arrow" id="settingsArrow">&#9666;</span>
                     </div>
                     <div class="settings-submenu nav-group-body" id="settingsSubmenu">
@@ -735,12 +735,26 @@
             <!-- Settings Section -->
             <section id="settings-section" class="section" style="display: none;">
                 <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:24px;">⚙️ تنظیمات</h1>
-                <div class="glass" style="padding:20px; margin-bottom:16px;">
-                    <h3 style="margin-bottom:12px;">🌐 زبان / Language / اللغة</h3>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <button class="glass-btn lang-btn" id="langFA" onclick="setLang('fa')">🇮🇷 فارسی</button>
-                        <button class="glass-btn lang-btn" id="langEN" onclick="setLang('en')">🇬🇧 English</button>
-                        <button class="glass-btn lang-btn" id="langAR" onclick="setLang('ar')">🇸🇦 العربية</button>
+                <!-- Language and lite mode are two short cards that each used to take a whole
+                     row on their own. They sit side by side now. -->
+                <div class="compact-cards">
+                    <div class="glass" style="padding:14px 16px;">
+                        <h3 style="margin-bottom:8px; font-size:0.95rem;">🌐 زبان / Language / اللغة</h3>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button class="glass-btn lang-btn" id="langFA" onclick="setLang('fa')">🇮🇷 فارسی</button>
+                            <button class="glass-btn lang-btn" id="langEN" onclick="setLang('en')">🇬🇧 English</button>
+                            <button class="glass-btn lang-btn" id="langAR" onclick="setLang('ar')">🇸🇦 العربية</button>
+                        </div>
+                    </div>
+                    <div class="glass" style="padding:14px 16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h3 style="margin-bottom:4px; font-size:0.95rem;">🪶 حالت سبک</h3>
+                            <p style="color:rgba(255,255,255,0.5); font-size:0.78rem;">برای کامپیوترهای ضعیف: سایه شیشه‌ای و انیمیشن‌ها خاموش می‌شود</p>
+                        </div>
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="liteModeToggle" onchange="setLiteMode(this.checked)" style="width:20px; height:20px;">
+                            <span>فعال</span>
+                        </label>
                     </div>
                 </div>
                 <div class="glass" id="adminCredCard" style="padding:20px; margin-bottom:16px; display:none;">
@@ -768,16 +782,6 @@
                     <h3 style="margin-bottom:12px;">🎨 انتخاب تم (21 تم گرافیکی)</h3>
                     <p style="color:rgba(255,255,255,0.5); font-size:0.8rem; margin-bottom:12px;">تم مطابق محیط کلوپ انتخاب کن - روی هر رنگ کلیک کن</p>
                     <div class="theme-grid" id="themeGrid"></div>
-                </div>
-                <div class="glass" style="padding:16px 20px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                    <div>
-                        <h3 style="margin-bottom:4px;">🪶 حالت سبک</h3>
-                        <p style="color:rgba(255,255,255,0.5); font-size:0.8rem;">برای کامپیوترهای ضعیف: سایه شیشه‌ای و انیمیشن‌ها خاموش می‌شود</p>
-                    </div>
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                        <input type="checkbox" id="liteModeToggle" onchange="setLiteMode(this.checked)" style="width:20px; height:20px;">
-                        <span>فعال</span>
-                    </label>
                 </div>
                 <div class="glass" style="padding:20px; margin-bottom:16px;">
                     <h3 style="margin-bottom:12px;">🔊 تنظیم صدای هشدار</h3>
@@ -1106,27 +1110,36 @@
             <section id="tools-section" class="section" style="display: none;">
                 <h1 style="font-size:1.8rem; font-weight:900; margin-bottom:8px;">🧰 ابزارها</h1>
                 <p style="color:rgba(255,255,255,0.5); margin-bottom:20px; font-size:0.9rem;">خروجی اکسل، چاپ رسید، کارتخوان، پورتال مشتری و امنیت</p>
-                <div class="glass" style="padding:20px; margin-bottom:16px;">
-                    <h3 style="margin-bottom:12px;">📤 خروجی CSV (اکسل)</h3>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <button class="glass-btn" onclick="exportSessionsCSV('daily')">سشن‌های امروز</button>
-                        <button class="glass-btn" onclick="exportSessionsCSV('weekly')">سشن‌های هفته</button>
-                        <button class="glass-btn" onclick="exportSessionsCSV('monthly')">سشن‌های ماه</button>
-                        <button class="glass-btn" onclick="exportExpensesCSV()">هزینه‌ها</button>
-                        <button class="glass-btn" onclick="exportCustomersCSV()">مشتریان</button>
+                <!-- CSV export and the card reader are two more short cards that each took a
+                     row of their own. -->
+                <div class="compact-cards">
+                    <div class="glass" style="padding:20px;">
+                        <h3 style="margin-bottom:12px;">📤 خروجی CSV (اکسل)</h3>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button class="glass-btn" onclick="exportSessionsCSV('daily')">سشن‌های امروز</button>
+                            <button class="glass-btn" onclick="exportSessionsCSV('weekly')">سشن‌های هفته</button>
+                            <button class="glass-btn" onclick="exportSessionsCSV('monthly')">سشن‌های ماه</button>
+                            <button class="glass-btn" onclick="exportExpensesCSV()">هزینه‌ها</button>
+                            <button class="glass-btn" onclick="exportCustomersCSV()">مشتریان</button>
+                        </div>
+                    </div>
+                    <div class="glass" style="padding:20px;">
+                        <h3 style="margin-bottom:12px;">💳 دستگاه کارتخوان</h3>
+                        <div id="posConfigContent"></div>
                     </div>
                 </div>
-                <div class="glass" style="padding:20px; margin-bottom:16px;">
-                    <h3 style="margin-bottom:12px;">🧾 چاپ رسید حرارتی</h3>
-                    <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:12px;">رسید ۸۰ میلی‌متری برای پرینتر حرارتی</p>
-                    <button class="glass-btn" onclick="setShopInfo()">🏪 تنظیم نام و تلفن مغازه</button>
-                </div>
-                <div class="glass" style="padding:20px; margin-bottom:16px;">
-                    <h3 style="margin-bottom:12px;">💳 دستگاه کارتخوان</h3>
-                    <div id="posConfigContent"></div>
-                </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-                    <div class="compact-cards"><div class="glass" style="padding:20px;">
+                <!-- receipt, portal and security share one row; loyalty and the customer QR
+                     share the next. The old wrapper was a two-column grid with a
+                     single child, so the grid that was supposed to hold the
+                     portal and security was confined to half the width and its
+                     second column was empty. -->
+                <div class="compact-cards">
+                    <div class="glass" style="padding:20px;">
+                        <h3 style="margin-bottom:12px;">🧾 چاپ رسید حرارتی</h3>
+                        <p style="color:rgba(255,255,255,0.5); font-size:0.85rem; margin-bottom:12px;">رسید ۸۰ میلی‌متری برای پرینتر حرارتی</p>
+                        <button class="glass-btn" onclick="setShopInfo()">🏪 تنظیم نام و تلفن مغازه</button>
+                    </div>
+                    <div class="glass" style="padding:20px;">
                         <h3 style="margin-bottom:12px;">📱 پورتال مشتری (نمای زنده)</h3>
                         <div id="portalContent"></div>
                         <button class="glass-btn" style="margin-top:12px;" onclick="renderCustomerPortal()">🔄 بروزرسانی</button>
@@ -1134,25 +1147,27 @@
                     <div class="glass" style="padding:20px;">
                         <h3 style="margin-bottom:12px;">🔐 امنیت و رمزنگاری</h3>
                         <div id="securityPanelContent"></div>
-                    </div></div>
-                </div>
-                <div class="glass" style="padding:20px; margin-top:16px;">
-                    <h3 style="margin-bottom:12px;">⭐ امتیاز وفاداری مشتری</h3>
-                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
-                        <select id="loyaltyCustomerSelect" style="flex:1;" onchange="if(this.value)renderLoyaltyPoints(parseInt(this.value))">
-                            <option value="">انتخاب مشتری...</option>
-                        </select>
                     </div>
-                    <div id="loyaltyPointsContent"></div>
                 </div>
-                <div class="glass" style="padding:20px; margin-top:16px;">
-                    <h3 style="margin-bottom:12px;">📷 QR مشتری</h3>
-                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
-                        <select id="qrCustomerSelect" style="flex:1;" onchange="if(this.value)renderCustomerQR(parseInt(this.value), this.options[this.selectedIndex].text)">
-                            <option value="">انتخاب مشتری...</option>
-                        </select>
+                <div class="compact-cards">
+                    <div class="glass" style="padding:20px;">
+                        <h3 style="margin-bottom:12px;">⭐ امتیاز وفاداری مشتری</h3>
+                        <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                            <select id="loyaltyCustomerSelect" style="flex:1;" onchange="if(this.value)renderLoyaltyPoints(parseInt(this.value))">
+                                <option value="">انتخاب مشتری...</option>
+                            </select>
+                        </div>
+                        <div id="loyaltyPointsContent"></div>
                     </div>
-                    <div id="customerQRContent"></div>
+                    <div class="glass" style="padding:20px;">
+                        <h3 style="margin-bottom:12px;">📷 QR مشتری</h3>
+                        <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+                            <select id="qrCustomerSelect" style="flex:1;" onchange="if(this.value)renderCustomerQR(parseInt(this.value), this.options[this.selectedIndex].text)">
+                                <option value="">انتخاب مشتری...</option>
+                            </select>
+                        </div>
+                        <div id="customerQRContent"></div>
+                    </div>
                 </div>
             </section>
 
