@@ -211,6 +211,54 @@ const ok = (cond, label, extra) => {
     ok(/کارکرد/.test(G.report), 'the report is about the customer', G.report.slice(0, 100));
   }
 
+  console.log('--- the weekly chart labels the days it actually sums ---');
+  /* The bars were a rolling "last 7 days" window sitting under a fixed
+   * Saturday-to-Friday label row, so the two described different weeks: on a
+   * Monday the newest column, which summed today, carried the Friday label, and
+   * every one of the seven was a day out. The chart now takes both the bars and
+   * their names from one calendar week, so this seeds a known amount on the
+   * Saturday of the current week, checks it lands under شنبه, and then checks
+   * each column's name against the date it is summing. */
+  const weekRaw = await evaluate(`(function(){
+    var base = new Date(); base.setHours(0,0,0,0);
+    var sat = weekStart(base);
+    sessions = [];
+    sessions.push({ id:'probe', date:new Date(sat.getTime() + 12*3600*1000).toISOString(), duration:3600, cost:1000, billed:true, headcount:1 });
+    renderWeeklyChart();
+    var FA = ['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'];
+    var cols = Array.prototype.slice.call(document.querySelectorAll('#weeklyChart > div'));
+    var got = cols.map(function(c){
+      return { value: c.children[0].textContent.trim(), name: c.children[2].textContent.trim(), date: c.children[3].textContent.trim() };
+    });
+    var want = [];
+    for (var i=0;i<7;i++){
+      var d = new Date(sat.getTime()); d.setDate(d.getDate()+i);
+      want.push({ name: FA[(d.getDay()+1)%7], date: String(d.getDate()), value: i===0 ? '1k' : '0k' });
+    }
+    return JSON.stringify({ columns: cols.length, got: got, want: want,
+      todayDate: String(base.getDate()), todayName: FA[(base.getDay()+1)%7] });
+  })()`);
+  // the old markup had two children per column and the labels in a separate row,
+  // so reading a name off a column threw. Say so instead of dying silently.
+  const week = (weekRaw && weekRaw.__err) ? null : JSON.parse(weekRaw);
+  ok(!!week, 'the chart names each column with the day it sums',
+    week ? '' : String(weekRaw.__err).replace(/\s+/g, ' ').slice(0, 150));
+  if (week) {
+    ok(week.columns === 7, 'the chart has one column per day of the week', String(week.columns));
+    const badName = week.got.filter((g, i) => g.name !== week.want[i].name);
+    const badDate = week.got.filter((g, i) => g.date !== week.want[i].date);
+    const badValue = week.got.filter((g, i) => g.value !== week.want[i].value);
+    ok(badName.length === 0, 'every column is named after the day it sums',
+      week.got.map((g) => g.name).join(' '));
+    ok(badDate.length === 0, 'and after the right date of this week',
+      week.got.map((g) => g.date).join('/') + ' vs ' + week.want.map((w) => w.date).join('/'));
+    ok(badValue.length === 0, "one day's money is under that day only",
+      week.got.map((g) => g.value).join(' '));
+    const todayCol = week.got.findIndex((g) => g.name === week.todayName && g.date === week.todayDate);
+    ok(todayCol >= 0, 'today sits in the column labelled with today',
+      week.todayName + ' ' + week.todayDate + ' -> index ' + todayCol + ', names ' + week.got.map((g) => g.name).join(' '));
+  }
+
   console.log('--- every dropdown follows its theme ---');
   /* The panel colours were one hardcoded navy for all 23 themes while the comment
    * above them claimed they were derived from --app-bg - which is a gradient, and

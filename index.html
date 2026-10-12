@@ -329,10 +329,13 @@
                     <h2 style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
                         <span>&#128202;</span> نمودار درآمد هفتگی
                     </h2>
-                    <div id="weeklyChart" style="display: flex; align-items: flex-end; justify-content: space-around; height: 200px; gap: 15px; padding: 20px 0;"></div>
-                    <div style="display: flex; justify-content: space-around; margin-top: 10px; color: rgba(255,255,255,0.5); font-size: 0.8rem;">
-                        <span>شنبه</span><span>یکشنبه</span><span>دوشنبه</span><span>سه‌شنبه</span><span>چهارشنبه</span><span>پنجشنبه</span><span>جمعه</span>
-                    </div>
+                    <!-- The day names are rendered inside each column by
+                         renderWeeklyChart(), from the same dates as the bars.
+                         A separate label row here described a fixed
+                         Saturday-to-Friday week while the bars were a rolling
+                         last-7-days window, so they disagreed about which day
+                         was which. -->
+                    <div id="weeklyChart" style="display: flex; align-items: flex-end; justify-content: space-around; gap: 15px; padding: 20px 0; min-height: 230px;"></div>
                 </div>
 
                 <div class="glass" style="padding: 24px;">

@@ -4433,25 +4433,50 @@
     }
 
     // Weekly Chart
+    /* The bars used to be a rolling "last 7 days" window while the labels
+     * underneath were a fixed Saturday-to-Friday row in index.html, so the two
+     * described different weeks: on a Monday the leftmost column carried
+     * today's income under the Friday label, and on a Saturday the newest bar
+     * sat under شنبه with six older days beside it.
+     *
+     * Both now come from the same calendar week - weekStart() is Saturday 00:00
+     * local, the same helper the reports use - and the day name is rendered
+     * inside the column it belongs to. A separate label row can drift out of
+     * step with the bars and did; there is nothing left here to drift. */
+    const WEEKDAY_NAMES = {
+        fa: ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه'],
+        en: ['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+        ar: ['سبت', 'أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة']
+    };
     function renderWeeklyChart() {
-        const now = new Date();
-        const data = [];
+        // a stable local midnight, so isSameDay cannot disagree with getDay()
+        const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+        const start = weekStart(midnight);
+        const names = WEEKDAY_NAMES[appLang] || WEEKDAY_NAMES.fa;
 
-        for (let i = 6; i >= 0; i--) {
-            const d = new Date(now - i * 24 * 60 * 60 * 1000);
+        const days = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(start.getTime());
+            d.setDate(d.getDate() + i);
             const income = sessions.filter(s => isSameDay(s.date, d)).reduce((sum, s) => sum + num(s.cost), 0);
-            data.push(income);
+            days.push({ d, income, isToday: d.getTime() === midnight.getTime() });
         }
 
-        const max = Math.max(...data, 1);
+        const max = Math.max(...days.map((x) => x.income), 1);
         const container = document.getElementById('weeklyChart');
-        if(!container) return;
-        container.innerHTML = data.map((val, i) => `
-            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                <div style="font-size: 0.75rem; color: rgba(255,255,255,0.7); font-weight: 700;">${(val/1000).toFixed(0)}k</div>
-                <div class="chart-bar" style="width: 100%; height: ${(val/max)*160}px; max-width: 40px;"></div>
-            </div>
-        `).join('');
+        if (!container) return;
+        container.innerHTML = days.map((day) => {
+            // getDay(): 0=Sunday ... 6=Saturday, so this is the Persian week
+            const idx = (day.d.getDay() + 1) % 7;
+            const ink = day.isToday ? 'var(--th-text)' : 'var(--th-text-2)';
+            return `
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0;">
+                <div style="font-size: 0.75rem; color: ${ink}; font-weight: 700;">${(day.income / 1000).toFixed(0)}k</div>
+                <div class="chart-bar" style="width: 100%; height: ${(day.income / max) * 150}px; max-width: 40px; ${day.isToday ? 'outline: 2px solid var(--panel-row-on); outline-offset: 2px;' : ''}"></div>
+                <div style="font-size: 0.78rem; color: ${ink}; font-weight: ${day.isToday ? 800 : 500}; white-space: nowrap;">${names[idx]}</div>
+                <div style="font-size: 0.7rem; color: var(--th-text-3);">${day.d.getDate()}</div>
+            </div>`;
+        }).join('');
     }
 
     // Utilities
