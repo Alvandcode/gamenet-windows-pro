@@ -4473,11 +4473,15 @@
             // getDay(): 0=Sunday ... 6=Saturday, so this is the Persian week
             const idx = (day.d.getDay() + 1) % 7;
             const ink = day.isToday ? 'var(--th-text)' : 'var(--th-text-2)';
+            const barHeight = Math.max((day.income / max) * 150, day.isToday ? 4 : 0);
             return `
             <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0;">
                 <div style="font-size: 0.75rem; color: ${ink}; font-weight: 700;">${(day.income / 1000).toFixed(0)}k</div>
-                <div class="chart-bar" style="width: 100%; height: ${(day.income / max) * 150}px; max-width: 40px; ${day.isToday ? 'outline: 2px solid var(--panel-row-on); outline-offset: 2px;' : ''}"></div>
-                <div style="font-size: 0.78rem; color: ${ink}; font-weight: ${day.isToday ? 800 : 500}; white-space: nowrap;">${names[idx]}</div>
+                <div class="chart-bar" style="width: 100%; height: ${barHeight}px; max-width: 40px; ${day.isToday ? 'background: var(--panel-row-on);' : ''}"></div>
+                <div style="font-size: 0.78rem; color: ${ink}; font-weight: ${day.isToday ? 800 : 500}; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+                    ${names[idx]}
+                    ${day.isToday ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--panel-row-on);display:inline-block;"></span>' : ''}
+                </div>
                 <div style="font-size: 0.7rem; color: var(--th-text-3);">${day.d.getDate()}</div>
             </div>`;
         }).join('');

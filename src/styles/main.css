@@ -427,6 +427,31 @@
                 display: flex !important;
             }
 
+            /* Fix nav items text clipping on narrow sidebar: allow wrapping,
+               prevent overflow, give minimum width to text */
+            aside.glass .nav-group-head {
+                padding: 6px 12px !important;
+                min-width: 0 !important;
+            }
+            aside.glass .nav-group-title {
+                overflow-wrap: anywhere !important;
+                word-break: break-word !important;
+                white-space: normal !important;
+                min-width: 0 !important;
+            }
+            aside.glass .nav-group-body .nav-item {
+                padding: 8px 16px !important;
+                white-space: normal !important;
+                overflow-wrap: anywhere !important;
+                word-break: break-word !important;
+                min-width: 0 !important;
+                line-height: 1.4 !important;
+            }
+            aside.glass .nav-group-arrow {
+                flex-shrink: 0 !important;
+                margin-right: 8px !important;
+            }
+
             main { padding: 16px !important; }
 
             #dashboard-section > div:first-child {
@@ -748,12 +773,62 @@
         }
 
 
-        /* ========== LICENSE SYSTEM v1.6 ========== */
-        .license-overlay { position:fixed; inset:0; background:radial-gradient(ellipse at 30% 20%, #1a1a40 0%, #070710 70%); z-index:1000; display:none; align-items:center; justify-content:center; padding:16px; overflow-y:auto; }
-        .license-overlay.show { display:flex; }
-        .license-box { background:rgba(255,255,255,0.05); border:2px solid rgba(99,102,241,0.35); border-radius:28px; padding:32px; max-width:520px; width:100%; text-align:center; box-shadow:0 30px 80px rgba(0,0,0,0.6); backdrop-filter:blur(16px); }
-        .license-key-input { font-family:monospace; letter-spacing:2px; text-align:center; font-size:1.05rem; font-weight:800; direction:ltr; }
-        .device-pill { display:inline-block; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:50px; padding:6px 12px; font-size:0.75rem; margin:4px; }
+        /* ========== LICENSE SYSTEM v1.6 ==========
+   The gate is the first thing a user sees - it must be readable on every theme
+   and every display. Dark themes get a deep navy box with bright white text,
+   light themes get a cream box with dark text. No translucent greys that wash
+   out on either background. */
+        .license-overlay {
+            position: fixed; inset: 0;
+            background: radial-gradient(ellipse at 30% 20%, #1a1a40 0%, #070710 70%);
+            z-index: 1000; display: none; align-items: center; justify-content: center;
+            padding: 16px; overflow-y: auto;
+        }
+        .license-overlay.show { display: flex; }
+        .license-box {
+            background: #141230;
+            border: 2px solid #6366f1;
+            border-radius: 28px; padding: 32px; max-width: 520px; width: 100%;
+            text-align: center; color: #ffffff;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.6); backdrop-filter: blur(16px);
+        }
+        .license-key-input {
+            font-family: monospace; letter-spacing: 2px; text-align: center;
+            font-size: 1.05rem; font-weight: 800; direction: ltr;
+            background: #0f0c25; color: #ffffff; border: 2px solid #6366f1;
+        }
+        .license-key-input::placeholder { color: rgba(255,255,255,0.5); }
+        .device-pill {
+            display: inline-block; background: #1e1a3a;
+            border: 1px solid #6366f1; border-radius: 50px;
+            padding: 6px 12px; font-size: 0.75rem; margin: 4px;
+            color: #ffffff; font-family: monospace;
+        }
+        /* Light themes: cream card, dark ink */
+        body.theme-roshan .license-overlay,
+        body.theme-arctic .license-overlay {
+            background: radial-gradient(ellipse at 30% 20%, #f0efe8 0%, #e8dcc8 70%);
+        }
+        body.theme-roshan .license-box,
+        body.theme-arctic .license-box {
+            background: #fffdf5; border-color: #b8860b; color: #2f2a1c;
+        }
+        body.theme-roshan .license-overlay h2,
+        body.theme-arctic .license-overlay h2 { color: #2f2a1c; }
+        body.theme-roshan .license-overlay p,
+        body.theme-arctic .license-overlay p { color: #4a4433; }
+        body.theme-roshan .license-overlay label,
+        body.theme-arctic .license-overlay label { color: #4a4433; }
+        body.theme-roshan .license-key-input,
+        body.theme-arctic .license-key-input {
+            background: #fffdf5; color: #2f2a1c; border-color: #b8860b;
+        }
+        body.theme-roshan .license-key-input::placeholder,
+        body.theme-arctic .license-key-input::placeholder { color: #9a947a; }
+        body.theme-roshan .device-pill,
+        body.theme-arctic .device-pill {
+            background: #ecd9ac; color: #2f2a1c; border-color: #b8860b;
+        }
         .slot-bar { height:10px; background:rgba(255,255,255,0.08); border-radius:50px; overflow:hidden; margin-top:8px; }
         .slot-fill { height:100%; background:linear-gradient(90deg, #22c55e, #6366f1); border-radius:50px; transition:width 0.6s; }
 
@@ -834,7 +909,7 @@ body.theme-roshan, body.theme-arctic {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 14px;
-    align-items: start;
+    align-items: stretch;
 }
 .compact-cards > .glass { margin-bottom: 0 !important; }
 @media (max-width: 700px) {
@@ -845,7 +920,7 @@ body.theme-roshan, body.theme-arctic {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
     gap: 12px;
-    align-items: start;
+    align-items: stretch;
 }
 .fact-cards > .glass { margin-bottom: 0 !important; }
 @media (max-width: 620px) {
