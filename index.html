@@ -7,7 +7,7 @@
          is reached from the main process over Node's http instead, via the
          gamenet:agent-request IPC channel, so this policy stays tight.
          https://api.ipify.org stays for the online/offline + license IP ping. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://api.qrserver.com; connect-src 'self' https: https://api.ipify.org https://api.github.com https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' https://www.gstatic.com; script-src-attr 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://api.qrserver.com; connect-src 'self' https://api.ipify.org https://api.github.com https://alvandcode.github.io https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
     <link rel="stylesheet" href="src/styles/main.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -28,62 +28,61 @@
     <!-- Firebase is optional (online license sync). App fully works offline without it. -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" defer onerror="window.__fbFailed=true"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js" defer onerror="window.__fbFailed=true"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" defer onerror="window.__fbFailed=true"></script>
     <style id="groupPlayStyles">
         /* chips in the picker */
         .gp-chip{display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:12px;
             background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12);
             cursor:pointer; font-size:0.85rem; transition:0.15s; user-select:none;}
-        .gp-chip:hover{}
+        .gp-chip:hover{background:rgba(255,255,255,0.09); border-color:rgba(99,102,241,0.45);}
         .gp-chip input{width:16px; height:16px; cursor:pointer; accent-color:#6366f1;}
         .gp-chip-name{font-weight:700;}
-        .gp-chip-meta{font-size:0.7rem; color:var(--panel-text-2);}
+        .gp-chip-meta{font-size:0.7rem; color:var(--panel-text-2, rgba(255,255,255,0.55));}
         /* the multi-select dropdown in the "شروع بازی" box */
         .gp-drop-btn{width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px;
             padding:11px 14px; border-radius:12px; cursor:pointer; font-family:inherit; font-size:0.9rem;
             background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14); color:inherit; text-align:right;}
         .gp-drop-btn:hover{background:rgba(255,255,255,0.1); border-color:rgba(99,102,241,0.5);}
         .gp-drop-btn:focus-visible{outline:2px solid #6366f1; outline-offset:2px;}
-        
+        .gp-drop-caret{transition:transform 0.15s;}
         .gp-drop-btn[aria-expanded="true"] .gp-drop-caret{transform:rotate(180deg);}
         .gp-drop-panel{margin-top:8px; border-radius:14px; overflow:hidden; position:relative; z-index:5;
-            
-            }
+            background:rgba(20,16,40,0.98); border:1px solid rgba(255,255,255,0.14);
+            box-shadow:0 12px 32px rgba(0,0,0,0.45); padding:6px;}
         .gp-drop-panel[hidden]{display:none;}
-        .gp-drop-search{
+        .gp-drop-search{padding:6px;}
         .gp-drop-search .glass-input{width:100%;}
-        .gp-drop-head{display:flex; align-items:center; justify-content:space-between; gap:10px;
-            
-            
+        .gp-drop-head{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:4px 6px 8px;}
         .gp-drop-mini{font-family:inherit; font-size:0.72rem; cursor:pointer; padding:4px 8px; border-radius:8px;
-            }
-        
+            background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.12); color:inherit;}
+        .gp-drop-mini:hover{background:rgba(255,255,255,0.12);}
         .gp-drop-list{max-height:230px; overflow:auto; padding:6px;}
         .gp-drop-row{display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:10px;
-            
-        
-        
+            cursor:pointer; transition:background 0.12s;}
+        .gp-drop-row:hover,.gp-drop-row[aria-selected="true"]{background:rgba(99,102,241,0.16);}
         .gp-drop-row input{width:16px; height:16px; accent-color:#6366f1; cursor:pointer; flex:none;}
-        .gp-drop-row-name{
-        
-        
-        
+        .gp-drop-row-name{font-weight:700; font-size:0.85rem;}
+        .gp-drop-row-meta{font-size:0.7rem; color:var(--panel-text-2, rgba(255,255,255,0.55)); margin-right:auto;}
+        .gp-drop-empty{padding:14px; text-align:center; font-size:0.8rem; color:rgba(255,255,255,0.5);}
         /* the chosen names, as removable tags, right under the dropdown */
         .gp-chosen{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;}
         .gp-chosen:empty{display:none;}
-        .gp-tag{display:inline-flex; align-items:center; gap:6px; 
-        .gp-tag button{font-family:inherit; cursor:pointer; background:none; border:0; color:inherit;
+        .gp-tag{display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:50px;
+            background:rgba(99,102,241,0.18); border:1px solid rgba(99,102,241,0.4); font-size:0.78rem;}
+        .gp-tag-x{font-family:inherit; cursor:pointer; background:none; border:0; color:inherit;
             font-size:0.95rem; line-height:1; padding:0 2px; opacity:0.75;}
-        .gp-tag button:hover{opacity:1;}
+        .gp-tag-x:hover{opacity:1;}
         /* the report */
         .gp-shop-head{text-align:center; border-bottom:1px solid rgba(255,255,255,0.14);
             padding-bottom:10px; margin-bottom:12px;}
         .gp-shop-name{font-size:1.15rem; font-weight:900; letter-spacing:0.2px;}
-        .gp-shop-phone{font-size:0.85rem; color:var(--th-text-2); direction:ltr;}
-        .gp-report-sub{font-size:0.75rem; color:var(--th-text-2); margin-top:2px;}
+        .gp-shop-phone{font-size:0.85rem; color:var(--th-text-2, rgba(255,255,255,0.6)); direction:ltr;}
+        .gp-report-sub{font-size:0.75rem; color:var(--th-text-2, rgba(255,255,255,0.6)); margin-top:2px;}
         .gp-stat{background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
             border-radius:12px; padding:12px; text-align:center;}
-        .gp-stat div{font-size:0.72rem; color:var(--th-text-3); margin-bottom:4px;}
+        .gp-stat div{font-size:0.72rem; color:var(--th-text-3, rgba(255,255,255,0.45)); margin-bottom:4px;}
         .gp-stat b{font-size:1.1rem; font-weight:900; color:#22c55e;}
+        .gp-scroll{max-height:230px; overflow:auto;}
         .gp-table{width:100%; border-collapse:collapse; font-size:0.8rem;}
         .gp-table th{background:rgba(255,255,255,0.07); padding:7px 9px; text-align:right; font-weight:800;
             position:sticky; top:0; border-bottom:1px solid rgba(255,255,255,0.12);}
@@ -473,6 +472,7 @@
                     <button class="glass-btn" onclick="generateReport('daily')" id="btnDaily">&#128197; روزانه</button>
                     <button class="glass-btn" onclick="generateReport('weekly')" id="btnWeekly">&#128198; هفتگی</button>
                     <button class="glass-btn" onclick="generateReport('monthly')" id="btnMonthly">&#128202; ماهانه</button>
+                    <button class="glass-btn" onclick="generateReport('yearly')" id="btnYearly">&#128198; سالانه</button>
                 </div>
                 <div class="glass" style="padding: 24px;" id="reportContent">
                     <p style="text-align: center; color: rgba(255,255,255,0.5); padding: 40px;">نوع گزارش را انتخاب کنید</p>
@@ -482,7 +482,7 @@
                      never existed: renderYearlyChart() is called from
                      renderStationHours() on every dashboard refresh and compareMonths()
                      dereferenced null, so both threw. -->
-                <div class="compact-cards"><div class="glass" style="padding: 24px; margin-bottom: 16px;" id="yearlyChartContainer" style="display: none;">
+                <div class="compact-cards"><div class="glass" style="padding: 24px; margin-bottom: 16px; display: none;" id="yearlyChartContainer">
                     <h3 style="margin-bottom: 16px;">&#128202; درآمد سالانه</h3>
                     <div id="yearlyChart" style="display: flex; align-items: flex-end; gap: 6px; height: 160px;"></div>
                     <div id="yearlyLabels" style="display: flex; gap: 6px; margin-top: 8px;"></div>
@@ -855,7 +855,7 @@
                     <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
                         <div>
                             <label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">توکن ایجنت (باید با مشتری یکی باشد)</label>
-                            <input type="text" id="agentTokenInput" value="alvand123" onchange="setAgentToken(this.value)" style="text-align:left; direction:ltr;">
+                            <input type="text" id="agentTokenInput" value="" placeholder="به‌صورت خودکار ساخته می‌شود" onchange="setAgentToken(this.value)" style="text-align:left; direction:ltr;">
                         </div>
                         <div>
                             <label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">پورت</label>
@@ -892,6 +892,21 @@
                         <div style="display:flex; gap:8px; margin-top:16px;">
                             <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveMembershipPlan()">ذخیره</button>
                             <button class="glass-btn" style="flex:1;" onclick="closeModal('membershipPlanModal')">لغو</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Assign an existing plan to one customer -->
+                <div class="modal-overlay" id="assignMembershipModal">
+                    <div class="glass modal" style="padding:24px; max-width:460px; width:90%;">
+                        <h3 style="margin-bottom:16px;">🎫 عضویت مشتری</h3>
+                        <p style="margin-bottom:14px; color:rgba(255,255,255,0.7);">مشتری: <b id="assignMembershipCustomerName"></b></p>
+                        <input type="hidden" id="assignMembershipCustomerId">
+                        <label style="display:block; margin-bottom:6px; font-size:0.85rem; color:rgba(255,255,255,0.7);">طرح عضویت</label>
+                        <select id="assignMembershipPlan" style="width:100%; margin-bottom:12px;"></select>
+                        <p id="assignMembershipInfo" style="font-size:0.85rem; color:#a5b4fc; margin-bottom:16px;"></p>
+                        <div style="display:flex; gap:8px;">
+                            <button class="glass-btn glass-btn-success" style="flex:1;" onclick="saveAssignMembership()">ذخیره</button>
+                            <button class="glass-btn" style="flex:1;" onclick="closeModal('assignMembershipModal')">لغو</button>
                         </div>
                     </div>
                 </div>
@@ -2168,6 +2183,10 @@
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
                 <input type="number" id="walletAmount" placeholder="مبلغ شارژ/بدهی">
+                <select id="walletMethod" title="روش دریافت وجه">
+                    <option value="cash">💵 نقد</option>
+                    <option value="card">💳 کارت</option>
+                </select>
                 <select id="walletAction">
                     <option value="charge">💰 شارژ کیف پول</option>
                     <option value="deduct">💸 کسر از کیف پول</option>
@@ -2192,6 +2211,10 @@
             <h2 style="margin-bottom: 6px;">شارژ کیف پول</h2>
             <p id="chargeCustomerName" style="color: rgba(255,255,255,0.6); font-size: 0.85rem; margin-bottom: 8px;"></p>
             <input type="number" id="chargeAmount" placeholder="مبلغ (تومان)" onkeydown="if(event.key==='Enter')submitCharge()" style="text-align: center; font-size: 1.2rem; font-weight: 800; margin-bottom: 12px;">
+            <select id="chargeMethod" style="width:100%; margin-bottom:12px;">
+                <option value="cash">💵 دریافت نقد</option>
+                <option value="card">💳 دریافت با کارت</option>
+            </select>
             <div style="display: flex; gap: 10px; justify-content: center;">
                 <button class="glass-btn glass-btn-success" onclick="submitCharge()">✅ شارژ</button>
                 <button class="glass-btn glass-btn-danger" onclick="closeModal('chargeModal')">❌ انصراف</button>

@@ -7,21 +7,12 @@ echo.
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo [ERROR] Node.js not found. Install Node 20 LTS from https://nodejs.org
+  echo [ERROR] Node.js not found. Install Node 22.22+ / 24.15+ (or 26+) from https://nodejs.org
   pause
   exit /b 1
 )
 
-echo [1/3] Validating project...
-call npm run validate
-if errorlevel 1 (
-  echo [ERROR] Validation failed. Fix errors above.
-  pause
-  exit /b 1
-)
-
-echo.
-echo [2/3] Installing dependencies (clean)...
+echo [1/3] Installing dependencies (clean)...
 if exist package-lock.json (
   call npm ci
 ) else (
@@ -29,6 +20,15 @@ if exist package-lock.json (
 )
 if errorlevel 1 (
   echo [ERROR] npm install failed.
+  pause
+  exit /b 1
+)
+
+echo.
+echo [2/3] Validating project...
+call npm run validate
+if errorlevel 1 (
+  echo [ERROR] Validation failed. Fix errors above.
   pause
   exit /b 1
 )

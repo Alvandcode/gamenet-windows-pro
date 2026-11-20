@@ -18,6 +18,11 @@ function saveAmn(){ sv('alvand_amanats', AMN); }
 function saveMnt(){ sv('alvand_maintenance', MNT); }
 function val(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
 function num(id){ var el = document.getElementById(id); return el ? (parseInt(el.value) || 0) : 0; }
+function nid(v){ return window.numId ? window.numId(v) : (parseInt(v, 10) || 0); }
+function permit(section, label){
+  try { return typeof requirePerm === 'function' ? !!requirePerm(section, label) : true; }
+  catch(e){ return false; }
+}
 
 /* ================= PACKAGES ================= */
 function pkgServicesText(p){
@@ -43,11 +48,11 @@ window.renderPackages = function(){
     return '<div class="glass" style="padding:14px;margin-bottom:10px;">'
       + '<div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px;">'
       + '<div><h4 style="font-weight:800;">' + esc(p.name) + '</h4>'
-      + '<p style="font-size:0.8rem;color:rgba(255,255,255,0.6);">⏱️ ' + p.minutes + ' دقیقه | 🍿 ' + esc(pkgServicesText(p)) + '</p>'
+      + '<p style="font-size:0.8rem;color:rgba(255,255,255,0.6);">⏱️ ' + window.num(p.minutes) + ' دقیقه | 🍿 ' + esc(pkgServicesText(p)) + '</p>'
       + '<p style="font-size:0.9rem;color:#22c55e;font-weight:800;">' + (p.price || 0).toLocaleString() + ' تومان</p></div>'
       + '<div style="display:flex;gap:6px;">'
-      + '<button class="glass-btn" style="padding:6px 10px;font-size:0.75rem;" onclick="editPackage(' + p.id + ')">✏️</button>'
-      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deletePackage(' + p.id + ')">🗑️</button>'
+      + '<button class="glass-btn" style="padding:6px 10px;font-size:0.75rem;" onclick="editPackage(' + nid(p.id) + ')">✏️</button>'
+      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deletePackage(' + nid(p.id) + ')">🗑️</button>'
       + '</div></div></div>';
   }).join('');
 };
@@ -61,7 +66,7 @@ window.openPackageModal = function(){
   if (box){
     var svc = window.services || [];
     box.innerHTML = svc.length ? svc.map(function(s){
-      return '<label style="display:flex;gap:6px;align-items:center;font-size:0.8rem;"><input type="checkbox" data-sid="' + s.id + '"> ' + esc(s.name) + ' (' + s.price.toLocaleString() + ')</label>';
+      return '<label style="display:flex;gap:6px;align-items:center;font-size:0.8rem;"><input type="checkbox" data-sid="' + esc(s.id) + '"> ' + esc(s.name) + ' (' + s.price.toLocaleString() + ')</label>';
     }).join('') : '<p style="font-size:0.8rem;color:gray;">خدمتی نیست</p>';
   }
   var m = document.getElementById('packageModal'); if (m) m.classList.add('show');
@@ -85,6 +90,7 @@ window.editPackage = function(id){
   }
 };
 window.savePackage = function(){
+  if (!permit('ops', 'ذخیره پکیج')) return;
   var id = val('pkgId');
   var name = val('pkgName');
   var minutes = num('pkgMinutes');
@@ -108,17 +114,19 @@ window.savePackage = function(){
   toast('پکیج ذخیره شد','success');
 };
 window.deletePackage = function(id){
+  if (!permit('ops', 'حذف پکیج')) return;
   if (!confirm('حذف شود؟')) return;
   PKG = PKG.filter(function(x){ return x.id !== id; });
   savePkg(); window.renderPackages();
 };
 window.applyPackageToClient = function(){
+  if (!permit('ops', 'اعمال پکیج')) return;
   var ps = document.getElementById('pkgSelect');
   var cs = document.getElementById('pkgClientSelect');
   if (!ps || !ps.value || !cs || cs.value === ''){ toast('پکیج و کلاینت را انتخاب کن','error'); return; }
-  var p = PKG.find(function(x){ return x.id === parseInt(ps.value); });
-  var idx = parseInt(cs.value);
-  var c = (window.clients || [])[idx];
+  var p = PKG.find(function(x){ return String(x.id) === String(ps.value); });
+  var list = window.clients || [];
+  var c = list.find(function(x){ return x && String(x.id) === String(cs.value); }) || list[parseInt(cs.value)];
   if (!p || !c){ toast('پیدا نشد','error'); return; }
   var svc = window.services || [];
   for (var k = 0; k < (p.items || []).length; k++){
@@ -129,7 +137,12 @@ window.applyPackageToClient = function(){
   else c.timerDuration = p.minutes;
   c.timerDurationSec = c.timerDuration * 60;
   c.notified = false;
-  c.activePackage = {name:p.name, price:p.price || 0, minutes:p.minutes};
+  c.activePackage = {
+    name:p.name,
+    price:p.price || 0,
+    minutes:p.minutes,
+    items:(p.items || []).map(function(it){ return {serviceId:it.serviceId, qty:it.qty}; })
+  };
   var map = window.clientServiceMap || {};
   var arr = map[c.id] || [];
   (p.items || []).forEach(function(it){
@@ -184,44 +197,84 @@ window.useCoupon = function(code){
   saveCpn();
   return {ok:true, coupon:r.coupon};
 };
+/* A coupon is counted as soon as it is applied, so a maxUses=1 coupon cannot
+ * be used twice by opening two payment screens. If the cashier then removes it,
+ * closes the payment modal, or switches to another coupon, the counter must be
+ * given back exactly once. The applied code lives on pendingPayment, not on the
+ * coupon row, so this is safe across reloads/modules. */
+window.releaseCoupon = function(pp){
+  pp = pp || window.pendingPayment;
+  if (!pp || !pp._couponAppliedCode) return false;
+  var wanted = String(pp._couponAppliedCode).toUpperCase();
+  var c = CPN.find(function(x){ return String((x && x.code) || '').toUpperCase() === wanted; });
+  if (c){
+    var used = Number(c.used) || 0;
+    if (used > 0) c.used = used - 1;
+    saveCpn();
+  }
+  delete pp._couponAppliedCode;
+  return true;
+};
 window.applyCoupon = function(){
-  if (!window.pendingPayment){ toast('سشنی در حال تسویه نیست','error'); return; }
+  if (!permit('ops', 'اعمال کوپن')) return;
+  var pp = window.pendingPayment;
+  if (!pp){ toast('جلسه‌ای در حال تسویه نیست','error'); return; }
   var inp = document.getElementById('couponInput');
   var code = inp ? inp.value.trim() : '';
   var r = window.validateCoupon(code);
   if (!r.ok){ toast(r.error,'error'); return; }
-  var base = window.pendingPayment.baseTotal || window.pendingPayment.total;
+  var base = Number(pp.baseTotal || pp.total) || 0;
   var amt = window.couponDiscount(r.coupon, base);
-  window.pendingPayment.couponCode = r.coupon.code;
-  window.pendingPayment.couponDiscount = amt;
-  /* Count the use here. validateCoupon() only checks the ceiling, so without
-   * this the counter never moved and a limited coupon stayed valid forever. */
-  window.useCoupon(r.coupon.code);
+  var normalized = String(r.coupon.code || '').toUpperCase();
+  /* Increment only once per payment. validateCoupon() checks the ceiling, and
+     re-validating after the counter moved made maxUses=1 coupons disappear
+     immediately. refreshPayTotal() below therefore uses the applied coupon
+     object instead of validating the code again. Changing from coupon A to B
+     releases A first, otherwise A stayed consumed forever. */
+  var alreadyApplied = pp._couponAppliedCode === normalized;
+  if (!alreadyApplied && pp._couponAppliedCode) window.releaseCoupon(pp);
+  pp.couponCode = r.coupon.code;
+  pp._couponAppliedCode = normalized;
+  pp.couponDiscount = amt;
+  if (!alreadyApplied) window.useCoupon(r.coupon.code);
   window.refreshPayTotal();
   toast('کوپن اعمال شد: -' + amt.toLocaleString(),'success');
 };
 window.clearCoupon = function(){
-  if (window.pendingPayment) window.pendingPayment.couponCode = '';
+  if (!permit('ops', 'حذف کوپن')) return;
+  var pp = window.pendingPayment;
+  if (pp){
+    window.releaseCoupon(pp);
+    pp.couponCode = '';
+    pp.couponDiscount = 0;
+  }
   var inp = document.getElementById('couponInput'); if (inp) inp.value = '';
   window.refreshPayTotal();
 };
 window.refreshPayTotal = function(){
   var pp = window.pendingPayment;
   if (!pp) return;
-  var base = pp.baseTotal || pp.total;
+  var base = Number(pp.baseTotal || pp.total) || 0;
   var line = document.getElementById('couponLine');
   var disc = 0;
   if (pp.couponCode){
-    var r = window.validateCoupon(pp.couponCode);
-    if (r.ok) disc = window.couponDiscount(r.coupon, base);
-    else pp.couponCode = '';
+    var wanted = String(pp.couponCode).toUpperCase();
+    var list = window.getCoupons ? window.getCoupons() : CPN;
+    var cp = list.find(function(x){ return String((x && x.code) || '').toUpperCase() === wanted; });
+    if (cp){
+      disc = window.couponDiscount(cp, base);
+      pp.couponDiscount = disc;
+    } else {
+      pp.couponCode = '';
+      delete pp._couponAppliedCode;
+    }
   }
   if (line){
     line.style.display = disc > 0 ? 'flex' : 'none';
     line.innerHTML = '<span>کوپن ' + esc(pp.couponCode || '') + ':</span><span style="font-weight:800;color:#22c55e;">-' + disc.toLocaleString() + '</span>';
   }
   var el = document.getElementById('payTotal');
-  if (el) el.textContent = (base - disc).toLocaleString() + ' تومان';
+  if (el) el.textContent = Math.max(0, base - disc).toLocaleString() + ' تومان';
 };
 window.renderCoupons = function(){
   var c = document.getElementById('couponsList');
@@ -234,8 +287,8 @@ window.renderCoupons = function(){
       + '<span style="font-size:0.75rem;color:#22c55e;">' + (x.type === 'percent' ? x.value + '%': (x.value || 0).toLocaleString() + ' تومان') + '</span><br>'
       + '<span style="font-size:0.75rem;color:rgba(255,255,255,0.5);">' + left + (x.expires ? ' | تا ' + esc(x.expires) : '') + (x.active === false ? ' | غیرفعال' : '') + '</span></div>'
       + '<div style="display:flex;gap:6px;">'
-      + '<button class="glass-btn" style="padding:6px 10px;font-size:0.75rem;" onclick="editCoupon(' + x.id + ')">✏️</button>'
-      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deleteCoupon(' + x.id + ')">🗑️</button>'
+      + '<button class="glass-btn" style="padding:6px 10px;font-size:0.75rem;" onclick="editCoupon(' + nid(x.id) + ')">✏️</button>'
+      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deleteCoupon(' + nid(x.id) + ')">🗑️</button>'
       + '</div></div>';
   }).join('');
 };
@@ -264,6 +317,7 @@ window.editCoupon = function(id){
   el = document.getElementById('cpnActive'); if (el) el.checked = x.active !== false;
 };
 window.saveCoupon = function(){
+  if (!permit('ops', 'ذخیره کوپن')) return;
   var id = val('cpnId');
   var code = val('cpnCode').toUpperCase().replace(/\s+/g, '');
   var type = val('cpnType') || 'percent';
@@ -289,6 +343,7 @@ window.saveCoupon = function(){
   toast('کوپن ذخیره شد','success');
 };
 window.deleteCoupon = function(id){
+  if (!permit('ops', 'حذف کوپن')) return;
   if (!confirm('حذف شود؟')) return;
   CPN = CPN.filter(function(x){ return x.id !== id; });
   saveCpn(); window.renderCoupons();
@@ -310,8 +365,8 @@ window.renderAmanats = function(){
         + '<div><b>' + esc(x.item) + '</b><br><span style="font-size:0.8rem;color:rgba(255,255,255,0.6);">👤 ' + esc(x.owner) + (x.phone ? ' | 📞 ' + esc(x.phone) : '') + ' | 📅 ' + esc(x.dateIn || '') + '</span>'
         + (x.note ? '<br><span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">' + esc(x.note) + '</span>' : '') + '</div>'
         + '<div style="display:flex;gap:6px;">'
-        + '<button class="glass-btn glass-btn-success" style="padding:6px 10px;font-size:0.75rem;" onclick="returnAmanat(' + x.id + ')">↩️ عودت</button>'
-        + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deleteAmanat(' + x.id + ')">🗑️</button>'
+        + '<button class="glass-btn glass-btn-success" style="padding:6px 10px;font-size:0.75rem;" onclick="returnAmanat(' + nid(x.id) + ')">↩️ عودت</button>'
+        + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deleteAmanat(' + nid(x.id) + ')">🗑️</button>'
         + '</div></div></div>';
     }).join('');
   }
@@ -333,6 +388,7 @@ window.openAmanatModal = function(){
   var m = document.getElementById('amanatModal'); if (m) m.classList.add('show');
 };
 window.saveAmanat = function(){
+  if (!permit('ops', 'ثبت امانت')) return;
   var owner = val('amnOwner'), item = val('amnItem');
   if (!owner || !item){ toast('نام مالک و وسیله الزامی است','error'); return; }
   var phone = val('amnPhone'), note = val('amnNote');
@@ -345,6 +401,7 @@ window.saveAmanat = function(){
   toast('امانت ثبت شد','success');
 };
 window.returnAmanat = function(id){
+  if (!permit('ops', 'عودت امانت')) return;
   var x = AMN.find(function(a){ return a.id === id; });
   if (!x) return;
   x.status = 'returned';
@@ -354,6 +411,7 @@ window.returnAmanat = function(id){
   toast('عودت ثبت شد','success');
 };
 window.deleteAmanat = function(id){
+  if (!permit('ops', 'حذف امانت')) return;
   if (!confirm('حذف شود؟')) return;
   AMN = AMN.filter(function(x){ return x.id !== id; });
   saveAmn(); window.renderAmanats();
@@ -378,15 +436,15 @@ window.renderMaintenance = function(){
       + '<div><b>' + esc(x.title) + '</b><br><span style="font-size:0.8rem;color:rgba(255,255,255,0.6);">🖥️ ' + esc(cl ? cl.name : '-') + ' | 📅 ' + esc(x.date || '') + (x.cost ? ' | 💰 ' + x.cost.toLocaleString() : '') + '</span>'
       + (x.note ? '<br><span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">' + esc(x.note) + '</span>' : '') + '</div>'
       + '<div style="display:flex;gap:6px;">'
-      + (!done ? '<button class="glass-btn glass-btn-success" style="padding:6px 10px;font-size:0.75rem;" onclick="doneMaintenance(' + x.id + ')">✓ انجام شد</button>' : '')
-      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deleteMaintenance(' + x.id + ')">🗑️</button>'
+      + (!done ? '<button class="glass-btn glass-btn-success" style="padding:6px 10px;font-size:0.75rem;" onclick="doneMaintenance(' + nid(x.id) + ')">✓ انجام شد</button>' : '')
+      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deleteMaintenance(' + nid(x.id) + ')">🗑️</button>'
       + '</div></div></div>';
   }).join('');
   c.innerHTML = h;
 };
 window.openMaintenanceModal = function(){
   var sel = document.getElementById('mntClient');
-  if (sel) sel.innerHTML = '<option value="">--</option>' + (window.clients || []).map(function(c){ return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('');
+  if (sel) sel.innerHTML = '<option value="">--</option>' + (window.clients || []).map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('');
   var el;
   el = document.getElementById('mntTitle'); if (el) el.value = '';
   el = document.getElementById('mntCost'); if (el) el.value = '';
@@ -394,6 +452,7 @@ window.openMaintenanceModal = function(){
   var m = document.getElementById('maintenanceModal'); if (m) m.classList.add('show');
 };
 window.saveMaintenance = function(){
+  if (!permit('ops', 'ثبت خرابی')) return;
   var title = val('mntTitle');
   if (!title){ toast('عنوان خرابی الزامی است','error'); return; }
   var sel = document.getElementById('mntClient');
@@ -407,6 +466,7 @@ window.saveMaintenance = function(){
   toast('ثبت شد','success');
 };
 window.doneMaintenance = function(id){
+  if (!permit('ops', 'بستن خرابی')) return;
   var x = MNT.find(function(a){ return a.id === id; });
   if (!x) return;
   x.status = 'done';
@@ -414,6 +474,7 @@ window.doneMaintenance = function(id){
   toast('انجام شد','success');
 };
 window.deleteMaintenance = function(id){
+  if (!permit('ops', 'حذف خرابی')) return;
   if (!confirm('حذف شود؟')) return;
   MNT = MNT.filter(function(x){ return x.id !== id; });
   saveMnt(); window.renderMaintenance();
@@ -421,6 +482,7 @@ window.deleteMaintenance = function(id){
 
 /* ================= BROADCAST ================= */
 window.broadcastAll = function(){
+  if (!permit('ops', 'ارسال پیام همگانی')) return;
   var inp = document.getElementById('broadcastMsg');
   var msg = inp ? inp.value.trim() : '';
   if (!msg){ toast('متن پیام را بنویس','error'); if (inp) inp.focus(); return; }

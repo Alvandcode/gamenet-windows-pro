@@ -2,16 +2,16 @@
   "rules": {
     "licenses": {
       "$keyId": {
-        ".read": true,
+        ".read": "auth != null",
         ".write": false
       }
     },
     "activations": {
       "$keyId": {
-        ".read": true,
+        ".read": "auth != null",
         "$fp": {
-          ".write": "!data.exists()",
-          ".validate": "newData.hasChildren(['fp', 'ip', 'date'])"
+          ".write": "auth != null && !data.exists()",
+          ".validate": "newData.hasChildren(['fp', 'uid', 'ip', 'date']) && newData.child('fp').isString() && newData.child('fp').val() === $fp && newData.child('fp').val().length >= 8 && newData.child('fp').val().length <= 128 && newData.child('uid').isString() && newData.child('uid').val() === auth.uid && newData.child('ip').isString() && newData.child('ip').val().length <= 64 && newData.child('date').isString() && newData.child('date').val().length >= 20 && newData.child('date').val().length <= 40"
         }
       }
     }

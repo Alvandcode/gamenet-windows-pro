@@ -105,8 +105,17 @@
   var ARRAY_KEYS = ['clients','sessions','reservations','services','expenses','tariffSchedules','sales',
                     'payments','customers','operators','walletHistory','allLicenses','membershipPlans',
                     'customerMemberships','gameHistory','notifications','activityLog','employees',
-                    'attendance','waitingList','surveys','smsLog','events','shifts'];
-  var OBJ_KEYS = ['tariffs','clientServiceMap','hourlyUsage','branches'];
+                    'attendance','waitingList','surveys','smsLog','events','shifts',
+                    // operations / finance / group-play / phonebook stores
+                    'packages','coupons','amanats','maintenance','handovers','holidays',
+                    'groupSessions','walkInGuests','discardedTime','phonebook','branches'];
+  // Most of these are objects keyed by id; branches is an ARRAY in round2-b.js
+  // and used to be listed here as an object, so a perfectly valid backup was
+  // rejected with "field branches shape". It now lives in ARRAY_KEYS above.
+  var OBJ_KEYS = ['tariffs','clientServiceMap','hourlyUsage','groupActive','loyaltyPoints',
+                  'smsConfig','posConfig','navGroups'];
+  // holidays is an array of ISO date strings, not an array of objects.
+  var STRING_ARRAY_KEYS = ['holidays'];
   var MAX_ITEMS = 200000;
   function sanitizeBackup(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, error: 'bad shape' };
@@ -124,7 +133,8 @@
       // every element must be a plain object (or null) - blocks prototype junk
       for (var j = 0; j < parsed.length; j++) {
         var it = parsed[j];
-        if (it !== null && (typeof it !== 'object' || Array.isArray(it))) {
+        var stringEntryAllowed = STRING_ARRAY_KEYS.indexOf(k) >= 0 && typeof it === 'string';
+        if (it !== null && !stringEntryAllowed && (typeof it !== 'object' || Array.isArray(it))) {
           return { ok: false, error: 'field ' + k + ' has a non-object entry' };
         }
       }
@@ -149,14 +159,20 @@
     }
     // scalars / opaque strings: pass through with a length cap
     var SCALARS = ['license','allLicensesMeta','roundingMode','rounding','lang','theme','alarmSound',
-                   'alarmRepeat','backupTime','lite','uiZoom','shopName','shopPhone','guideShown',
-                   'smsConfig','phonebook','posConfig','lowStockThreshold','currentBranch',
-                   'customers_enc','loyaltyPoints','membershipPlans'];
+                   'alarmRepeat','backupTime','backupEnabled','backupDay','lite','uiZoom','shopName',
+                   'shopPhone','guideShown','lowStockThreshold','currentBranch','taxRate','agentToken',
+                   'customAlarm','customers_enc'];
     for (i = 0; i < SCALARS.length; i++) {
       k = SCALARS[i];
       if (data[k] === undefined || data[k] === null) continue;
       var v = data[k];
-      if (typeof v === 'string') { if (v.length > 4 * 1024 * 1024) return { ok: false, error: 'field ' + k + ' too large' }; out[k] = v; }
+      if (typeof v === 'string') {
+        // Audio data URLs and encrypted customer dumps can legitimately exceed
+        // the 4 MB default, but must still fit inside the 50 MB backup cap.
+        var maxLen = (k === 'customAlarm' || k === 'customers_enc') ? 20 * 1024 * 1024 : 4 * 1024 * 1024;
+        if (v.length > maxLen) return { ok: false, error: 'field ' + k + ' too large' };
+        out[k] = v;
+      }
       else if (typeof v === 'object') { try { out[k] = JSON.stringify(v); } catch (e) { return { ok: false, error: 'field ' + k + ' not serialisable' }; } }
       else out[k] = String(v).slice(0, 200);
     }
@@ -279,6 +295,20 @@
   function monthStart(d) {
     const x = (d instanceof Date) ? new Date(d.getTime()) : new Date(d);
     if (isNaN(x.getTime())) return new Date(NaN);
+    /* The shop closes its books on the Iranian month, not the Gregorian one.
+       "This month" used to start on the 1st of the Gregorian month, so on
+       1404/02/15 it reported only 15 days and on 1404/02/01 it included the
+       last 20 days of the previous Jalali month. Convert the local date to
+       Jalali, take day 1 of that month, then convert back to a local Date. */
+    let lang = 'fa';
+    try { lang = localStorage.getItem('alvand_lang') || 'fa'; } catch(e){}
+    if (lang !== 'en' && window.Jalali && typeof window.Jalali.g2j === 'function' && typeof window.Jalali.j2g === 'function') {
+      try {
+        const j = window.Jalali.g2j(x.getFullYear(), x.getMonth() + 1, x.getDate());
+        const g = window.Jalali.j2g(j.jy, j.jm, 1);
+        return new Date(g.gy, g.gm - 1, g.gd, 0, 0, 0, 0);
+      } catch(e){}
+    }
     return new Date(x.getFullYear(), x.getMonth(), 1, 0, 0, 0, 0);
   }
   /** Coerce anything (string / Persian digits / null) to a finite number. */

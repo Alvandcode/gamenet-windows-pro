@@ -8,6 +8,9 @@
 (function () {
   'use strict';
 
+// pending forced password rotation (set by patchedDoLogin, cleared by save)
+window.__rotationPending = window.__rotationPending || null;
+
   /* ---------- operator password hashing ----------
    * The stored value used to be a bare sha256hex('gamenet::' + password). That is
    * fast and unsalted, so a stolen localStorage (or a backup file) is cracked
@@ -163,6 +166,10 @@
     return false;
   }
   window.operatorNeedsRotation = needsRotation;
+  // app.js owns the admin credential form; it must use the same PBKDF2
+  // pipeline and the same minimum length as the operator editor.
+  window.gamenetHashPassword = hashIfNeeded;
+  window.gamenetMinPassword = MIN_PASSWORD;
 
   window.loginLockRemaining = lockFor;
 
@@ -196,8 +203,11 @@
   function forceAdminRotation() {
     try {
       if (typeof showToast === 'function') showToast('⚠️ رمز پیش‌فرض admin/1234 فعال است! همین حالا عوضش کن.', 'error');
-      if (typeof openOperatorModal === 'function' && typeof currentOperator !== 'undefined' && currentOperator && currentOperator.role === 'admin') {
-        try { openOperatorModal(); } catch (_) {}
+      if (typeof currentOperator !== 'undefined' && currentOperator && currentOperator.role === 'admin') {
+        try {
+          if (typeof editOperator === 'function') editOperator(currentOperator.id);
+          else if (typeof openOperatorModal === 'function') openOperatorModal();
+        } catch (_) {}
       }
     } catch (_) {}
   }
@@ -215,8 +225,8 @@
       if (wait > 0) {
         var secs = Math.ceil(wait / 1000);
         var mins = Math.floor(secs / 60);
-        err.textContent = '⛔ حسابهر بسیر اتفاقه‌است. ' +
-          (mins > 0 ? (mins + ' دقیقه') : (secs + ' ثانیه')) + ' دیگار صبر کنید';
+        err.textContent = '⛔ حساب موقتاً قفل شده است. ' +
+          (mins > 0 ? (mins + ' دقیقه') : (secs + ' ثانیه')) + ' دیگر صبر کنید';
         err.style.display = 'block';
         return;
       }
@@ -246,12 +256,22 @@
         try { localStorage.setItem('alvand_operators', JSON.stringify(operators)); } catch (_) {}
       }
       currentOperator = op;
+      /* A default password is not a warning, it is a lock. The operator modal
+       * opens over the still-visible login overlay and login only completes
+       * after a real password is saved. Closing the modal just leaves the
+       * login screen in place. */
+      if (await needsRotation(op)) {
+        window.__rotationPending = String(op.id);
+        try { if (typeof editOperator === 'function') editOperator(op.id); } catch (_) {}
+        try { showToast('⛔ رمز پیش‌فرض است. برای ورود یک رمز جدید (حداقل ۸ کاراکتر، حرف+عدد) ثبت کن.', 'error'); } catch (_) {}
+        err.style.display = 'none';
+        return;
+      }
       try { localStorage.setItem('alvand_currentOperator', JSON.stringify(op)); } catch (_) {}
       document.getElementById('loginOverlay').style.display = 'none';
       try { updateOperatorBar(); applyPerms(); } catch (_) {}
       try { showToast('خوش آمدید ' + op.username, 'success'); } catch (_) {}
       err.style.display = 'none';
-      if (needsRotation(op)) setTimeout(forceAdminRotation, 800);
     } catch (e) {
       console.warn('login failed', e);
     }
@@ -260,6 +280,7 @@
   // Override saveOperator: never store plaintext (min 4 chars).
   async function patchedSaveOperator() {
     try {
+      if (typeof requirePerm === 'function' && !requirePerm('operators', 'ذخیره اپراتور')) return;
       var id = document.getElementById('opId').value;
       var username = document.getElementById('opUser').value.trim();
       var password = document.getElementById('opPass').value.trim();
@@ -274,8 +295,11 @@
       /* 4 characters is one dictionary away from being cracked; the input rule
        * is what actually matters, the PBKDF2 only protects at rest. */
       if (!keepPassword && password.length < MIN_PASSWORD) { showToast('رمز حداقل ' + MIN_PASSWORD + ' کاراکتر باشد', 'error'); return; }
-      if (!keepPassword && (!/[A-Za-z\u06f0-\u06f9\u0660-\u06690-9]/.test(password) || !/[^A-Za-z\u06f0-\u06f9\u0660-\u06690-9]/.test(password))) {
-        showToast('رمز مخاط یک حرف باید و یک عدد ن باشد', 'warning');
+      var hasLetter = /[A-Za-z\u0600-\u06FF]/.test(password);
+      var hasDigit = /[0-9\u06f0-\u06f9\u0660-\u0669]/.test(password);
+      if (!keepPassword && (!hasLetter || !hasDigit)) {
+        showToast('رمز باید هم حرف و هم عدد داشته باشد', 'error');
+        return;
       }
       var perms = {
         clients: document.getElementById('permClients').checked,
@@ -306,8 +330,16 @@
         operators.push({ id: Date.now(), username: username, password: hashed, role: role, perms: perms });
       }
       try { localStorage.setItem('alvand_operators', JSON.stringify(operators)); } catch (_) {}
+      var wasRotation = !!(window.__rotationPending && op && String(op.id) === String(window.__rotationPending));
+      if (wasRotation) {
+        window.__rotationPending = null;
+        currentOperator = op;
+        try { localStorage.setItem('alvand_currentOperator', JSON.stringify(op)); } catch (_) {}
+        try { document.getElementById('loginOverlay').style.display = 'none'; } catch (_) {}
+        try { updateOperatorBar(); applyPerms(); } catch (_) {}
+      }
       try { closeModal('operatorModal'); renderOperators(); } catch (_) {}
-      showToast('اپراتور ذخیره شد', 'success');
+      showToast(wasRotation ? 'رمز پیش‌فرض عوض شد و ورود انجام شد' : 'اپراتور ذخیره شد', 'success');
     } catch (e) { console.warn('saveOperator failed', e); }
   }
 
@@ -330,26 +362,10 @@
     return data;
   }; } catch (_) {}
 
-  // Wrap createBackup (defined in app.js) to also mirror to userData/backups via IPC.
-  try {
-    if (typeof createBackup === 'function') {
-      var origBackup = createBackup;
-      var wrappedBackup = function () {
-        var ret;
-        try { ret = origBackup.apply(this, arguments); } catch (e) { console.warn(e); }
-        try {
-          var raw = localStorage.getItem('alvand_backup');
-          if (raw && window.gamenet && window.gamenet.backup) {
-            var nm = 'gamenet-backup-' + (window.localDayKey ? window.localDayKey(new Date()) : new Date().toISOString().slice(0, 10));
-            window.gamenet.backup.write(nm, raw).catch(function () {});
-          }
-        } catch (_) {}
-        try { if (window.GamenetStore) window.GamenetStore.flushFileMirror(); } catch (_) {}
-        return ret;
-      };
-      createBackup = wrappedBackup; window.createBackup = wrappedBackup;
-    }
-  } catch (_) {}
+  /* createBackup() itself now writes the userData file mirror and only shows
+     "saved" after that write resolves. The old wrapper here started a second,
+     fire-and-forget write with a .catch() that swallowed failures, which is
+     why the toast could say "saved" while no file existed. */
 
   /* ---------- network helpers with REAL timeouts (original leaked AbortController timers) ---------- */
   async function patchedGetIP() {
@@ -473,6 +489,19 @@
   /* ---------- boot ---------- */
   function boot() {
     try { migrateOperatorPasswords(); } catch (_) {}
+    /* If a previous build already persisted the seeded admin, a reload must not
+     * skip the forced rotation: show the login gate again and open the editor. */
+    setTimeout(async function () {
+      try {
+        if (typeof currentOperator !== 'undefined' && currentOperator && await needsRotation(currentOperator)) {
+          window.__rotationPending = String(currentOperator.id);
+          var lo = document.getElementById('loginOverlay');
+          if (lo) lo.style.display = 'flex';
+          if (typeof editOperator === 'function') editOperator(currentOperator.id);
+          if (typeof showToast === 'function') showToast('⛔ رمز پیش‌فرض است؛ ابتدا رمز جدید را ثبت کن.', 'error');
+        }
+      } catch (_) {}
+    }, 900);
     try { setupLicenseGateUX(); } catch (_) {}
     try {
       var gv = document.getElementById('gateVersion');

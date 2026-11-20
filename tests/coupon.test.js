@@ -92,6 +92,31 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
   window.getCoupons().push({ id: 'today', code: 'TODAY', type: 'fixed', value: 100, active: true, used: 0, maxUses: 0, expires: iso });
   ok(window.validateCoupon('TODAY').ok === true, 'a coupon expiring today is still valid', iso);
 
+  console.log('--- removing or cancelling a payment gives the use back ---');
+  const cancelCoupons = window.getCoupons();
+  cancelCoupons.length = 0;
+  cancelCoupons.push({ id: 'cancel', code: 'CANCEL', type: 'fixed', value: 1000, active: true, used: 0, maxUses: 5 });
+  doc.getElementById('couponInput').value = 'CANCEL';
+  window.pendingPayment = { total: 10000, baseTotal: 10000, couponCode: '' };
+  window.applyCoupon();
+  ok(window.getCoupons()[0].used === 1, 'apply counted one use');
+  window.clearCoupon();
+  ok(window.getCoupons()[0].used === 0, 'clearCoupon returned the use');
+  doc.getElementById('couponInput').value = 'CANCEL';
+  window.applyCoupon();
+  window.closeModal('paymentModal');
+  ok(window.getCoupons()[0].used === 0, 'cancelling the payment returned the use');
+  ok(window.pendingPayment === null, 'cancelling the payment cleared pendingPayment');
+
+  console.log('--- package rows from a restored backup cannot inject HTML ---');
+  const hostilePkgs = window.getPackages();
+  hostilePkgs.push({ id: '7"><img src=x onerror=alert(9)>', name: '<b>pkg</b>', minutes: 30, price: 1, items: [] });
+  window.renderPackages();
+  const pkgHtml = doc.getElementById('packagesList').innerHTML;
+  ok(!/<img/i.test(pkgHtml) && !/<b>pkg<\/b>/.test(pkgHtml), 'package name/id cannot inject markup');
+  ok(/editPackage\(7\)/.test(pkgHtml), 'package id is reduced to a plain number in onclick');
+  hostilePkgs.pop();
+
   console.log('--- nothing threw ---');
   ok(errors.length === 0, 'no script errors', errors.slice(0, 2).join(' | '));
 

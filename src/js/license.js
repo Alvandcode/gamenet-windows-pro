@@ -109,6 +109,16 @@
     });
   }
 
+  /* Trusted verification lives in this closure, not in window.__licState.
+     A console user can still write __licState, but isLicenseValid() only
+     accepts a token whose RSA signature was verified here. */
+  var trusted = { token: null, payload: null };
+  function markTrusted(token, payload) { trusted = { token: String(token || ''), payload: payload || null }; }
+  function clearTrusted() { trusted = { token: null, payload: null }; }
+  function isTrusted(token) {
+    return !!(trusted.token && token && String(trusted.token) === String(token) && trusted.payload);
+  }
+  function trustedPayload(token) { return isTrusted(token) ? trusted.payload : null; }
   function verifyLicenseToken(token) {
     return verifyWithKey(window.ALVAND_LICENSE_PUBKEY_SPKI_B64, token);
   }
@@ -116,6 +126,24 @@
   function isExpired(payload, nowMs) {
     var now = nowMs || Date.now();
     return !!(payload && payload.exp && now > payload.exp);
+  }
+
+  /* A signed expiry is only as good as the clock. Remember the highest time
+   * this installation has ever seen and refuse a large step backwards (the
+   * classic "set the calendar to 2019" bypass). Six hours allows DST fixes and
+   * timezone changes without punishing an honest machine. */
+  var CLOCK_KEY = 'alvand_licenseClock';
+  var mainClockTampered = false;
+  function setMainClockTampered(v) { mainClockTampered = !!v; }
+  function clockTampered(nowMs) {
+    if (mainClockTampered) return true;
+    var now = nowMs || Date.now();
+    try {
+      var last = parseInt(localStorage.getItem(CLOCK_KEY) || '0', 10) || 0;
+      if (last > 0 && now < last - 6 * 3600 * 1000) return true;
+      if (!last || now > last) localStorage.setItem(CLOCK_KEY, String(now));
+    } catch (_) { /* no localStorage (tests/private mode) */ }
+    return false;
   }
 
   function daysLeft(payload, nowMs) {
@@ -133,7 +161,13 @@
     canonPayload: canonPayload,
     verifyWithKey: verifyWithKey,
     verifyLicenseToken: verifyLicenseToken,
+    accept: markTrusted,
+    isTrusted: isTrusted,
+    trustedPayload: trustedPayload,
+    clearTrusted: clearTrusted,
     isExpired: isExpired,
+    clockTampered: clockTampered,
+    setMainClockTampered: setMainClockTampered,
     daysLeft: daysLeft,
   };
 })();

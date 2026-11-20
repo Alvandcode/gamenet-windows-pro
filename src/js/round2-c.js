@@ -6,6 +6,11 @@ function toast(m, t){ if (window.showToast) window.showToast(m, t); }
 function logAct(ty, d){ if (window.logActivity) window.logActivity(ty, d); }
 function sp(k, fb){ try { if (window.safeParse) return window.safeParse(localStorage.getItem(k)) || fb; } catch(e){} return fb; }
 function sv(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function nid(v){ return window.numId ? window.numId(v) : (parseInt(v, 10) || 0); }
+function permit(section, label){
+  try { return typeof requirePerm === 'function' ? !!requirePerm(section, label) : true; }
+  catch(e){ return false; }
+}
 
 /* ---- 11. POS terminal ---- */
 window.getPOSConfig = function(){ return sp('alvand_posConfig', {enabled:false, ip:'', port:'', lastStatus:'never'}); };
@@ -17,35 +22,61 @@ window.renderPOSConfig = function(){
     + '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="posEnabled" '+(cfg.enabled?'checked':'')+' onchange="togglePOS(this.checked)"> فعال‌سازی کارتخوان</label>'
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">'
     + '<div><label style="font-size:0.8rem">آی‌پی</label><input type="text" id="posIP" value="'+esc(cfg.ip||'')+'"></div>'
-    + '<div><label style="font-size:0.8rem">پورت</label><input type="text" id="posPort" value="'+esc(cfg.port||'')+'"></div></div>'
+    + '<div><label style="font-size:0.8rem">پورت</label><input type="text" id="posPort" value="'+esc(cfg.port||'')+'"></div>'
+    + '<div style="grid-column:1/-1"><label style="font-size:0.8rem">مسیر ارسال</label><input type="text" id="posPath" value="'+esc(cfg.path||'/charge')+'" style="direction:ltr;text-align:left"></div></div>'
     + '<div style="display:flex;gap:8px;margin-top:10px"><button class="glass-btn glass-btn-success" onclick="savePOSConfig()">ذخیره</button>'
     + '<button class="glass-btn" onclick="testPOS()">تست</button></div>'
     + '<p style="font-size:.8rem;color:rgba(255,255,255,0.5);margin-top:8px">آخرین وضعیت: '+esc(cfg.lastStatus||'-')+'</p></div>';
 };
 window.togglePOS = function(v){
+  if(!permit('tools','فعال‌سازی کارتخوان')) return false;
   var cfg = window.getPOSConfig(); cfg.enabled = !!v; sv('alvand_posConfig', cfg);
   toast(v ? 'کارتخوان فعال شد' : 'کارتخوان غیرفعال شد','success');
 };
 window.savePOSConfig = function(){
+  if (!permit('tools', 'ذخیره تنظیمات POS')) return;
   var ip = document.getElementById('posIP');
   var pt = document.getElementById('posPort');
   var en = document.getElementById('posEnabled');
-  sv('alvand_posConfig', {enabled: en ? en.checked : false, ip: ip ? ip.value.trim() : '', port: pt ? pt.value.trim() : '', lastStatus: 'saved'});
+  var pa = document.getElementById('posPath');
+  sv('alvand_posConfig', {enabled: en ? en.checked : false, ip: ip ? ip.value.trim() : '', port: pt ? pt.value.trim() : '', path: pa ? pa.value.trim() : '/charge', lastStatus: 'saved'});
   logAct('pos','config saved'); toast('ذخیره شد','success'); window.renderPOSConfig();
 };
+function posRequest(cfg, amount, path){
+  var bridge = window.gamenet && window.gamenet.pos && window.gamenet.pos.charge;
+  if (typeof bridge !== 'function') return Promise.reject(new Error('pos bridge unavailable'));
+  return bridge({ip:cfg.ip, port:Number(cfg.port||80), path:path||cfg.path||'/charge', amount:Number(amount)||0});
+}
 window.testPOS = function(){
+  if(!permit('tools','تست کارتخوان')) return false;
   var cfg = window.getPOSConfig();
   if (!cfg.ip){ toast('اول آی‌پی را وارد کن','error'); return; }
-  toast('در حال تست '+cfg.ip+'...','success');
-  cfg.lastStatus = 'tested '+new Date().toLocaleTimeString('fa-IR');
-  sv('alvand_posConfig', cfg); window.renderPOSConfig();
+  if (!cfg.port){ toast('پورت کارتخوان را وارد کن','error'); return; }
+  toast('در حال تست '+cfg.ip+' (مبلغ آزمایشی ۱٬۰۰۰ تومان)...','success');
+  posRequest(cfg, 1000, cfg.path || '/charge').then(function(r){
+    cfg.lastStatus = r && r.ok ? ('connected '+new Date().toLocaleTimeString('fa-IR')) : ('error '+((r&&r.error)||'no response'));
+    sv('alvand_posConfig', cfg); window.renderPOSConfig();
+    toast(r && r.ok ? 'کارتخوان پاسخ داد' : 'کارتخوان پاسخ نداد', r && r.ok ? 'success' : 'error');
+  }).catch(function(e){
+    cfg.lastStatus = 'error ' + ((e && e.message) || e);
+    sv('alvand_posConfig', cfg); window.renderPOSConfig();
+    toast('ارتباط با کارتخوان برقرار نشد','error');
+  });
 };
 window.sendToPOS = function(amount){
+  if(!permit('income','ارسال مبلغ به کارتخوان')) return Promise.resolve(false);
   var cfg = window.getPOSConfig();
-  if (!cfg.enabled){ toast('کارتخوان غیرفعال است','error'); return false; }
+  if (!cfg.enabled){ toast('کارتخوان غیرفعال است','error'); return Promise.resolve(false); }
+  if (!cfg.ip || !cfg.port){ toast('آی‌پی و پورت کارتخوان را تنظیم کن','error'); return Promise.resolve(false); }
   logAct('pos','charge '+amount);
-  toast('مبلغ '+amount+' به کارتخوان ارسال شد','success');
-  return true;
+  return posRequest(cfg, amount).then(function(r){
+    if (!r || !r.ok) throw new Error((r && r.error) || 'pos error');
+    toast('مبلغ '+Number(amount||0).toLocaleString('fa-IR')+' به کارتخوان ارسال شد','success');
+    return true;
+  }).catch(function(e){
+    toast('ارسال به کارتخوان ناموفق بود: '+((e && e.message) || e),'error');
+    return false;
+  });
 };
 
   /* ---- 12. QR code ---- */
@@ -133,6 +164,7 @@ window.openEventModal = function(){
   var m = document.getElementById('eventModal'); if (m) m.classList.add('show');
 };
 window.saveEventFromModal = function(){
+  if (!permit('events', 'ثبت رویداد')) return;
   var t = document.getElementById('evTitle');
   var title = t ? t.value.trim() : '';
   if (!title){ toast('عنوان الزامی است','error'); return; }
@@ -147,6 +179,7 @@ window.saveEventFromModal = function(){
   window.renderEvents();
 };
 window.deleteEvent = function(id){
+  if (!permit('events', 'حذف رویداد')) return;
   if (!confirm('حذف شود؟')) return;
   EV = EV.filter(function(x){ return x.id !== id; });
   sv('alvand_events', EV); window.renderEvents();
@@ -157,6 +190,7 @@ window.joinEvent = function(id){
   var m = document.getElementById('joinEventModal'); if (m) m.classList.add('show');
 };
 window.saveJoinEvent = function(){
+  if (!permit('events', 'ثبت‌نام در رویداد')) return;
   var id = window._joinEventId;
   var e = EV.find(function(x){ return x.id === id; });
   if (!e) return;
@@ -174,10 +208,10 @@ window.renderEvents = function(){
   c.innerHTML = EV.map(function(e){
     var dDisp = window.formatDateSmart ? formatDateSmart(e.date||'') : (e.date||'');
     return '<div class="glass" style="padding:14px;margin-bottom:10px"><b>'+esc(e.title)+'</b>'
-      + '<p style="font-size:.8rem;color:rgba(255,255,255,0.5)">'+dDisp+' | ورودی: '+(e.fee||0).toLocaleString('fa-IR')+' | جایزه: '+esc(e.prize||'-')+'</p>'
-      + '<p style="font-size:.8rem">بازیکنان: '+(e.participants||[]).length+'</p>'
-      + '<div style="margin-top:6px"><button class="glass-btn glass-btn-success" onclick="joinEvent('+e.id+')">شرکت در رویداد</button> '
-      + '<button class="glass-btn glass-btn-danger" onclick="deleteEvent('+e.id+')">حذف</button></div></div>';
+      + '<p style="font-size:.8rem;color:rgba(255,255,255,0.5)">'+esc(dDisp)+' | ورودی: '+(Number(e.fee)||0).toLocaleString('fa-IR')+' | جایزه: '+esc(e.prize||'-')+'</p>'
+      + '<p style="font-size:.8rem">بازیکنان: '+((e.participants||[]).length)+'</p>'
+      + '<div style="margin-top:6px"><button class="glass-btn glass-btn-success" onclick="joinEvent('+nid(e.id)+')">شرکت در رویداد</button> '
+      + '<button class="glass-btn glass-btn-danger" onclick="deleteEvent('+nid(e.id)+')">حذف</button></div></div>';
   }).join('');
 };
 
@@ -265,7 +299,8 @@ function b64decodeBytes(b64){
     );
   }
   window.encryptAndSave = async function (key, obj, pass) {
-    if (!pass || pass.length < 4) { toast('رمز حداقل ۴ کاراکتر', 'error'); return false; }
+    if (typeof requirePerm === 'function' && !requirePerm('tools','رمزنگاری اطلاعات')) return false;
+    if (!pass || pass.length < 8) { toast('رمز حداقل ۸ کاراکتر', 'error'); return false; }
     var s = subtle();
     if (!s) { toast('رمزنگاری روی این سیستم پشتیبانی نمی‌شود', 'error'); return false; }
     try {
@@ -285,6 +320,7 @@ function b64decodeBytes(b64){
     } catch (e) { toast('خطا در رمزنگاری', 'error'); return false; }
   };
   window.decryptAndLoad = async function (key, pass) {
+    if (typeof requirePerm === 'function' && !requirePerm('tools','رمزگشایی اطلاعات')) return null;
     var s = subtle();
     if (!s) { toast('رمزگشایی روی این سیستم پشتیبانی نمی‌شود', 'error'); return null; }
     try {
@@ -308,7 +344,7 @@ window.renderSecurityPanel = function(){
   if (!c) return;
   c.innerHTML = '<div class="glass" style="padding:16px">'
     + '<h4>رمزنگاری بکاپ مشتریان</h4>'
-    + '<input type="password" id="encPass" placeholder="رمز (حداقل ۴ کاراکتر)" style="margin:8px 0">'
+    + '<input type="password" id="encPass" placeholder="رمز (حداقل ۸ کاراکتر)" style="margin:8px 0">'
     + '<div style="display:flex;gap:8px"><button class="glass-btn glass-btn-success" onclick="encryptCustomersBackup()">رمزنگاری</button>'
     + '<button class="glass-btn" onclick="decryptCustomersBackup()">بررسی رمزگشایی</button></div>'
     + '<p id="encStatus" style="font-size:.8rem;color:rgba(255,255,255,0.5);margin-top:8px"></p></div>';

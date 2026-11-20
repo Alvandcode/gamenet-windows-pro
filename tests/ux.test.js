@@ -315,11 +315,13 @@ const waitFor = async (fn, ms = 3000) => {
   // (d) payDebt can no longer mint money
   window.eval("customers=[{id:5,name:'x',wallet:0,debt:30}]");
   window.__v = { custId: '5', walletAmount: '100', walletAction: 'payDebt' };
+  const realGetByIdForWallet = doc.getElementById.bind(doc);
   doc.getElementById = function (id) {
     if (id in window.__v) return { value: window.__v[id], style: {}, classList: { add() {}, remove() {} }, textContent: '' };
     return { value: '', style: {}, classList: { add() {}, remove() {} }, textContent: '', innerHTML: '', appendChild() {}, setAttribute() {}, contains: () => false, focus() {}, remove() {}, dataset: {} };
   };
   window.doWalletAction();
+  doc.getElementById = realGetByIdForWallet;
   let cw = window.eval('customers[0].wallet'), cd = window.eval('customers[0].debt');
   ok(cd === 0, 'debt cleared');
   ok(cw === 30, 'wallet credited only what was owed (got ' + cw + ', was 30 owed / 100 paid)');
@@ -334,6 +336,41 @@ const waitFor = async (fn, ms = 3000) => {
   try { window.confirmPayment(); } catch (e) { cpThrew = true; }
   ok(!cpThrew, 'confirmPayment survives the client being deleted');
   ok(window.eval('sessions.length') === 0, 'nothing charged to the wrong client after deletion');
+
+  // (g) "duration from amount" must actually set the timer. It used to call
+  // closeModal('amountModal'), an id that does not exist, so it threw after
+  // saving and never showed the result.
+  window.eval("clients=[{id:61,name:'A',tariff:'single',extra:0,stationType:'pc',status:'offline',elapsed:0,startTime:null,totalCost:0,timerDuration:0,notified:false},{id:62,name:'B',tariff:'single',extra:0,stationType:'pc',status:'offline',elapsed:0,startTime:null,totalCost:0,timerDuration:0,notified:false}]");
+  window.eval('currentTimeClient=null; window._calcDur=null;');
+  window.openTimeModal(0);
+  let amountThrew = false, amountErr = '';
+  try { window.calculateDurationFromAmount(30000); window.applyAmountDuration(); }
+  catch (e) { amountThrew = true; amountErr = e.message; }
+  ok(!amountThrew, 'calculate + apply duration from amount does not throw (' + amountErr + ')');
+  ok(window.eval('window._calcDur') > 0, 'a valid amount produces a duration');
+  ok(window.eval('clients[0].timerDuration') === Math.ceil(window.eval('window._calcDur') / 60),
+     'the computed duration is applied to the timer', window.eval('clients[0].timerDuration'));
+  ok(doc.getElementById('amountResult').style.display === 'block', 'the duration result is visible');
+  window.openTimeModal(1);
+  ok(window.eval('window._calcDur') === null, 'opening another client clears the previous calculation');
+  let closeMissingThrew = false;
+  try { window.closeModal('modal-id-that-does-not-exist'); } catch (e) { closeMissingThrew = true; }
+  ok(!closeMissingThrew, 'closing a missing modal is a no-op, not a crash');
+
+  // (h) a membership can be assigned from the customer card, not only by the
+  // group-play finish path
+  const customersBeforeMembershipTest = window.customers;
+  window.customers = [{ id: 71, name: 'عضو تست', wallet: 0, debt: 0, totalHours: 0, totalSpent: 0 }];
+  window.openAssignMembership(71);
+  ok(doc.getElementById('assignMembershipModal').classList.contains('show'), 'the assign-membership modal opens');
+  ok(doc.getElementById('assignMembershipPlan').options.length > 0, 'membership plans are offered');
+  const firstPlan = window.getMembershipPlans()[0];
+  doc.getElementById('assignMembershipPlan').value = String(firstPlan.id);
+  window.saveAssignMembership();
+  const assigned = window.getActiveMembership(71);
+  ok(!!assigned, 'saving assigns an active membership');
+  ok(assigned && assigned.planName === firstPlan.name, 'the selected plan is the one assigned', assigned && assigned.planName);
+  window.customers = customersBeforeMembershipTest;
 
   // (f) rounding never makes a small session free
   window.eval('setRoundingMode("down")');
@@ -369,7 +406,8 @@ const waitFor = async (fn, ms = 3000) => {
   ok(window.hasPerm('finance') === true, 'the finance page is reachable (PERM_MAP)');
   ok(window.hasPerm('ops') === true, 'the ops page is reachable (PERM_MAP)');
   // the new permission checkboxes exist and round-trip
-  ['permTariffs', 'permEmployees', 'permOperators', 'about'].forEach(id => ok(!!doc.getElementById(id), id + ' exists in the operator modal'));
+  ['permTariffs', 'permEmployees', 'permOperators'].forEach(id => ok(!!doc.getElementById(id), id + ' exists in the operator modal'));
+  ok(!!doc.getElementById('about-section'), 'the about section exists');
   window.eval("currentOperator={id:1,username:'admin',role:'admin'}");
   ok(window.eval("hasPerm('tools')") === true, 'admin still reaches everything');
 
@@ -380,6 +418,9 @@ const waitFor = async (fn, ms = 3000) => {
         // left the LAN agent buttons unable to reach any machine.
         ok(!/http:\/\/(192\.168|10|172\.1[6-9]|172\.2\d|172\.3[01])\./.test(csp), 'CSP has no ignored LAN host sources');
         ok(/connect-src[^;]*'self'/.test(csp), 'CSP connect-src still allows same-origin');
+        ok(/script-src-attr[^;]*'unsafe-inline'/.test(csp), 'CSP allows inline handlers only through script-src-attr');
+        ok(!/script-src(?!-attr)[^;]*'unsafe-inline'/.test(csp), 'CSP script-src blocks inline script elements');
+        ok(!/connect-src[^;]*\shttps:(\s|;)/.test(csp), 'CSP connect-src has no wildcard https: exfil sink');
         const preloadSrc = fs.readFileSync(path.join(ROOT, 'preload.js'), 'utf8');
         const mainSrc = fs.readFileSync(path.join(ROOT, 'main.js'), 'utf8');
         ok(/gamenet:agent-request/.test(preloadSrc), 'preload exposes the agent bridge');
@@ -408,11 +449,13 @@ const waitFor = async (fn, ms = 3000) => {
   ok(window.eval('enforceStationCapacity()') === false, 'adding blocked at the cap');
   const before = window.eval('clients.length');
   window.__v = { newClientName: 'D', newClientIP: '', newClientType: 'pc', newClientExtra: '0', newClientTimer: '30' };
+  const realGetByIdForLicense = doc.getElementById.bind(doc);
   doc.getElementById = function (id) {
     if (id in window.__v) return { value: window.__v[id], style: {}, classList: { add() {}, remove() {} }, textContent: '', disabled: false };
     return { value: '', style: {}, classList: { add() {}, remove() {} }, textContent: '', innerHTML: '', appendChild() {}, setAttribute() {}, contains: () => false, focus() {}, remove() {}, dataset: {}, checked: false, files: [] };
   };
   window.addClient();
+  doc.getElementById = realGetByIdForLicense;
   ok(window.eval('clients.length') === before, 'addClient() refused to exceed the paid capacity');
   // without a license (local mode) there is no cap
   window.eval("__licState={status:'invalid',token:null,payload:null,fp:null}");
@@ -426,14 +469,30 @@ const waitFor = async (fn, ms = 3000) => {
   window.eval("localStorage.setItem('alvand_walletHistory',JSON.stringify([{customerId:1,amount:100,date:'x'}]))");
   window.eval("localStorage.setItem('alvand_license',JSON.stringify({token:'t',id:'L-1'}))");
   window.eval("localStorage.setItem('alvand_activityLog',JSON.stringify([{id:1,type:'t'}]))");
+  window.eval("localStorage.setItem('alvand_packages',JSON.stringify([{id:1,name:'p'}]))");
+  window.eval("localStorage.setItem('alvand_coupons',JSON.stringify([{id:1,code:'C'}]))");
+  window.eval("localStorage.setItem('alvand_handovers',JSON.stringify([{id:1,operator:'op'}]))");
+  window.eval("localStorage.setItem('alvand_branches',JSON.stringify([{id:1,name:'main'}]))");
+  window.eval("localStorage.setItem('alvand_holidays',JSON.stringify(['2026-01-01']))");
+  window.eval("localStorage.setItem('alvand_taxRate','10')");
+  window.eval("localStorage.setItem('alvand_groupSessions',JSON.stringify([{id:1}]))");
+  window.eval("localStorage.setItem('alvand_discardedTime',JSON.stringify([{seconds:60}]))");
+  window.eval("localStorage.setItem('alvand_membershipPlans',JSON.stringify([{id:1,name:'plan'}]))");
+  window.eval("localStorage.setItem('alvand_employees',JSON.stringify([{id:1,name:'emp'}]))");
+  window.eval("localStorage.setItem('alvand_waitingList',JSON.stringify([{id:1,name:'wait'}]))");
+  window.eval("localStorage.setItem('alvand_phonebook',JSON.stringify([{id:1,name:'pb'}]))");
   const json = window.createBackup();
   ok(!!json, 'createBackup() returns the snapshot');
   const snap = JSON.parse(json);
+  // this seed is only here to prove the snapshot contains the ledger; later
+  // tests expect a clean ledger
+  window.localStorage.removeItem('alvand_discardedTime');
   const mustHave = ['clients','sessions','customers','operators','walletHistory','license',
                     'activityLog','membershipPlans','employees','waitingList','phonebook','tariffs',
-                    'stationTypes','roundingMode','theme'];
+                    'stationTypes','roundingMode','theme','packages','coupons','handovers',
+                    'branches','holidays','taxRate','groupSessions','discardedTime'];
   const absentFromSnapshot = mustHave.filter(k => snap[k] === undefined);
-  ok(missing.length === 0, 'snapshot contains every store (missing: ' + (missing.join(',') || 'none') + ')');
+  ok(absentFromSnapshot.length === 0, 'snapshot contains every store (missing: ' + (absentFromSnapshot.join(',') || 'none') + ')');
   ok(typeof snap.date === 'string' && !!snap.appVersion, 'snapshot is stamped');
   ok(snap.schema === 2, 'snapshot has a schema version');
 
@@ -451,6 +510,12 @@ const waitFor = async (fn, ms = 3000) => {
   ok(bad5.ok === false, 'oversized payload rejected');
   const good = window.sanitizeBackup({ clients: JSON.stringify([{ id: 1, name: 'ok' }]), tariffs: JSON.stringify({ single: 1 }) });
   ok(good.ok === true, 'valid payload accepted');
+  const branchGood = window.sanitizeBackup({ branches: JSON.stringify([{ id: 1, name: 'main' }]) });
+  ok(branchGood.ok === true, 'branches is accepted as an array (not an object)');
+  const holidayGood = window.sanitizeBackup({ holidays: JSON.stringify(['2026-01-01']) });
+  ok(holidayGood.ok === true, 'holiday dates are accepted as strings');
+  const opsGood = window.sanitizeBackup({ packages:'[]', coupons:'[]', handovers:'[]', groupActive:'{}', taxRate:'10' });
+  ok(opsGood.ok === true, 'operations/finance stores are accepted');
   ok(JSON.parse(good.data.clients)[0].name === 'ok', 'valid payload passes data through');
   ok(window.localStorage.getItem('alvand_clients') === clientsBefore, 'rejected payloads never touched storage');
   ok(typeof window.validatedRestoreObject === 'function', 'restore goes through validatedRestoreObject');
@@ -533,7 +598,10 @@ const waitFor = async (fn, ms = 3000) => {
   ok(ws.getDay() === 6, 'weekStart lands on Saturday (get ' + ws.getDay() + ')');
   ok(ws.getHours() === 0 && ws.getMinutes() === 0, 'weekStart is midnight');
   ok(window.daysBetween(ws, wed) === 4, 'Saturday -> Wednesday is 4 days');
-  ok(window.monthStart(wed).getDate() === 1, 'monthStart is the 1st');
+  const jMonthStart = window.monthStart(wed);
+  const jStartParts = window.Jalali.g2j(jMonthStart.getFullYear(), jMonthStart.getMonth() + 1, jMonthStart.getDate());
+  ok(jStartParts.jd === 1 && jMonthStart.getHours() === 0, 'monthStart is the 1st of the Jalali month');
+  ok(jMonthStart <= wed, 'monthStart is not after the reference date');
   ok(Number.isNaN(window.weekStart('nonsense').getTime()), 'an invalid date does not produce a fake week');
   // weekly CSV export must use the calendar week, not a rolling 7 days
   const nowRef = new Date();   // "today" is always inside the current week
@@ -566,6 +634,10 @@ const waitFor = async (fn, ms = 3000) => {
   const stockRes = window.checkLowStock();
   ok(stockRes.outOfStock.length === 1 && stockRes.outOfStock[0].name === 'sold-out-string', 'a sold-out item stored as the string "0" is detected');
   ok(stockRes.lowItems.length === 1 && stockRes.lowItems[0].name === 'low', '3 <= 10 is low stock');
+  let stockThrew = false, stockErr = '';
+  try { window.renderStockAlerts(); } catch (e) { stockThrew = true; stockErr = e.message; }
+  ok(!stockThrew, 'the stock-alerts panel renders without ReferenceError (' + stockErr + ')');
+  ok(/sold-out-string/.test(doc.getElementById('stockAlertsContent').innerHTML), 'the alert panel names the sold-out item');
   window.setLowStockThreshold(-5);
   ok(window.localStorage.getItem('alvand_lowStockThreshold') === '10', 'a negative threshold is rejected, the old value is kept');
   // database size is measured in bytes, not UTF-16 units

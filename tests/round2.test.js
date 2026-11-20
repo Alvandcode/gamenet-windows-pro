@@ -214,8 +214,8 @@ try {
   vm.runInContext('addToWaitingList("t1", "0911", "pc", "")', sandbox);
   // behavior: encrypt/decrypt roundtrip
   cryptoChecks = (async () => {
-    const encOk = await vm.runInContext('encryptAndSave("tkey", {a:1}, "secret1")', sandbox);
-    const dec = await vm.runInContext('decryptAndLoad("tkey", "secret1")', sandbox);
+    const encOk = await vm.runInContext('encryptAndSave("tkey", {a:1}, "secret12")', sandbox);
+    const dec = await vm.runInContext('decryptAndLoad("tkey", "secret12")', sandbox);
     check(encOk === true && dec && dec.a === 1, 'encrypt/decrypt roundtrip works (PBKDF2+AES-GCM)');
     const decBad = await vm.runInContext('decryptAndLoad("tkey", "wrong")', sandbox);
     check(decBad === null, 'wrong password returns null');

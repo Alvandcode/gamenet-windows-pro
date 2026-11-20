@@ -8,6 +8,11 @@ function sp(k, fb){ try { if (window.safeParse) return window.safeParse(localSto
 function sv(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function val(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
 function num(id){ var el = document.getElementById(id); return el ? (parseInt(el.value) || 0) : 0; }
+function nid(v){ return window.numId ? window.numId(v) : (parseInt(v, 10) || 0); }
+function permit(section, label){
+  try { return typeof requirePerm === 'function' ? !!requirePerm(section, label) : true; }
+  catch(e){ return false; }
+}
 
 var HO = sp('alvand_handovers', []);
 var HOL = sp('alvand_holidays', []);
@@ -21,6 +26,7 @@ window.getTaxRate = function(){
   return Math.min(100, Math.max(0, v));
 };
 window.setTaxRate = function(v){
+  if (!permit('finance', 'تنظیم مالیات')) return;
   v = Math.min(100, Math.max(0, parseFloat(v) || 0));
   try{ localStorage.setItem('alvand_taxRate', String(v)); }catch(e){}
   toast('مالیات: ' + v + '٪','success');
@@ -31,39 +37,52 @@ window.taxAmount = function(baseTotal){
 };
 
 /* ================= P&L ================= */
-window.computePNL = function(days){
-  var now = Date.now();
+window.computePNL = function(range){
+  var now = new Date();
+  var nowMs = now.getTime();
+  var start = null;
+  if (range === 'today' || range === 0){
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  } else if (range === 'month' || range === 30){
+    start = (typeof window.monthStart === 'function') ? window.monthStart(now) : new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  var bid = (typeof window.currentBranchId === 'function') ? window.currentBranchId() : '1';
+  var branchOf = (typeof window.branchIdOf === 'function') ? window.branchIdOf : function(r){ return '1'; };
   var inR = function(d){
-    if (days == null) return true;
-    if (days === 0){ return new Date(d).toDateString() === new Date().toDateString(); }
-    return (now - new Date(d).getTime()) <= days * 864e5;
+    if (!start) return true;
+    var t = new Date(d).getTime();
+    return isFinite(t) && t >= start.getTime() && t <= nowMs;
   };
+  var inBranch = function(r){ return branchOf(r) === bid; };
   /* Go through num() for every stored field. A row that holds a string, a
    * Persian-digit value or null used to turn the entire P&L into NaN, and the
    * page then printed "NaN" instead of a profit or a loss. */
   var n = (typeof window.num === 'function') ? window.num : function(v){ return Number(v) || 0; };
   var gameRev = 0;
-  (window.sessions || []).forEach(function(s){ if (s && inR(s.date)) gameRev += n(s.cost); });
+  (window.sessions || []).forEach(function(s){ if (s && inBranch(s) && inR(s.date)) gameRev += n(s.cost); });
   var bufRev = 0, bufCost = 0;
   sp('alvand_sales', []).forEach(function(s){
-    if (!s || !inR(s.date)) return;
+    if (!s || !inBranch(s) || !inR(s.date)) return;
     bufRev += n(s.price) * n(s.qty);
     bufCost += n(s.cost) * n(s.qty);
   });
   var exp = 0;
-  sp('alvand_expenses', []).forEach(function(e){ if (e && inR(e.date)) exp += n(e.amount); });
-  var revenue = gameRev + bufRev;
-  var net = revenue - bufCost - exp;
-  return {gameRev:gameRev, bufRev:bufRev, revenue:revenue, cogs:bufCost, expenses:exp, net:net,
+  sp('alvand_expenses', []).forEach(function(e){ if (e && inBranch(e) && inR(e.date)) exp += n(e.amount); });
+  /* session.cost is the full bill (game + buffet). Adding the buffet sales a
+     second time inflated revenue and profit on every report. Keep the buffet
+     figure for display only, and derive game revenue from the full bill. */
+  var revenue = gameRev;
+  var tax = (typeof window.taxAmount === 'function') ? window.taxAmount(revenue) : 0;
+  var net = revenue - bufCost - exp - tax;
+  return {gameRev:Math.max(0, revenue - bufRev), bufRev:bufRev, revenue:revenue, cogs:bufCost, expenses:exp, tax:tax, net:net,
     margin: revenue > 0 ? (net / revenue * 100) : 0};
 };
 window.renderPNL = function(range){
   if (range) window._pnlRange = range;
   var r = window._pnlRange || 'today';
-  var days = r === 'today' ? 0 : (r === 'month' ? 30 : null);
   var c = document.getElementById('pnlContent');
   if (!c) return;
-  var p = window.computePNL(days);
+  var p = window.computePNL(r);
   var col = p.net >= 0 ? '#22c55e' : '#ef4444';
   document.querySelectorAll('.pnl-range-btn').forEach(function(b){
     b.classList.toggle('glass-btn-success', b.dataset.range === r);
@@ -74,6 +93,7 @@ window.renderPNL = function(range){
     + '<div class="glass" style="padding:16px;text-align:center;"><p style="font-size:0.75rem;color:rgba(255,255,255,0.5);">جمع درآمد</p><b>' + p.revenue.toLocaleString() + '</b></div>'
     + '<div class="glass" style="padding:16px;text-align:center;"><p style="font-size:0.75rem;color:rgba(255,255,255,0.5);">بهای تمام‌شده بوفه</p><b style="color:#f59e0b;">-' + p.cogs.toLocaleString() + '</b></div>'
     + '<div class="glass" style="padding:16px;text-align:center;"><p style="font-size:0.75rem;color:rgba(255,255,255,0.5);">هزینه‌ها</p><b style="color:#ef4444;">-' + p.expenses.toLocaleString() + '</b></div>'
+    + '<div class="glass" style="padding:16px;text-align:center;"><p style="font-size:0.75rem;color:rgba(255,255,255,0.5);">مالیات (برآورد)</p><b style="color:#f59e0b;">-' + (p.tax || 0).toLocaleString() + '</b></div>'
     + '<div class="glass" style="padding:16px;text-align:center;border-color:' + col + '55;"><p style="font-size:0.75rem;color:rgba(255,255,255,0.5);">سود خالص</p><b style="font-size:1.3rem;color:' + col + ';">' + p.net.toLocaleString() + '</b><br><span style="font-size:0.75rem;color:' + col + ';">حاشیه ' + p.margin.toFixed(1) + '٪</span></div>'
     + '</div>';
 };
@@ -81,8 +101,10 @@ window.renderPNL = function(range){
 /* ================= HANDOVER ================= */
 window.expectedCashIn = function(){
   var pays = sp('alvand_payments', []);
+  var bid = (typeof window.currentBranchId === 'function') ? window.currentBranchId() : '1';
+  var branchOf = (typeof window.branchIdOf === 'function') ? window.branchIdOf : function(r){ return '1'; };
   var since = 0;
-  HO.forEach(function(h){ var t = new Date(h.date).getTime(); if (t > since) since = t; });
+  HO.forEach(function(h){ if (branchOf(h) !== bid) return; var t = new Date(h.date).getTime(); if (t > since) since = t; });
   if (!since){ var d = new Date(); d.setHours(0, 0, 0, 0); since = d.getTime(); }
   /* A split bill is stored as two rows, one cash and one card, so only the
    * 'cash' rows belong in the till. The old code also had a 'split' branch
@@ -92,6 +114,7 @@ window.expectedCashIn = function(){
   var n2 = (typeof window.num === 'function') ? window.num : function(v){ return Number(v) || 0; };
   return pays.filter(function(p){
     if (!p) return false;
+    if (branchOf(p) !== bid) return false;
     if (new Date(p.date).getTime() < since) return false;
     if (p.method === 'cash') return true;
     // tolerate a hand-edited or older backup that really does hold one 'split'
@@ -105,6 +128,7 @@ window.expectedCashIn = function(){
   }, 0);
 };
 window.saveHandover = function(){
+  if (!permit('finance', 'ثبت تحویل صندوق')) return;
   var op = val('hoOperator') || ((window.currentOperator && window.currentOperator.username) || '');
   var opening = num('hoOpening');
   var counted = num('hoCounted');
@@ -112,7 +136,7 @@ window.saveHandover = function(){
   var cashIn = window.expectedCashIn();
   var expected = opening + cashIn;
   var diff = counted - expected;
-  HO.unshift({id:Date.now(), date:new Date().toISOString(), operator:op,
+  HO.unshift({id:Date.now(), date:new Date().toISOString(), operator:op, branchId:(typeof window.currentBranchId === 'function' ? window.currentBranchId() : '1'),
     opening:opening, cashIn:cashIn, expected:expected, counted:counted, diff:diff, note:val('hoNote')});
   saveHo();
   window.renderHandovers();
@@ -120,6 +144,7 @@ window.saveHandover = function(){
   toast('تحویل ثبت شد - مغایرت: ' + diff.toLocaleString(), diff === 0 ? 'success' : 'warning');
 };
 window.deleteHandover = function(id){
+  if (!permit('finance', 'حذف تحویل صندوق')) return;
   if (!confirm('حذف شود؟')) return;
   HO = HO.filter(function(x){ return x.id !== id; });
   saveHo(); window.renderHandovers();
@@ -135,16 +160,19 @@ window.renderHandovers = function(){
     exp.textContent = 'ورودی صندوق موردانتظار: ' + (opening + window.expectedCashIn()).toLocaleString() + ' تومان';
   }
   if (!HO.length){ c.innerHTML += ''; }
-  var h = HO.slice(0, 20).map(function(x){
+  var bid = (typeof window.currentBranchId === 'function') ? window.currentBranchId() : '1';
+  var branchOf = (typeof window.branchIdOf === 'function') ? window.branchIdOf : function(r){ return '1'; };
+  var branchHO = HO.filter(function(x){ return branchOf(x) === bid; });
+  var h = branchHO.slice(0, 20).map(function(x){
     var col = x.diff === 0 ? '#22c55e' : '#ef4444';
     return '<div class="glass" style="padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
       + '<div><b>' + esc(x.operator) + '</b> <span style="font-size:0.75rem;color:rgba(255,255,255,0.5);">' + new Date(x.date).toLocaleString('fa-IR') + '</span><br>'
-      + '<span style="font-size:0.8rem;">اول: ' + x.opening.toLocaleString() + ' | ورودی: ' + x.cashIn.toLocaleString() + ' | شمارش: ' + x.counted.toLocaleString() + '</span><br>'
+      + '<span style="font-size:0.8rem;">اول: ' + (Number(x.opening)||0).toLocaleString() + ' | ورودی: ' + (Number(x.cashIn)||0).toLocaleString() + ' | شمارش: ' + (Number(x.counted)||0).toLocaleString() + '</span><br>'
       + '<span style="font-size:0.85rem;font-weight:800;color:' + col + ';">مغایرت: ' + x.diff.toLocaleString() + '</span>'
       + (x.note ? '<br><span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">' + esc(x.note) + '</span>' : '') + '</div>'
-      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deleteHandover(' + x.id + ')">🗑️</button></div>';
+      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deleteHandover(' + nid(x.id) + ')">🗑️</button></div>';
   }).join('');
-  var emptyMsg = HO.length ? '' : '<p style="text-align:center;color:rgba(255,255,255,0.5);">تحویلی ثبت نشده</p>';
+  var emptyMsg = branchHO.length ? '' : '<p style="text-align:center;color:rgba(255,255,255,0.5);">تحویلی ثبت نشده</p>';
   var listEl = document.getElementById('handoversHistory');
   if (listEl) listEl.innerHTML = emptyMsg + h;
   else c.innerHTML = emptyMsg + h;
@@ -165,10 +193,11 @@ window.renderHolidays = function(){
   c.innerHTML = HOL.length ? HOL.slice().sort().map(function(iso){
     return '<div class="glass" style="padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">'
       + '<span>' + esc(disp(iso)) + '</span>'
-      + '<button class="glass-btn glass-btn-danger" style="padding:4px 8px;font-size:0.7rem;" onclick="deleteHoliday(\'' + iso + '\')">🗑️</button></div>';
+      + '<button class="glass-btn glass-btn-danger" style="padding:4px 8px;font-size:0.7rem;" onclick="deleteHoliday(\'' + esc(window.jsStr ? window.jsStr(iso) : iso) + '\')">🗑️</button></div>';
   }).join('') : '<p style="text-align:center;color:rgba(255,255,255,0.5);font-size:0.85rem;">تعطیلی ثبت نشده (جمعه‌ها خودکار حساب می‌شوند)</p>';
 };
 window.addHoliday = function(){
+  if (!permit('finance', 'ثبت تعطیلی')) return;
   var iso = window.getPickerISO ? getPickerISO('holidayDate') : val('holidayDate');
   if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)){ toast('تاریخ معتبر انتخاب کن','error'); return; }
   if (HOL.indexOf(iso) < 0){ HOL.push(iso); saveHol(); }
@@ -176,12 +205,14 @@ window.addHoliday = function(){
   toast('تعطیلی اضافه شد','success');
 };
 window.deleteHoliday = function(iso){
+  if (!permit('finance', 'حذف تعطیلی')) return;
   HOL = HOL.filter(function(x){ return x !== iso; });
   saveHol(); window.renderHolidays();
 };
 
 /* ================= DEBT REMINDERS ================= */
 window.sendDebtReminders = function(){
+  if (!permit('finance', 'یادآوری بدهی')) return;
   var ta = document.getElementById('debtTemplate');
   var tpl = ta ? ta.value.trim() : '';
   if (!tpl) tpl = 'سلام {نام}، بدهی شما {مبلغ} تومان است. لطفا تسویه کنید.';
@@ -221,9 +252,9 @@ window.renderOpsSection = function(){
   try{ window.renderMaintenance(); }catch(e){}
   var ps = document.getElementById('pkgSelect');
   var pkgs = (window.getPackages ? window.getPackages() : []);
-  if (ps) ps.innerHTML = '<option value="">انتخاب پکیج...</option>' + pkgs.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + ' - ' + (p.price || 0).toLocaleString() + '</option>'; }).join('');
+  if (ps) ps.innerHTML = '<option value="">انتخاب پکیج...</option>' + pkgs.map(function(p){ return '<option value="' + esc(p.id) + '">' + esc(p.name) + ' - ' + (p.price || 0).toLocaleString() + '</option>'; }).join('');
   var cs = document.getElementById('pkgClientSelect');
-  if (cs) cs.innerHTML = '<option value="">انتخاب کلاینت...</option>' + (window.clients || []).map(function(c, i){ return '<option value="' + i + '">' + esc(c.name) + '</option>'; }).join('');
+  if (cs) cs.innerHTML = '<option value="">انتخاب کلاینت...</option>' + (window.clients || []).map(function(c){ return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('');
 };
 window.tsDayLabel = function(dt){
   if (dt === 'weekend') return 'پنجشنبه و جمعه';

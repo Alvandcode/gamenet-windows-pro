@@ -57,13 +57,15 @@
       // no mirror because it looks like a working safety net.
       var keys = ['clients', 'tariffs', 'sessions', 'reservations', 'services', 'expenses',
         'tariffSchedules', 'sales', 'clientServiceMap', 'stationTypes', 'payments',
-        'customers', 'operators', 'walletHistory', 'license', 'allLicenses',
-        'theme', 'alarmSound', 'alarmRepeat', 'rounding', 'lang', 'backupDay', 'backupTime',
+        'customers', 'operators', 'walletHistory', 'license', 'allLicenses', 'allLicensesMeta',
+        'theme', 'alarmSound', 'alarmRepeat', 'rounding', 'lang', 'backupEnabled', 'backupDay', 'backupTime',
         'membershipPlans', 'customerMemberships', 'gameHistory', 'hourlyUsage', 'notifications',
         'activityLog', 'employees', 'attendance', 'waitingList', 'loyaltyPoints', 'surveys',
         'smsLog', 'smsConfig', 'phonebook', 'events', 'branches', 'currentBranch', 'shifts',
         'lowStockThreshold', 'posConfig', 'shopName', 'shopPhone', 'lite', 'uiZoom',
-        'navGroups', 'backup'];
+        'navGroups', 'packages', 'coupons', 'amanats', 'maintenance', 'handovers', 'holidays',
+        'taxRate', 'groupSessions', 'groupActive', 'walkInGuests', 'discardedTime',
+        'customAlarm', 'agentToken', 'customers_enc'];
       for (var i = 0; i < keys.length; i++) {
         try { dump[keys[i]] = localStorage.getItem(PREFIX + keys[i]); } catch (_) {}
       }
@@ -77,36 +79,18 @@
       var payload = JSON.stringify(collectDump());
       if (payload === lastMirrorPayload) return; // unchanged
       lastMirrorPayload = payload;
-      // one file per write, not per day: the date-based name overwrote the
-      // previous day's mirror, so main.js's "keep the last 14" never did anything
-      var stamp = new Date().toISOString().replace(/[:.]/g,'-');
+      // One file per HOUR, not per write. Writing a new file every 5s meant
+      // 14 files covered only ~3 minutes of history. The hourly bucket keeps
+      // the newest state for each hour; main.js keeps the recent hours plus one
+      // snapshot per day for a month.
+      var stamp = new Date().toISOString().slice(0, 13).replace(/[:.]/g, '-');
       var name = 'gamenet-auto-' + stamp;
       window.gamenet.backup.write(name, payload).then(function (res) {
         if (!res || !res.ok) {
           lastMirrorPayload = ''; // retry next time
           if (!quiet) console.warn('[gamenet] file mirror failed', res);
-        } else { trimMirrors(); }
+        }
       }).catch(function () { lastMirrorPayload = ''; });
-    } catch (_) {}
-  }
-  /** Keep the newest N mirror files so the backups folder cannot grow forever. */
-  function trimMirrors(){
-    try{
-      var keep = 14;
-      var names = [];
-      for (var i = 0; i < localStorage.length; i++){
-        var k = localStorage.key(i);
-        if (k && k.indexOf(PREFIX + 'mirror:') === 0) names.push(k);
-      }
-      if (names.length <= keep) return;
-      var entries = names.map(function (k){
-        return { k: k, t: safeParse(localStorage.getItem(k), {}) && 0 };
-      });
-      // fall back to insertion order encoded in the key suffix
-      entries.sort(function (a, b){ return a.k < b.k ? 1 : -1; });
-      entries.slice(keep).forEach(function (e){
-        try { localStorage.removeItem(e.k); } catch (_) {}
-      });
     } catch (_) {}
   }
 

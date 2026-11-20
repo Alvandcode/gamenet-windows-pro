@@ -48,7 +48,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const appSrc = fs.readFileSync(path.join(ROOT, 'src/js/app.js'), 'utf8');
   ok(/sessions\.push\(\{\s*branchId: currentBranchId\(\)/.test(appSrc), 'sessions carry the branch');
   ok(/expenses\.push\(\{id:Date\.now\(\), title,amount,category,date, branchId:currentBranchId\(\)\}\)/.test(appSrc), 'expenses carry the branch');
-  ok(/sales\.push\(\{[^}]*branchId:currentBranchId\(\)/.test(appSrc), 'buffet sales carry the branch');
+  ok(/const saleBase = \{[^}]*branchId:\s*currentBranchId\(\)/.test(appSrc), 'buffet sale base carries the branch');
+  ok(/sales\.push\(Object\.assign\(\{\}, saleBase,/.test(appSrc), 'both buffet sale rows inherit the branch');
 
   console.log('--- 3. the branch card shows REAL per-branch numbers ---');
   window.localStorage.setItem('alvand_currentBranch', '1');

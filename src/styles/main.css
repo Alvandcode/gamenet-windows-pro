@@ -1016,7 +1016,6 @@ body.theme-roshan, body.theme-arctic {
     .log-table th { font-size: 0.7rem; padding: 4px 5px; }
     .log-table td { padding: 4px 5px; }
 }
-}
 
 /* ================= dropdown panels =================
    Every dropdown and popup panel takes these. The panel is the theme's own

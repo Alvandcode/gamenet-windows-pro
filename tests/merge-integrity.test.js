@@ -70,8 +70,8 @@ function ok(c, m) { if (c) { pass++; console.log('  PASS ' + m); } else { fail++
   ok(/publishState\('stationTypes'/.test(appSrc), 'the bridge publishes stationTypes');
   ok(!/licSecret\s*=/.test(appSrc), 'the fake license secret is gone');
   ok(!/licHash\s*=/.test(appSrc), 'the fake license hash is gone');
-  ok(/baseTotal = pkg\.price \+ overCost/.test(appSrc), 'YOUR package pricing survived');
-  ok(/clients\.find\(function\(x\)\{ return x && x\.id===pendingPayment\.clientId/.test(appSrc), 'the package rate lookup is id-based now');
+  ok(/function packageChargeFor\(/.test(appSrc) && /price \+ overCost/.test(appSrc), 'package pricing is computed from the active package');
+  ok(/String\(x\.id\) === String\(pendingPayment\.clientId\)/.test(appSrc), 'the payment client lookup is id-based');
   ok(!/pendingPayment\.clientName\.includes\(c\.name\)/.test(appSrc), 'the fuzzy customer match is gone');
   ok(/\u0632\u0645\u0627\u0646 \/ \u0645\u0628\u0644\u063a/.test(appSrc), 'your "time / amount" button label survived');
   ok(/numId\(i\)/.test(appSrc), 'the id-guard against XSS survived');

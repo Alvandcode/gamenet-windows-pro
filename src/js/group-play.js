@@ -88,10 +88,9 @@
    * pointing at one. */
   function clientRowFor(member) {
     if (!member) return null;
-    const mid = String(member.id);
-    return allClients().find((c) => String(c.id) === mid
-      || String(c.customerId) === mid
-      || String(c.name || '').trim() === String(member.name || '').trim()) || null;
+    const byId = findMemberRow(member);
+    if (byId) return byId;
+    return allClients().find((c) => String(c.name || '').trim() === String(member.name || '').trim()) || null;
   }
   window.gpClientRowFor = clientRowFor;
 
@@ -100,6 +99,29 @@
     if (Array.isArray(w.clients)) return w.clients;
     if (Array.isArray(w.getClients)) { try { return w.getClients() || []; } catch (e) {} }
     return [];
+  }
+  function findMemberRow(member) {
+    if (!member) return null;
+    return allClients().find((x) => String(x.id) === String(member.id)
+      || (x.customerId != null && String(x.customerId) === String(member.id))) || null;
+  }
+  /* A register customer may not have a station row. start() creates a
+   * temporary one so the dashboard shows the party; without this cleanup it
+   * stayed in the client list forever as a fake, permanently "offline" card. */
+  function releaseMemberRow(row) {
+    if (!row) return;
+    if (row._groupSynthetic) {
+      const list = allClients();
+      const i = list.indexOf(row);
+      if (i >= 0) list.splice(i, 1);
+      return;
+    }
+    row.status = 'offline';
+    row.startTime = null;
+    row.elapsed = 0;
+    row.extraSeconds = 0;
+    row._lastElapsed = null;
+    row.notified = false;
   }
   function tariffTable() {
     const w = (typeof window !== 'undefined') ? window : {};
@@ -269,14 +291,13 @@
      * everywhere except the group panel. */
     members.forEach((m) => {
       if (m.kind !== 'client') return;
-      let c = allClients().find((x) => String(x.id) === String(m.id)
-        || (x.customerId && String(x.customerId) === String(m.id)));
+      let c = findMemberRow(m);
       if (!c) {
         c = {
-          id: m.id, customerId: m.id, name: m.name, phone: m.phone || '',
+          id: m.id, customerId: m.customerId || m.id, name: m.name, phone: m.phone || '',
           tariff: m.tariff || 'single', stationType: m.stationType || null,
           status: 'online', elapsed: 0, startTime: Date.now(), totalCost: 0,
-          groupId: g.id,
+          groupId: g.id, _groupSynthetic: g.id,
         };
         if (typeof window.clients !== 'undefined' && Array.isArray(window.clients)) window.clients.push(c);
       }
@@ -331,8 +352,7 @@
     if (!g) return;
     g.members.forEach((m) => {
       if (m.kind !== 'client') return;
-      const c = allClients().find((x) => String(x.id) === String(m.id));
-      if (c) { c.status = 'offline'; c.startTime = null; c.elapsed = 0; c._lastElapsed = null; }
+      releaseMemberRow(findMemberRow(m));
     });
     setActive(null);
     if (typeof saveData === 'function') { try { saveData(); } catch (e) {} }
@@ -405,6 +425,7 @@
           groupId: g.id,
           branchId: (typeof currentBranchId === 'function') ? currentBranchId() : '1',
           clientId: payer,
+          customerId: payer,
           clientName: payerName,
           duration: seconds,
           cost: total,
@@ -413,6 +434,7 @@
           tariff: (g.members.find(function (m) { return m.kind === 'client' && String(m.id) === String(payer); }) || {}).tariff || 'double',
           extra: 0,
           extraSeconds: 0,
+          extraRate: 0,
           stationType: g.stationType || null,
           stationTypeName: '',
           date: nowIso,
@@ -431,12 +453,20 @@
         const payments = JSON.parse(localStorage.getItem('alvand_payments') || '[]');
         const payerName = (g.members.find((m) => (m.kind === 'client' ? String(m.id) === String(payer) : false)) || g.members[0] || {}).name || '';
         if (method === 'split') {
-          payments.push({ amount: Math.round(total / 2), method: 'cash', date: nowIso, clientName: payerName });
-          payments.push({ amount: total - Math.round(total / 2), method: 'card', date: nowIso, clientName: payerName });
+          const gb = (typeof currentBranchId === 'function') ? currentBranchId() : '1';
+          payments.push({ amount: Math.round(total / 2), method: 'cash', date: nowIso, clientName: payerName, branchId: gb });
+          payments.push({ amount: total - Math.round(total / 2), method: 'card', date: nowIso, clientName: payerName, branchId: gb });
         } else {
-          payments.push({ amount: total, method: method, date: nowIso, clientName: payerName });
+          const gb2 = (typeof currentBranchId === 'function') ? currentBranchId() : '1';
+          payments.push({ amount: total, method: method, date: nowIso, clientName: payerName, branchId: gb2 });
         }
         localStorage.setItem('alvand_payments', JSON.stringify(payments));
+      } catch (e) {}
+      // Card/split payments must actually reach the configured POS terminal.
+      try {
+        if (total > 0 && (method === 'card' || method === 'split') && typeof window.sendToPOS === 'function') {
+          window.sendToPOS(method === 'split' ? Math.max(0, total - Math.round(total / 2)) : total);
+        }
       } catch (e) {}
     }
 
@@ -444,19 +474,16 @@
     // only where the tariff matches the party size
     g.members.forEach((m) => {
       if (m.kind !== 'client') return;
-      const c = allClients().find((x) => String(x.id) === String(m.id));
+      const c = findMemberRow(m);
       if (!c) return;
-      c.status = 'offline';
-      c.startTime = null;
-      c.elapsed = 0;
-      c.extraSeconds = 0;
-      c._lastElapsed = null;
-      c.notified = false;
-      const isPayer = String(c.id) === String(payer);
+      const isPayer = String(c.id) === String(payer) || String(c.customerId) === String(payer);
       c.totalCost = num(c.totalCost) + (isPayer ? total : 0);
       if (isPayer && planApplies(m, headcount) && typeof window.deductMembershipHours === 'function') {
-        try { window.deductMembershipHours(c.id, seconds / 3600); } catch (e) {}
+        // groupSessions uses the register/customer id, not the temporary
+        // station row id, so the membership must be spent on the same key.
+        try { window.deductMembershipHours(c.customerId != null ? c.customerId : c.id, seconds / 3600); } catch (e) {}
       }
+      releaseMemberRow(c);
     });
     if (typeof saveData === 'function') { try { saveData(); } catch (e) {} }
 
@@ -719,6 +746,7 @@
       billed: row.billed !== undefined ? !!row.billed : num(row.cost) > 0,
       memberKind: memberKind,
       clientId: row.clientId === undefined ? null : row.clientId,
+      customerId: row.customerId === undefined ? null : row.customerId,
       clientName: row.clientName || row.memberName || '',
       memberName: row.memberName || row.clientName || '',
       headcount: num(row.headcount, 1) || 1,
@@ -748,15 +776,43 @@
   }
   window.gpAllRows = allRows;
 
+  /* The register id, a station row id, and a customerId are three different
+   * keys for the same person. The report used to compare the selected customer
+   * id only with session.clientId (which ordinary station sessions store as
+   * the station row id), so a member's normal play was missing. Expand the key
+   * to every alias this person currently has. */
+  function idsForKey(key) {
+    const ids = new Set([String(key)]);
+    const member = allMembers().find((x) => String(x.id) === String(key));
+    if (member) {
+      const row = clientRowFor(member);
+      if (row) {
+        ids.add(String(row.id));
+        if (row.customerId != null) ids.add(String(row.customerId));
+      }
+    }
+    allClients().forEach((c) => {
+      if (!c) return;
+      if (String(c.id) === String(key) || String(c.customerId) === String(key)) {
+        ids.add(String(c.id));
+        if (c.customerId != null) ids.add(String(c.customerId));
+      }
+    });
+    return ids;
+  }
+
   function sessionsOf(key) {
-    // key: client id, 'guest:<label>' or 'all'
+    // key: client/customer id, 'guest:<label>' or 'all'
     const list = allRows();
     if (key === 'all') return list;
     if (typeof key === 'string' && key.indexOf('guest:') === 0) {
       const label = key.slice(6);
       return list.filter((r) => r.memberKind === 'guest' && r.clientName === label);
     }
-    return list.filter((r) => r.memberKind === 'client' && String(r.clientId) === String(key));
+    const ids = idsForKey(key);
+    return list.filter((r) => r.memberKind === 'client'
+      && (ids.has(String(r.clientId))
+        || (r.customerId != null && ids.has(String(r.customerId)))));
   }
   window.gpSessionsOf = sessionsOf;
 

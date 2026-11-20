@@ -10,6 +10,11 @@ function toast(m, t){ if (window.showToast) window.showToast(m, t); }
 function logAct(ty, d){ if (window.logActivity) window.logActivity(ty, d); }
 function sp(k, fb){ try { if (window.safeParse) return window.safeParse(localStorage.getItem(k)) || fb; } catch(e){} return fb; }
 function sv(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function nid(v){ return window.numId ? window.numId(v) : (parseInt(v, 10) || 0); }
+function permit(section, label){
+  try { return typeof requirePerm === 'function' ? !!requirePerm(section, label) : true; }
+  catch(e){ return false; }
+}
 
 var PB = sp('alvand_phonebook', []);
 var SMSCFG = sp('alvand_smsConfig', {provider:'kavenegar', apiKey:'', sender:'', enabled:false, method:'GET', urlTemplate:'', headersJson:''});
@@ -159,9 +164,9 @@ window.renderPhonebook = function(){
       + (e.note ? '<p style="font-size:0.75rem;color:rgba(255,255,255,0.4);">' + esc(e.note) + '</p>' : '')
       + '</div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap;">'
-      + '<button class="glass-btn" style="padding:6px 10px;font-size:0.75rem;" onclick="sendSmsToEntry(' + e.id + ')">📩 پیامک</button>'
-      + '<button class="glass-btn" style="padding:6px 10px;font-size:0.75rem;" onclick="editPhonebookEntry(' + e.id + ')">✏️</button>'
-      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deletePhonebookEntry(' + e.id + ')">🗑️</button>'
+      + '<button class="glass-btn" style="padding:6px 10px;font-size:0.75rem;" onclick="sendSmsToEntry(' + nid(e.id) + ')">📩 پیامک</button>'
+      + '<button class="glass-btn" style="padding:6px 10px;font-size:0.75rem;" onclick="editPhonebookEntry(' + nid(e.id) + ')">✏️</button>'
+      + '<button class="glass-btn glass-btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="deletePhonebookEntry(' + nid(e.id) + ')">🗑️</button>'
       + '</div></div>' + detHtml + '</div>';
   }).join('');
 };
@@ -189,6 +194,7 @@ window.editPhonebookEntry = function(id){
 };
 function val(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
 window.savePhonebookEntry = function(){
+  if (!permit('phonebook', 'ذخیره مخاطب')) return;
   var id = val('pbId');
   var first = val('pbFirst'), last = val('pbLast');
   var mobile = toLocalMobile(val('pbMobile'));
@@ -210,6 +216,7 @@ window.savePhonebookEntry = function(){
   toast('مخاطب ذخیره شد','success');
 };
 window.deletePhonebookEntry = function(id){
+  if (!permit('phonebook', 'حذف مخاطب')) return;
   if (!confirm('حذف شود؟')) return;
   PB = PB.filter(function(x){ return Number(x.id) !== Number(id); });
   savePB(); window.renderPhonebook();
@@ -244,13 +251,16 @@ window.renderSmsConfig = function(){
     + '</div></div>';
 };
 window.toggleSms = function(v){
+  if (!permit('phonebook', 'تغییر وضعیت پیامک')) return;
   SMSCFG.enabled = !!v; saveCfg();
   toast(v ? 'پنل پیامک فعال شد' : 'پنل پیامک غیرفعال شد','success');
 };
 window.changeSmsProvider = function(v){
+  if (!permit('phonebook', 'تغییر سرویس پیامک')) return;
   SMSCFG.provider = v; saveCfg(); window.renderSmsConfig();
 };
 window.saveSmsConfig = function(){
+  if (!permit('phonebook', 'ذخیره تنظیمات پیامک')) return;
   var g = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
   SMSCFG.provider = g('smsProvider') || 'kavenegar';
   SMSCFG.apiKey = g('smsKey');
@@ -315,6 +325,7 @@ function logSms(to, name, text, res){
   try{ window.renderSmsLog(); }catch(e){}
 }
 window.sendSmsTo = function(to, name, text){
+  if (!permit('phonebook', 'ارسال پیامک')) return;
   to = normPhone(to);
   if (!SMSCFG.enabled){ toast('پنل پیامک غیرفعال است','error'); return Promise.resolve({ok:false, error:'disabled'}); }
   var req = window.buildSmsRequest(SMSCFG, to, text);
@@ -337,12 +348,14 @@ window.sendSmsToEntry = function(id){
   window.sendSmsTo(e.phoneMobile, fullName(e), text.replace(/\{نام\}/g, e.firstName || fullName(e)));
 };
 window.testSms = function(){
+  if (!permit('phonebook', 'تست پیامک')) return;
   var el = document.getElementById('smsTestTo');
   var to = el ? el.value.trim() : '';
   if (!to){ toast('شماره تست را وارد کن','error'); if (el) el.focus(); return; }
   window.sendSmsTo(to, 'تست', 'تست پنل پیامک گیم‌نت ✅');
 };
 window.sendBulkSms = function(){
+  if (!permit('phonebook', 'ارسال گروهی پیامک')) return;
   var ta = document.getElementById('smsComposer');
   var text = ta ? ta.value.trim() : '';
   if (!text){ toast('اول متن پیام را بنویس','error'); if (ta) ta.focus(); return; }
@@ -400,6 +413,7 @@ window.renderSmsLog = function(){
   }).join('');
 };
 window.clearSmsLog = function(){
+  if (!permit('phonebook', 'پاک کردن تاریخچه پیامک')) return;
   SMSLOG = []; saveLog(); window.renderSmsLog();
 };
 })();

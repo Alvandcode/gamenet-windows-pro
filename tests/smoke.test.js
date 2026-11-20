@@ -104,10 +104,10 @@ try {
   ok(initBody.indexOf('checkLogin();') !== -1 && initBody.indexOf('checkLogin();') < initBody.indexOf('updateStats();'), 'init locks (login) before rendering');
   ok(initBody.indexOf('initLicenseGate();') !== -1 && initBody.indexOf('initLicenseGate();') < initBody.indexOf('updateStats();'), 'init locks (license) before rendering');
   ok(initBody.includes('renderClients, renderReservations'), 'heavy renders deferred past first paint');
-  // NOTE: script-src MUST keep 'unsafe-inline': the app uses ~160 inline onclick
-  // handlers; without it every button silently dies (no error in UI, only console).
-  // XSS is still covered by escapeHtml on all user content (see app.js checks).
-  ok(/script-src[^;]*'unsafe-inline'/.test(h), 'CSP allows the app inline handlers');
+  // The app still needs inline *attributes* (onclick=...), but inline script
+  // ELEMENTS and javascript: URLs can now be blocked independently.
+  ok(/script-src-attr[^;]*'unsafe-inline'/.test(h), 'CSP allows the app inline handlers via script-src-attr');
+  ok(!/script-src(?!-attr)[^;]*'unsafe-inline'/.test(h), 'script-src itself does not allow inline scripts');
   ok(h.includes('src/js/app.js'), 'index.html loads src/js/app.js');
   ok(h.includes('src/styles/main.css'), 'index.html loads main.css');
   ok(h.includes('src/js/security.js'), 'index.html loads security.js');

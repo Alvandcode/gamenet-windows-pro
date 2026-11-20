@@ -176,6 +176,28 @@ async function boot() {
   await sleep(700);
   ok(!!window.eval('currentOperator'), 'the newly created operator can log in');
 
+  console.log('--- 10. the admin credential form uses the same rules ---');
+  window.eval("currentOperator={id:1,username:'admin',role:'admin',perms:{}}");
+  const admin = () => JSON.parse(window.localStorage.getItem('alvand_operators')).find((o) => o.role === 'admin');
+  const adminBefore = admin();
+  const setAdminForm = (user, p1, p2) => {
+    doc.getElementById('adminCredUser').value = user;
+    doc.getElementById('adminCredPass1').value = p1;
+    doc.getElementById('adminCredPass2').value = p2;
+  };
+  setAdminForm(adminBefore.username, 'Ab1', 'Ab1');
+  await window.changeAdminCredentials();
+  ok(admin().password === adminBefore.password, 'a 3-character admin password is rejected');
+  setAdminForm(adminBefore.username, 'onlyletters', 'onlyletters');
+  await window.changeAdminCredentials();
+  ok(admin().password === adminBefore.password, 'an admin password with no digit is rejected');
+  setAdminForm(adminBefore.username, 'NewAdmin123', 'NewAdmin123');
+  await window.changeAdminCredentials();
+  const adminAfter = admin();
+  ok(adminAfter.password !== adminBefore.password && /^pbkdf2\$/.test(adminAfter.password),
+     'a strong admin password is stored as PBKDF2 (not bare SHA-256)');
+  ok(await window.verifyPassword(adminAfter.password, 'NewAdmin123'), 'and the new admin password verifies');
+
   ok(errors.length === 0, 'no script errors during the whole run (' + errors.slice(0, 2).join(' | ') + ')');
   console.log(fail === 0 ? '\nALL PASSWORD-SECURITY CHECKS PASSED (' + pass + ')' : '\n' + fail + ' FAILED (' + pass + ' passed)');
   process.exit(fail ? 1 : 0);

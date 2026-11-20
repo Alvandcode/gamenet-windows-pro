@@ -141,8 +141,8 @@ const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const paymentsAfter = JSON.parse(window.localStorage.getItem('alvand_payments') || '[]');
   ok(paymentsAfter.length === paymentsBefore + 1, 'the cash ledger got the total exactly once', paymentsAfter.length - paymentsBefore);
   ok(paymentsAfter[paymentsAfter.length - 1].amount === 35000, 'the ledger amount is the full bill', paymentsAfter[paymentsAfter.length - 1].amount);
-  ok(window.clients.find((c) => c.id === 1).status === 'offline', 'the clients are free again');
-  ok(window.clients.find((c) => c.id === 1).elapsed === 0, 'their timer is cleared');
+  ok(!window.clients.some((c) => c._groupSynthetic), 'temporary group rows are removed, not left as fake cards');
+  ok(!window.clients.some((c) => c.status === 'online'), 'no row is left playing');
   ok(!window.gpActive(), 'there is no running party any more');
 
   console.log('--- 8. membership: only spent when the tariff matches ---');
@@ -179,6 +179,26 @@ const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const mem3b = window.customerMemberships.find((m) => m.customerId === 3);
   ok(mem3b && mem3b.hoursUsed === 0, 'a group session did NOT touch the single-person plan', mem3b ? mem3b.hoursUsed : '?');
 
+  console.log('--- 9b. playing alone on a normal station also spends the plan ---');
+  mem3b.hoursUsed = 0;
+  mem3b.active = true;
+  window.saveCustomerMemberships();
+  window.clients = [{ id: 903, customerId: 3, name: 'PC-3', tariff: 'single', extra: 0, stationType: 'pc', status: 'offline', elapsed: 3600, startTime: null, totalCost: 0, timerDuration: 0, notified: false }];
+  window.sessions = [];
+  window.pendingPayment = {
+    clientIdx: 0, clientId: 903, clientName: 'PC-3', duration: 3600,
+    gameCost: 20000, buffetCost: 0, total: 20000, baseTotal: 20000,
+    tariff: 'single', extra: 0, stationType: 'pc', services: [],
+  };
+  window.document.getElementById('payMethod').value = 'cash';
+  window.confirmPayment();
+  const mem3c = window.customerMemberships.find((m) => String(m.customerId) === '3');
+  ok(mem3c && mem3c.hoursUsed > 0.9, 'a solo normal payment spends the membership hours', mem3c ? mem3c.hoursUsed.toFixed(2) : '?');
+  const solo = window.sessions[window.sessions.length - 1];
+  ok(solo && solo.customerId === 3, 'the ledger row carries the customer id', solo && solo.customerId);
+  window.clients = [];
+  window.sessions = [];
+
   console.log('--- 10. the report says who played, when, and when not ---');
   // build the history from fixed calendar days so the gap is unambiguous:
   // the 1st, the 3rd and the 4th of an ordinary month, so the 2nd is the one
@@ -207,6 +227,24 @@ const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   ok(rep.absent.every((d) => /^20\d{2}\/(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])$/.test(d)),
      'every listed date is a real calendar day', rep.absent.join(','));
   ok(rep.absent.indexOf('2026/01/01') === -1, 'no month-zero date is ever listed', rep.absent.join(','));
+
+  console.log('--- 10b. one report for the register id and the station id ---');
+  // an ordinary (non-group) session stores the station row id, while the
+  // report is opened for the register customer id. They must resolve to the
+  // same set of visits.
+  window.gpSave([]);
+  window.clients = [{ id: 901, customerId: 1, name: 'PC-1', tariff: 'single', status: 'offline' }];
+  window.sessions = [{
+    id: 'ordinary-1', clientId: 901, customerId: 1, clientName: 'PC-1',
+    date: new Date().toISOString(), duration: 1200, cost: 10000, billed: true,
+  }];
+  const byCustomer = window.gpSessionsOf(1);
+  const byStation = window.gpSessionsOf(901);
+  ok(byCustomer.length === 1, 'the customer id finds their ordinary station session', byCustomer.length);
+  ok(byStation.length === 1, 'the station id resolves back to the customer', byStation.length);
+  ok(byCustomer[0].customerId === 1, 'the report row carries the customer id', byCustomer[0].customerId);
+  window.clients = [];
+  window.sessions = [];
 
   console.log('--- 11. today is reported separately ---');
   const nowReal = Date.now();

@@ -4,7 +4,12 @@
 var esc = window.escapeHtml || function(v){ return String(v == null ? '' : v); };
 function toast(m, t){ if (window.showToast) window.showToast(m, t); }
 function logAct(ty, d){ if (window.logActivity) window.logActivity(ty, d); }
+function nid(v){ return window.numId ? window.numId(v) : (parseInt(v, 10) || 0); }
 function sp(k, fb){ try { if (window.safeParse) return window.safeParse(localStorage.getItem(k)) || fb; } catch(e){} return fb; }
+function permit(section, label){
+  try { return typeof requirePerm === 'function' ? !!requirePerm(section, label) : true; }
+  catch(e){ return false; }
+}
 
 /* ---- 1. CSV export ---- */
 /** RFC4180 cell + Excel/Sheets formula-injection guard.
@@ -31,6 +36,9 @@ function dlCSV(name, rows){
 function sessionsFiltered(type){
   var now = new Date();
   var ss = window.sessions || [];
+  var bid = (typeof window.currentBranchId === 'function') ? window.currentBranchId() : '1';
+  var branchOf = (typeof window.branchIdOf === 'function') ? window.branchIdOf : function(r){ return '1'; };
+  var inBranch = function(r){ return branchOf(r) === bid; };
   /* local calendar buckets. The old code used rolling windows
    * (now - 7 days / now - 30 days): on a Wednesday the "weekly" report only
    * covered half of the current week and the previous week was unreachable,
@@ -39,10 +47,10 @@ function sessionsFiltered(type){
     start = start.getTime();
     return ss.filter(function(s){
       var t = new Date(s.date).getTime();
-      return !isNaN(t) && t >= start && t <= now.getTime();
+      return inBranch(s) && !isNaN(t) && t >= start && t <= now.getTime();
     });
   }
-  if (type === 'daily') return {list: ss.filter(function(s){ return window.isSameDay(s.date, now); }), tag: 'daily'};
+  if (type === 'daily') return {list: ss.filter(function(s){ return inBranch(s) && window.isSameDay(s.date, now); }), tag: 'daily'};
   if (type === 'weekly'){ var w = (window.weekStart ? window.weekStart(now) : new Date(now - 6*864e5)); return {list: from(w), tag: 'weekly'}; }
   var m = (window.monthStart ? window.monthStart(now) : new Date(now - 29*864e5));
   return {list: from(m), tag: 'monthly'};
@@ -58,8 +66,10 @@ window.exportSessionsCSV = function(type){
 };
 window.exportExpensesCSV = function(){
   var ex = sp('alvand_expenses', []);
+  var bid = (typeof window.currentBranchId === 'function') ? window.currentBranchId() : '1';
+  var branchOf = (typeof window.branchIdOf === 'function') ? window.branchIdOf : function(r){ return '1'; };
   var rows = [['عنوان','مبلغ (تومان)','تاریخ']];
-  ex.forEach(function(e){ rows.push([e.title||'', Number(e.amount)||0, new Date(e.date).toLocaleDateString('fa-IR')]); });
+  ex.forEach(function(e){ if (branchOf(e) === bid) rows.push([e.title||'', Number(e.amount)||0, new Date(e.date).toLocaleDateString('fa-IR')]); });
   dlCSV('gamenet-expenses.csv', rows);
   logAct('export','CSV expenses'); toast('فایل CSV دانلود شد','success');
 };
@@ -135,15 +145,18 @@ window.saveShopInfo = function(){
 var WL = sp('alvand_waitingList', []);
 function saveWL(){ try{ localStorage.setItem('alvand_waitingList', JSON.stringify(WL)); }catch(e){} }
 window.addToWaitingList = function(name, phone, stype, notes){
+  if(!permit('clients','لیست انتظار')) return false;
   WL.push({id: Date.now(), name: name, phone: phone||'', stype: stype||'pc', notes: notes||'', date: new Date().toISOString(), status: 'waiting'});
   saveWL(); logAct('waiting','add '+name); toast(name+' به لیست اضافه شد','success');
   window.updateWaitingBadge();
 };
 window.removeFromWaitingList = function(id){
+  if(!permit('clients','لیست انتظار')) return false;
   WL = WL.filter(function(x){ return x.id !== id; });
   saveWL(); window.renderWaitingList(); window.updateWaitingBadge();
 };
 window.completeWaitingItem = function(id){
+  if(!permit('clients','لیست انتظار')) return false;
   var it = WL.find(function(x){ return x.id === id; });
   if (it) it.status = 'completed';
   saveWL(); window.renderWaitingList(); window.updateWaitingBadge();
@@ -160,7 +173,7 @@ window.renderWaitingList = function(){
   if (!w.length){ c.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.5)">لیست انتظار خالی است</p>'; return; }
   c.innerHTML = w.map(function(it, i){
     var mins = Math.round((Date.now() - new Date(it.date).getTime())/60000);
-    return '<div class="glass" style="padding:12px;margin-bottom:8px"><b>'+(i+1)+'. '+esc(it.name)+'</b> <span style="color:rgba(255,255,255,0.5)">'+esc(it.phone||'')+' | '+mins+' دقیقه</span><div style="margin-top:6px"><button class="glass-btn glass-btn-success" onclick="completeWaitingItem('+it.id+')">انجام شد</button> <button class="glass-btn glass-btn-danger" onclick="removeFromWaitingList('+it.id+')">حذف</button></div></div>';
+    return '<div class="glass" style="padding:12px;margin-bottom:8px"><b>'+(i+1)+'. '+esc(it.name)+'</b> <span style="color:rgba(255,255,255,0.5)">'+esc(it.phone||'')+' | '+mins+' دقیقه</span><div style="margin-top:6px"><button class="glass-btn glass-btn-success" onclick="completeWaitingItem('+nid(it.id)+')">انجام شد</button> <button class="glass-btn glass-btn-danger" onclick="removeFromWaitingList('+nid(it.id)+')">حذف</button></div></div>';
   }).join('');
 };
 window.openWaitingListModal = function(){
@@ -182,12 +195,14 @@ window.saveWaitingListItem = function(){
 var LP = sp('alvand_loyaltyPoints', {});
 function saveLP(){ try{ localStorage.setItem('alvand_loyaltyPoints', JSON.stringify(LP)); }catch(e){} }
 window.addLoyaltyPoints = function(cid, pts, reason){
+  if(!permit('customers','امتیاز وفاداری')) return false;
   var cur = LP[cid] || {total:0, history:[]};
   cur.total += pts;
   cur.history.unshift({points: pts, reason: reason||'', date: new Date().toISOString()});
   LP[cid] = cur; saveLP();
 };
 window.redeemLoyaltyPoints = function(cid, pts){
+  if(!permit('customers','امتیاز وفاداری')) return false;
   var cur = LP[cid];
   if (!cur || cur.total < pts){ toast('امتیاز کافی نیست','error'); return false; }
   cur.total -= pts;
@@ -216,6 +231,7 @@ window.setSurveyRating = function(r){
   stars.forEach(function(s, i){ if (i < r) s.classList.add('active'); else s.classList.remove('active'); });
 };
 window.submitSurveyForm = function(){
+  if(!permit('customers','ثبت نظرسنجی')) return false;
   var r = window._svRate || 0;
   if (!r){ toast('لطفا ستاره انتخاب کنید','error'); return; }
   var fb = document.getElementById('surveyFeedback');

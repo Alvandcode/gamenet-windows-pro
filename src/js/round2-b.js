@@ -7,21 +7,32 @@ function logAct(ty, d){ if (window.logActivity) window.logActivity(ty, d); }
 function sp(k, fb){ try { if (window.safeParse) return window.safeParse(localStorage.getItem(k)) || fb; } catch(e){} return fb; }
 function sv(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function getEmp(){ try { return JSON.parse(localStorage.getItem('alvand_employees')||'[]'); } catch(e){ return []; } }
+function nid(v){ return window.numId ? window.numId(v) : (parseInt(v, 10) || 0); }
+function permit(section, label){
+  try { return typeof requirePerm === 'function' ? !!requirePerm(section, label) : true; }
+  catch(e){ return false; }
+}
 
 /* ---- 6. branches ---- */
 var BR = sp('alvand_branches', [{id:1, name:'شعبه اصلی', address:'', active:true}]);
 var curBR = localStorage.getItem('alvand_currentBranch') || '1';
 window.addBranch = function(name, addr){
+  if (!permit('branches', 'افزودن شعبه')) return;
   BR.push({id: Date.now(), name: name, address: addr||'', active: true});
   sv('alvand_branches', BR); logAct('branch','add '+name); toast('شعبه اضافه شد','success'); window.renderBranches();
 };
 window.deleteBranch = function(id){
-  if (id === 1){ toast('شعبه اصلی قابل حذف نیست','error'); return; }
+  if (!permit('branches', 'حذف شعبه')) return;
+  if (String(id) === '1'){ toast('شعبه اصلی قابل حذف نیست','error'); return; }
+  // Deleting the branch you are currently recording into leaves every new
+  // session/expense with a dangling branchId. Switch away first.
+  if (String(id) === String(curBR)){ toast('ابتدا به شعبه دیگری بروید، سپس حذف کنید','error'); return; }
   if (!confirm('حذف شود؟')) return;
   BR = BR.filter(function(x){ return x.id !== id; });
   sv('alvand_branches', BR); window.renderBranches();
 };
 window.switchBranch = function(id){
+  if (!permit('branches', 'تغییر شعبه')) return;
   if (String(id) === String(curBR)) { toast('این شعبه فعال است', 'warning'); return; }
   var target = BR.filter(function(b){ return String(b.id) === String(id); })[0];
   if (!confirm('شعبه به «' + ((target && target.name) || id) + '» تغییر کرد؟\n\nسنس‌ها، خریدها و فروش بوفه از این لحظه به این شعبه ثبت می‌شود.')) return;
@@ -29,6 +40,16 @@ window.switchBranch = function(id){
   curBR = String(id);
   toast('شعبه تغییر کرد', 'success');
   try{ window.renderBranches(); }catch(e){}
+  // All money screens are scoped to the active branch. Re-render them now,
+  // otherwise switching branch leaves the old branch's numbers on screen.
+  try{ if (typeof updateIncome === 'function') updateIncome(); }catch(e){}
+  try{ if (typeof updateStats === 'function') updateStats(); }catch(e){}
+  try{ if (typeof updateExpenseStats === 'function') updateExpenseStats(); }catch(e){}
+  try{ if (typeof updateCashCardStats === 'function') updateCashCardStats(); }catch(e){}
+  try{ if (typeof updateBuffetStats === 'function') updateBuffetStats(); }catch(e){}
+  try{ if (typeof renderTypeBreakdown === 'function') renderTypeBreakdown(); }catch(e){}
+  try{ if (typeof renderWeeklyChart === 'function') renderWeeklyChart(); }catch(e){}
+  try{ if (typeof renderYearlyChart === 'function') renderYearlyChart(); }catch(e){}
   // no full reload: reloading lost the page you were on for what is only a tag
   // on the next record
 };
@@ -64,7 +85,9 @@ window.renderBranches = function(){
   c.innerHTML = BR.map(function(b){
     var on = String(b.id) === String(curBR);
     var st = stat[String(b.id)] || {sessions:0, income:0, expense:0, sales:0};
-    var total = st.income + st.sales;
+    // session.cost already includes the buffet, so adding st.sales again
+    // double-counted every buffet item in the branch total.
+    var total = st.income;
     var net = total - st.expense;
     var cell = function(label, value, color){
       return '<div>' + label + ': <b' + (color ? ' style="color:' + color + '"' : '') + '>' + value + '</b></div>';
@@ -104,12 +127,24 @@ window.saveBranchFromModal = function(){
 /* ---- 7. shifts ---- */
 var SH = sp('alvand_shifts', []);
 window.addShift = function(eid, date, st, en){
+  if (!permit('shifts', 'ثبت شیفت')) return;
   SH.push({id: Date.now(), employeeId: eid, date: date, startTime: st, endTime: en});
   sv('alvand_shifts', SH); logAct('shift','new shift'); window.renderShifts();
 };
 window.deleteShift = function(id){
+  if (!permit('shifts', 'حذف شیفت')) return;
   SH = SH.filter(function(x){ return x.id !== id; });
   sv('alvand_shifts', SH); window.renderShifts();
+};
+/* Deleting an employee used to leave their future shifts behind. The shift
+ * list then rendered rows for a name that no longer exists. */
+window.deleteShiftsForEmployee = function(employeeId){
+  // This is a cascade of deleteEmployee(), so the employee permission is
+  // enough; requiring 'shifts' left orphans for an operator without it.
+  if (!permit('employees', 'حذف شیفت‌های کارمند')) return;
+  const before = SH.length;
+  SH = SH.filter(function(x){ return String(x.employeeId) !== String(employeeId); });
+  if (SH.length !== before) { sv('alvand_shifts', SH); try{ window.renderShifts(); }catch(e){} }
 };
 function localISO(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 function shiftLang(){ try{ return localStorage.getItem('alvand_lang')||'fa'; }catch(e){ return 'fa'; } }
@@ -124,6 +159,7 @@ window.renderShifts = function(){
   var days = lang==='fa'
     ? ['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه']
     : (lang==='ar' ? ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'] : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']);
+  var canEdit = (typeof window.hasPerm === 'function') ? !!window.hasPerm('shifts') : true;
   var h = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">';
   for (var i=0;i<7;i++){
     var d = new Date(ws); d.setDate(ws.getDate()+i);
@@ -134,15 +170,16 @@ window.renderShifts = function(){
     h += '<div style="background:rgba(255,255,255,.03);border-radius:12px;padding:10px;min-height:90px"><b>'+days[i]+'</b><br><small>'+disp+'</small>';
     list.forEach(function(s){
       var e = emps.find(function(x){ return x.id === s.employeeId; });
-      h += '<div style="background:rgba(34,197,94,.1);border-radius:8px;padding:4px;margin-top:4px;font-size:.75rem">'+esc(e?e.name:'?')+'<br>'+s.startTime+'-'+s.endTime+' <button style="color:red;background:none;border:none;cursor:pointer" onclick="deleteShift('+s.id+')">x</button></div>';
+      h += '<div style="background:rgba(34,197,94,.1);border-radius:8px;padding:4px;margin-top:4px;font-size:.75rem">'+esc(e?e.name:'?')+'<br>'+esc(s.startTime)+'-'+esc(s.endTime)+(canEdit?' <button style="color:red;background:none;border:none;cursor:pointer" onclick="deleteShift('+nid(s.id)+')">x</button>':'')+'</div>';
     });
     h += '</div>';
   }
   c.innerHTML = h + '</div>';
 };
 window.openShiftModal = function(){
+  if (!permit('shifts', 'ثبت شیفت')) return;
   var el = document.getElementById('shiftEmployee');
-  if (el) el.innerHTML = getEmp().map(function(e){ return '<option value="'+e.id+'">'+esc(e.name)+'</option>'; }).join('');
+  if (el) el.innerHTML = getEmp().map(function(e){ return '<option value="'+esc(e.id)+'">'+esc(e.name)+'</option>'; }).join('');
   var dt = document.getElementById('shiftDate'); if (window.setDatePicker) setDatePicker('shiftDate', new Date());
   var m = document.getElementById('shiftModal'); if (m) m.classList.add('show');
 };
@@ -168,18 +205,23 @@ function lowStockThreshold(){
   return th;
 }
 window.setLowStockThreshold = function(v){
+  if (!permit('buffet', 'تنظیم آستانه موجودی')) return;
   /* the caller may pass the raw input string, including Persian digits */
   var n = Math.floor((window.toNum ? window.toNum(v, NaN) : parseInt(v, 10)));
   if (!isFinite(n) || n < 0){ toast('آستانه نامعتبر است','error'); return; }
   try{ localStorage.setItem('alvand_lowStockThreshold', String(n)); }catch(e){}
   toast('آستانه هشدار: '+n,'success');
 };
+/* stock can arrive as a string from a restored backup: "0" !== 0 used to
+ * hide a sold-out item from the warning list. Kept at module scope because
+ * renderStockAlerts() also needs it; it used to be declared inside
+ * checkLowStock(), so the alerts panel threw ReferenceError. */
+function stockOf(s){
+  return Math.max(0, Math.floor(window.toNum ? window.toNum(s && s.stock, 0) : (Number(s && s.stock) || 0)));
+}
 window.checkLowStock = function(){
   var th = lowStockThreshold();
   var svc = sp('alvand_services', []);
-  /* stock can arrive as a string from a restored backup: "0" !== 0 used to
-   * hide a sold-out item from the warning list */
-  function stockOf(s){ return Math.max(0, Math.floor(window.toNum ? window.toNum(s && s.stock, 0) : (Number(s && s.stock) || 0))); }
   var out = svc.filter(function(s){ return stockOf(s) === 0; });
   var low = svc.filter(function(s){ var q = stockOf(s); return q > 0 && q <= th; });
   if (out.length || low.length){

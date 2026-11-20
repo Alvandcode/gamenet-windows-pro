@@ -26,6 +26,11 @@ let attendance = window.safeParse(localStorage.getItem('alvand_attendance')) || 
 // ===== HELPER: escapeHtml (use existing if available) =====
 const esc = window.escapeHtml || function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
 const showToast = window.showToast || function(msg){ console.log(msg); };
+function nid(v){ return window.numId ? window.numId(v) : (parseInt(v, 10) || 0); }
+function permit(section, label){
+    try { return typeof requirePerm === 'function' ? !!requirePerm(section, label) : true; }
+    catch(e){ return false; }
+}
 
 // ===== SAVE HELPERS =====
 function saveMembershipPlans(){ try{ localStorage.setItem('alvand_membershipPlans', JSON.stringify(membershipPlans)); }catch(e){} }
@@ -75,12 +80,12 @@ function renderMembershipPlans(){
                 '<div>' +
                     '<h4 style="font-weight:800;">' + esc(p.name) + ' <span style="font-size:0.7rem; padding:2px 6px; border-radius:50px; background:' + (p.type==='monthly'?'rgba(99,102,241,0.15)':'rgba(34,197,94,0.15)') + '; color:' + (p.type==='monthly'?'#818cf8':'#22c55e') + ';">' + (p.type==='monthly'?'ماهانه':'سالانه') + '</span></h4>' +
                     '<p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">' + esc(p.description) + '</p>' +
-                    '<p style="font-size:0.85rem; margin-top:4px;">⏰ ' + p.hours + ' ساعت | 💰 ' + p.price.toLocaleString('fa-IR') + ' تومان | 🏷️ ' + p.discount + '% تخفیف</p>' +
+                    '<p style="font-size:0.85rem; margin-top:4px;">⏰ ' + window.num(p.hours) + ' ساعت | 💰 ' + window.num(p.price).toLocaleString('fa-IR') + ' تومان | 🏷️ ' + window.num(p.discount) + '% تخفیف</p>' +
                 '</div>' +
             '</div>' +
             '<div style="display:flex; gap:6px; margin-top:12px;">' +
-                '<button class="glass-btn" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="editMembershipPlan(' + p.id + ')">✏️ ویرایش</button>' +
-                '<button class="glass-btn glass-btn-danger" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="deleteMembershipPlan(' + p.id + ')">🗑️ حذف</button>' +
+                '<button class="glass-btn" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="editMembershipPlan(' + nid(p.id) + ')">✏️ ویرایش</button>' +
+                '<button class="glass-btn glass-btn-danger" style="flex:1; padding:6px 8px; font-size:0.75rem;" onclick="deleteMembershipPlan(' + nid(p.id) + ')">🗑️ حذف</button>' +
             '</div>' +
         '</div>';
     }).join('');
@@ -118,6 +123,7 @@ function editMembershipPlan(id){
 window.editMembershipPlan = editMembershipPlan;
 
 function saveMembershipPlan(){
+    if(!permit('membership', 'ذخیره طرح عضویت')) return;
     var idEl = document.getElementById('mpId');
     var id = idEl ? idEl.value : '';
     var nameEl = document.getElementById('mpName');
@@ -149,6 +155,7 @@ function saveMembershipPlan(){
 window.saveMembershipPlan = saveMembershipPlan;
 
 function deleteMembershipPlan(id){
+    if(!permit('membership', 'حذف طرح عضویت')) return;
     if(!confirm('حذف شود؟')) return;
     membershipPlans = membershipPlans.filter(function(x){ return x.id !== id; });
     saveMembershipPlans();
@@ -157,17 +164,25 @@ function deleteMembershipPlan(id){
 }
 window.deleteMembershipPlan = deleteMembershipPlan;
 
+function getMembershipPlans(){
+    return membershipPlans.map(function(p){ return Object.assign({}, p); });
+}
+window.getMembershipPlans = getMembershipPlans;
+
 function assignMembershipToCustomer(customerId, planId){
-    var plan = membershipPlans.find(function(x){ return x.id === planId; });
-    var customer = (window.customers || []).find(function(x){ return x.id === customerId; });
-    if(!plan || !customer){ showToast('طرح یا مشتری پیدا نشد', 'error'); return; }
+    if(!permit('membership', 'ثبت عضویت مشتری')) return false;
+    // ids may be numbers in the live store and strings after a restore
+    var plan = membershipPlans.find(function(x){ return String(x.id) === String(planId); });
+    var customer = (window.customers || []).find(function(x){ return String(x.id) === String(customerId); });
+    if(!plan || !customer){ showToast('طرح یا مشتری پیدا نشد', 'error'); return false; }
     var now = new Date();
     var expires = new Date(now);
     if(plan.type === 'monthly') expires.setMonth(expires.getMonth() + 1);
     else expires.setFullYear(expires.getFullYear() + 1);
-    var existingIdx = customerMemberships.findIndex(function(m){ return m.customerId === customerId; });
+    var cid = customer.id;
+    var existingIdx = customerMemberships.findIndex(function(m){ return String(m.customerId) === String(cid); });
     var membership = {
-        customerId: customerId, planId: planId, planName: plan.name,
+        customerId: cid, planId: plan.id, planName: plan.name,
         startDate: now.toISOString(), expires: expires.toISOString(),
         hoursUsed: 0, hoursTotal: plan.hours, discount: plan.discount, active: true
     };
@@ -176,16 +191,65 @@ function assignMembershipToCustomer(customerId, planId){
     saveCustomerMemberships();
     logActivity('membership', 'عضویت ' + plan.name + ' برای ' + customer.name);
     showToast('عضویت فعال شد', 'success');
+    return true;
 }
 window.assignMembershipToCustomer = assignMembershipToCustomer;
 
 function getActiveMembership(customerId){
     var now = new Date();
     return customerMemberships.find(function(m){
-        return m.customerId === customerId && m.active && new Date(m.expires) > now;
+        return String(m.customerId) === String(customerId) && m.active && new Date(m.expires) > now;
     }) || null;
 }
 window.getActiveMembership = getActiveMembership;
+
+/* A plan could be created but never assigned to anybody: the only code that
+ * spent hours was the group-play finish path. This is the missing UI entry
+ * point, opened from each customer card. */
+function openAssignMembership(customerId){
+    var c = (window.customers || []).find(function(x){ return String(x.id) === String(customerId); });
+    if(!c){ showToast('مشتری پیدا نشد', 'error'); return; }
+    var sel = document.getElementById('assignMembershipPlan');
+    if(!sel) return;
+    sel.innerHTML = membershipPlans.map(function(p){
+        return '<option value="' + esc(p.id) + '">' + esc(p.name) + ' - ' + p.hours +
+            ' ساعت - ' + Number(p.price || 0).toLocaleString('fa-IR') + ' تومان</option>';
+    }).join('');
+    if(!membershipPlans.length){
+        sel.innerHTML = '<option value="">طرحی ثبت نشده است</option>';
+    }
+    var cid = document.getElementById('assignMembershipCustomerId'); if(cid) cid.value = c.id;
+    var name = document.getElementById('assignMembershipCustomerName'); if(name) name.textContent = c.name;
+    var info = document.getElementById('assignMembershipInfo');
+    if(info){
+        var active = getActiveMembership(c.id);
+        if(active){
+            var left = Math.max(0, Number(active.hoursTotal || 0) - Number(active.hoursUsed || 0));
+            info.textContent = 'عضویت فعال: ' + active.planName + ' - ' + Math.round(left) + ' ساعت باقی‌مانده';
+        } else {
+            info.textContent = 'این مشتری عضویت فعال ندارد.';
+        }
+    }
+    var modal = document.getElementById('assignMembershipModal');
+    if(modal) modal.classList.add('show');
+}
+window.openAssignMembership = openAssignMembership;
+
+function saveAssignMembership(){
+    if(!permit('membership', 'ثبت عضویت مشتری')) return;
+    var cidEl = document.getElementById('assignMembershipCustomerId');
+    var pidEl = document.getElementById('assignMembershipPlan');
+    var customerId = cidEl ? cidEl.value : '';
+    var planId = pidEl ? pidEl.value : '';
+    if(!customerId || !planId){ showToast('مشتری و طرح را انتخاب کنید', 'error'); return; }
+    var active = getActiveMembership(customerId);
+    if(active && !confirm('این مشتری عضویت فعال دارد. جایگزین شود؟')) return;
+    if(!assignMembershipToCustomer(customerId, planId)) return;
+    var modal = document.getElementById('assignMembershipModal');
+    if(modal) modal.classList.remove('show');
+    try{ if(typeof window.renderCustomersEnhanced === 'function') window.renderCustomersEnhanced(); }catch(e){}
+}
+window.saveAssignMembership = saveAssignMembership;
 
 function deductMembershipHours(customerId, hours){
     var m = getActiveMembership(customerId);
@@ -258,7 +322,7 @@ function renderGameHistory(customerName){
             '<div><span style="font-weight:700;">' + esc(h.clientName) + '</span> ' +
             (h.customerName ? '<span style="font-size:0.7rem; color:#818cf8;">(' + esc(h.customerName) + ')</span>' : '') +
             '<br><span style="font-size:0.75rem; color:rgba(255,255,255,0.5);">' + d.toLocaleDateString('fa-IR') + ' ' + d.toLocaleTimeString('fa-IR') + '</span></div>' +
-            '<div style="text-align:left;">⏱️ ' + (h.duration/60).toFixed(0) + ' دقیقه | 💰 ' + h.cost.toLocaleString('fa-IR') + ' تومان</div>' +
+            '<div style="text-align:left;">⏱️ ' + (window.num(h.duration)/60).toFixed(0) + ' دقیقه | 💰 ' + window.num(h.cost).toLocaleString('fa-IR') + ' تومان</div>' +
         '</div>';
     }).join('');
 }
@@ -311,8 +375,11 @@ function exportBusyHoursReport(){
     } else {
         var blob = new Blob([text], {type:'text/plain'});
         var url = URL.createObjectURL(blob);
-        var a = document.createElement('a'); a.href = url; a.download = 'busy-hours.txt'; a.click();
-        URL.revokeObjectURL(url);
+        var a = document.createElement('a'); a.href = url; a.download = 'busy-hours.txt';
+        document.body.appendChild(a);
+        a.click();
+        // revoking synchronously cancels the download in Chromium
+        setTimeout(function(){ try{ URL.revokeObjectURL(url); a.remove(); }catch(e){} }, 4000);
     }
     showToast('گزارش خروجی گرفته شد', 'success');
 }
@@ -370,7 +437,7 @@ function renderNotifications(){
                     '<p style="font-size:0.8rem; color:rgba(255,255,255,0.6);">' + esc(n.message) + '</p>' +
                     '<p style="font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:4px;">' + new Date(n.date).toLocaleString('fa-IR') + '</p>' +
                 '</div>' +
-                '<button class="glass-btn" style="padding:4px 8px; font-size:0.7rem;" onclick="markNotificationRead(' + n.id + ')">✓ خوانده شد</button>' +
+                '<button class="glass-btn" style="padding:4px 8px; font-size:0.7rem;" onclick="markNotificationRead(' + nid(n.id) + ')">✓ خوانده شد</button>' +
             '</div>' +
         '</div>';
     }).join('');
@@ -395,8 +462,9 @@ function checkBirthdayNotifications(){
     var now = new Date();
     window.customers.forEach(function(c){
         if(!c.birthday) return;
-        var bday = new Date(c.birthday);
-        if(bday.getDate() === now.getDate() && bday.getMonth() === now.getMonth()){
+        var m = String(c.birthday).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if(!m) return;
+        if((parseInt(m[2],10)-1) === now.getMonth() && parseInt(m[3],10) === now.getDate()){
             var existing = notifications.find(function(n){ return n.type === 'birthday' && n.targetCustomer === c.name && window.isSameDay(n.date, now); });
             if(!existing){
                 addNotification('birthday', 'تولد مشتری 🎂', 'امروز تولد ' + c.name + ' است! تخفیف ۱۰٪ فعال شد.', c.name);
@@ -534,7 +602,7 @@ function renderSearchResults(query){
     var html = '<p style="color:rgba(255,255,255,0.6); margin-bottom:12px;">' + total + ' نتیجه برای "' + esc(query) + '"</p>';
     if(results.clients.length > 0){
         html += '<h4 style="margin-bottom:8px;">🖥️ دستگاه‌ها (' + results.clients.length + ')</h4>';
-        html += results.clients.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px; cursor:pointer;" onclick="showSection(\'clients\', document.querySelector(\'[onclick*=clients]\'));">' + esc(r.data.name) + ' - ' + (r.data.stationType||'') + '</div>'; }).join('');
+        html += results.clients.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px; cursor:pointer;" onclick="showSection(\'clients\', document.querySelector(\'[onclick*=clients]\'));">' + esc(r.data.name) + ' - ' + esc(r.data.stationType||'') + '</div>'; }).join('');
     }
     if(results.customers.length > 0){
         html += '<h4 style="margin:12px 0 8px;">👤 مشتریان (' + results.customers.length + ')</h4>';
@@ -546,7 +614,7 @@ function renderSearchResults(query){
     }
     if(results.reservations.length > 0){
         html += '<h4 style="margin:12px 0 8px;">📅 رزروها (' + results.reservations.length + ')</h4>';
-        html += results.reservations.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px;">' + esc(r.data.clientName) + ' - ' + r.data.date + '</div>'; }).join('');
+        html += results.reservations.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px;">' + esc(r.data.clientName) + ' - ' + esc(r.data.date) + '</div>'; }).join('');
     }
     container.innerHTML = html;
     container.style.display = 'block';
@@ -575,19 +643,19 @@ function renderEmployees(){
             '<div style="display:flex; justify-content:space-between; align-items:center;">' +
                 '<div>' +
                     '<h4 style="font-weight:800;">' + esc(emp.name) + ' <span style="font-size:0.7rem; padding:2px 8px; border-radius:50px; background:' + (isWorking ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.1)') + '; color:' + (isWorking ? '#22c55e' : 'rgba(255,255,255,0.5)') + ';">' + (isWorking ? 'فعال' : 'غیرفعال') + '</span></h4>' +
-                    '<p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">📞 ' + esc(emp.phone||'-') + ' | 💰 ' + (emp.salary||0).toLocaleString('fa-IR') + ' تومان</p>' +
+                    '<p style="font-size:0.8rem; color:rgba(255,255,255,0.5);">📞 ' + esc(emp.phone||'-') + ' | 💰 ' + window.num(emp.salary).toLocaleString('fa-IR') + ' تومان</p>' +
                 '</div>' +
                 '<div style="display:flex; gap:6px;">' +
-                    '<button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="editEmployee(' + emp.id + ')">✏️</button>' +
-                    '<button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteEmployee(' + emp.id + ')">🗑️</button>' +
+                    '<button class="glass-btn" style="padding:6px 10px; font-size:0.75rem;" onclick="editEmployee(' + nid(emp.id) + ')">✏️</button>' +
+                    '<button class="glass-btn glass-btn-danger" style="padding:6px 10px; font-size:0.75rem;" onclick="deleteEmployee(' + nid(emp.id) + ')">🗑️</button>' +
                 '</div>' +
             '</div>' +
             '<div style="display:flex; gap:6px; margin-top:12px;">' +
                 (isWorking ?
-                    '<button class="glass-btn glass-btn-danger" style="flex:1;" onclick="clockOutEmployee(' + emp.id + ')">🚪 خروج</button>' :
-                    '<button class="glass-btn glass-btn-success" style="flex:1;" onclick="clockInEmployee(' + emp.id + ')">🚪 ورود</button>'
+                    '<button class="glass-btn glass-btn-danger" style="flex:1;" onclick="clockOutEmployee(' + nid(emp.id) + ')">🚪 خروج</button>' :
+                    '<button class="glass-btn glass-btn-success" style="flex:1;" onclick="clockInEmployee(' + nid(emp.id) + ')">🚪 ورود</button>'
                 ) +
-                '<button class="glass-btn" style="flex:1;" onclick="viewEmployeeAttendance(' + emp.id + ')">📊 گزارش</button>' +
+                '<button class="glass-btn" style="flex:1;" onclick="viewEmployeeAttendance(' + nid(emp.id) + ')">📊 گزارش</button>' +
             '</div>' +
         '</div>';
     }).join('');
@@ -621,6 +689,7 @@ function editEmployee(id){
 window.editEmployee = editEmployee;
 
 function saveEmployee(){
+    if(!permit('employees', 'ذخیره کارمند')) return;
     var idEl = document.getElementById('empId');
     var id = idEl ? idEl.value : '';
     var nameEl = document.getElementById('empName');
@@ -648,14 +717,34 @@ function saveEmployee(){
 window.saveEmployee = saveEmployee;
 
 function deleteEmployee(id){
+    if(!permit('employees', 'حذف کارمند')) return;
     if(!confirm('حذف شود؟')) return;
-    employees = employees.filter(function(x){ return x.id !== id; });
+    /* Attendance rows are history, so do not delete them: close any open
+       shift at the deletion time. Otherwise the dashboard keeps showing an
+       employee who is "still clocked in" forever. Also drop future shifts. */
+    var nowIso = new Date().toISOString();
+    var hadOpen = false;
+    attendance.forEach(function(a){
+        if (String(a.employeeId) === String(id) && !a.clockOut) {
+            a.clockOut = nowIso;
+            a.autoClosedOnDelete = true;
+            hadOpen = true;
+        }
+    });
+    if (hadOpen) saveAttendance();
+    if (typeof window.deleteShiftsForEmployee === 'function') {
+        try{ window.deleteShiftsForEmployee(id); }catch(e){}
+    }
+    employees = employees.filter(function(x){ return String(x.id) !== String(id); });
     saveEmployees();
     renderEmployees();
 }
 window.deleteEmployee = deleteEmployee;
 
 function clockInEmployee(id){
+    if(!permit('employees', 'ثبت ورود کارمند')) return;
+    var open = attendance.find(function(a){ return String(a.employeeId) === String(id) && !a.clockOut; });
+    if(open){ showToast('این کارمند هنوز خروج ثبت نکرده است', 'warning'); return; }
     attendance.push({id:Date.now(), employeeId:id, date:new Date().toISOString(), clockIn:new Date().toISOString(), clockOut:null});
     saveAttendance();
     renderEmployees();
@@ -665,13 +754,16 @@ function clockInEmployee(id){
 window.clockInEmployee = clockInEmployee;
 
 function clockOutEmployee(id){
-    var today = attendance.find(function(a){ return a.employeeId === id && !a.clockOut && window.isSameDay(a.date, new Date()); });
-    if(today){
-        today.clockOut = new Date().toISOString();
+    if(!permit('employees', 'ثبت خروج کارمند')) return;
+    var open = attendance.find(function(a){ return String(a.employeeId) === String(id) && !a.clockOut; });
+    if(open){
+        open.clockOut = new Date().toISOString();
         saveAttendance();
         renderEmployees();
         logActivity('employee', 'خروج کارمند');
         showToast('خروج ثبت شد', 'success');
+    } else {
+        showToast('ورود باز برای این کارمند پیدا نشد', 'error');
     }
 }
 window.clockOutEmployee = clockOutEmployee;
@@ -776,33 +868,10 @@ function translateExtra(key, lang){
 window.translateExtra = translateExtra;
 
 // ===== INTEGRATION WITH EXISTING SYSTEMS =====
-// Hook into timer stop to record game history
-var origStopTimer = window.stopTimer;
-if(typeof origStopTimer === 'function'){
-    window.stopTimer = function(){
-        try{
-            var c = window.clients && window.currentTimeClient != null ? window.clients[window.currentTimeClient] : null;
-            if(c && c.status === 'online'){
-                var duration = (c.elapsed || 0);
-                var cost = window.calculateCost ? window.calculateCost(c) : 0;
-                var matchedCustomer = null;
-                if(window.customers && window.reservations){
-                    var reserv = window.reservations.find(function(r){ return r.clientId === c.id && r.status !== 'completed'; });
-                    if(reserv) matchedCustomer = window.customers.find(function(cu){ return cu.id === reserv.customerId; });
-                }
-                recordGameSession({
-                    clientId: c.id, clientName: c.name,
-                    customerName: matchedCustomer ? matchedCustomer.name : '',
-                    duration: duration, cost: cost,
-                    tariff: c.tariff, stationType: c.stationType || '',
-                    services: (window.clientServiceMap && window.clientServiceMap[c.id]) || []
-                });
-                logActivity('session', 'پایان سشن: ' + c.name, 'مدت: ' + Math.round(duration/60) + ' دقیقه - هزینه: ' + cost.toLocaleString('fa-IR') + ' تومان');
-            }
-        }catch(e){}
-        return origStopTimer.apply(this, arguments);
-    };
-}
+// Game history/hourly usage are recorded by confirmPayment() in app.js, after
+// the bill is actually paid. Do not hook stopTimer(): it fires before the
+// cashier chooses a payment method, so a cancelled payment used to leave a
+// permanent history row and a false busy-hour count.
 
 // Hook into backup to also log it
 var origCreateBackup = window.createBackup;

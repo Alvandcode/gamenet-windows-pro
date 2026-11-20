@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('gamenet', {
   paths: () => ipcRenderer.invoke('gamenet:get-paths'),
   device: {
     fingerprint: () => ipcRenderer.invoke('gamenet:device-fingerprint'),
+    fingerprintLegacy: () => ipcRenderer.invoke('gamenet:device-fingerprint-legacy'),
+  },
+  license: {
+    checkClock: (now) => ipcRenderer.invoke('gamenet:license-clock', now),
   },
   openExternal: (url) => ipcRenderer.invoke('gamenet:open-external', url),
   /* sms and agent used to sit inside the backup object, so the real path was
@@ -28,6 +32,9 @@ contextBridge.exposeInMainWorld('gamenet', {
     send: (opts) => ipcRenderer.invoke('gamenet:sms-send', opts),
   },
   agent: {
-    request: (ip, path) => ipcRenderer.invoke('gamenet:agent-request', { ip, path }),
+    request: (ip, path, token) => ipcRenderer.invoke('gamenet:agent-request', { ip, path, token }),
+  },
+  pos: {
+    charge: (opts) => ipcRenderer.invoke('gamenet:pos-request', opts || {}),
   },
 });
