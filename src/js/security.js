@@ -108,7 +108,8 @@
                     'attendance','waitingList','surveys','smsLog','events','shifts',
                     // operations / finance / group-play / phonebook stores
                     'packages','coupons','amanats','maintenance','handovers','holidays',
-                    'groupSessions','walkInGuests','discardedTime','phonebook','branches'];
+                    'groupSessions','walkInGuests','discardedTime','phonebook','branches',
+                    'holidays'];
   // Most of these are objects keyed by id; branches is an ARRAY in round2-b.js
   // and used to be listed here as an object, so a perfectly valid backup was
   // rejected with "field branches shape". It now lives in ARRAY_KEYS above.
@@ -117,6 +118,25 @@
   // holidays is an array of ISO date strings, not an array of objects.
   var STRING_ARRAY_KEYS = ['holidays'];
   var MAX_ITEMS = 200000;
+  /* Older/imported backups can store numeric ids as strings ("123"). The app
+     compares ids with ===, so those records became impossible to edit/delete.
+     Normalising every id-shaped field on restore is safer than teaching every
+     module about both types. Non-numeric ids (licence UUIDs/fingerprints) stay
+     strings. */
+  var ID_FIELDS = {id:1, customerId:1, clientId:1, serviceId:1, employeeId:1,
+                   planId:1, groupId:1, branchId:1, payerId:1, walletCustomerId:1,
+                   couponId:1, packageId:1, shiftId:1};
+  function normalizeNumericIds(value) {
+    if (Array.isArray(value)) return value.map(normalizeNumericIds);
+    if (value && typeof value === 'object') {
+      Object.keys(value).forEach(function(k){
+        var v = value[k];
+        if (ID_FIELDS[k] && typeof v === 'string' && /^\d+$/.test(v)) value[k] = Number(v);
+        else if (v && typeof v === 'object') value[k] = normalizeNumericIds(v);
+      });
+    }
+    return value;
+  }
   function sanitizeBackup(data) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, error: 'bad shape' };
     var out = {};
@@ -138,7 +158,7 @@
           return { ok: false, error: 'field ' + k + ' has a non-object entry' };
         }
       }
-      out[k] = typeof rawArr === 'string' ? rawArr : JSON.stringify(parsed);
+      out[k] = JSON.stringify(normalizeNumericIds(parsed));
     }
     for (i = 0; i < OBJ_KEYS.length; i++) {
       k = OBJ_KEYS[i];
@@ -148,14 +168,14 @@
         try { parsed = JSON.parse(rawObj); } catch (e) { return { ok: false, error: 'field ' + k + ' is not valid JSON' }; }
       } else parsed = rawObj;
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return { ok: false, error: 'field ' + k + ' shape' };
-      out[k] = typeof rawObj === 'string' ? rawObj : JSON.stringify(parsed);
+      out[k] = JSON.stringify(normalizeNumericIds(parsed));
     }
     if (data.stationTypes !== undefined && data.stationTypes !== null) {
       var st = data.stationTypes;
       if (typeof st === 'string') { try { st = JSON.parse(st); } catch (e) { return { ok: false, error: 'stationTypes invalid' }; } }
       if (!Array.isArray(st)) return { ok: false, error: 'stationTypes shape' };
       if (st.length > 500) return { ok: false, error: 'stationTypes too large' };
-      out.stationTypes = typeof data.stationTypes === 'string' ? data.stationTypes : JSON.stringify(st);
+      out.stationTypes = JSON.stringify(normalizeNumericIds(st));
     }
     // scalars / opaque strings: pass through with a length cap
     var SCALARS = ['license','allLicensesMeta','roundingMode','rounding','lang','theme','alarmSound',
@@ -177,6 +197,11 @@
       else out[k] = String(v).slice(0, 200);
     }
     if (data.date !== undefined) out.date = String(data.date).slice(0, 60);
+    if (data.schema !== undefined) {
+      var sc = parseInt(data.schema, 10);
+      if (isFinite(sc)) out.schema = sc;
+    }
+    if (data.appVersion !== undefined) out.appVersion = String(data.appVersion).slice(0, 40);
     return { ok: true, data: out };
   }
 

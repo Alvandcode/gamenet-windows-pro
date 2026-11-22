@@ -377,6 +377,11 @@
             showToast('نقش '+operators[0].username+' به مدیر تغییر کرد','warning');
         }
         try{ localStorage.setItem('alvand_operators', JSON.stringify(operators)); }catch(e){}
+        if(currentOperator && String(currentOperator.id)===String(id)){
+            try{ logoutOperator(); }catch(e){}
+            showToast('اپراتور حذف شد و از حساب خارج شدید','success');
+            return;
+        }
         renderOperators();
         showToast('اپراتور حذف شد','success');
     }
@@ -467,7 +472,7 @@
         container.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;"><p style="color:rgba(255,255,255,0.5); font-size:0.85rem;">${customers.length} مشتری</p><button class="glass-btn glass-btn-success" style="padding:8px 14px; font-size:0.8rem;" onclick="openCustomerModal()">+ مشتری</button></div>` +
         `<div style="display:grid; gap:10px;">` + customers.map(c=>{
             let rank=getRank(c.totalHours||0);
-            let isBirthday = c.birthday && new Date(c.birthday).getMonth()===now.getMonth();
+            let isBirthday = isBirthdayToday(c.birthday);
             let walletClass = (c.wallet||0) <0 ? 'wallet-negative' : 'wallet-card';
             let activeMembership = null;
             try{ activeMembership = (typeof window.getActiveMembership === 'function') ? window.getActiveMembership(c.id) : null; }catch(e){}
@@ -518,7 +523,7 @@
     function openCustomerModal(id=null){
         if(!requirePerm('customers','مشتریان')) return;
         if(id){
-            let c=customers.find(x=>x.id===id);
+            let c=customers.find(x=>String(x.id)===String(id));
             if(!c) return;
             document.getElementById('custId').value=c.id;
             document.getElementById('custName').value=c.name;
@@ -557,7 +562,7 @@
         let birthday=document.getElementById('custBirthday').value;
         if(!name){ showToast('نام الزامی','error'); return; }
         if(id){
-            let c=customers.find(x=>x.id===parseInt(id));
+            let c=customers.find(x=>String(x.id)===String(id));
             Object.assign(c,{name,phone,email, telegram:social, birthday});
         } else {
             customers.push({id:Date.now(), name,phone,email, telegram:social, birthday, wallet:0, debt:0, totalHours:0, totalSpent:0, createdAt:new Date().toISOString()});
@@ -570,8 +575,24 @@
     function deleteCustomer(id){
         if(!requirePerm('customers','حذف مشتری')) return;
         if(!confirm('حذف شود؟')) return;
-        customers=customers.filter(c=>c.id!==id);
+        const removedCust = customers.find(c=>String(c.id)===String(id)) || null;
+        customers=customers.filter(c=>String(c.id)!==String(id));
         localStorage.setItem('alvand_customers', JSON.stringify(customers));
+        // Reservations are named reservations, not customer rows; remove the
+        // ones that unmistakably belong to the deleted customer (id, or the
+        // exact same name + phone) so the roster does not keep a ghost.
+        try{
+            const rPhone = removedCust ? String(removedCust.phone||'').replace(/[^0-9]/g,'') : '';
+            reservations = reservations.filter(function(r){
+                if(String(r && r.customerId)===String(id)) return false;
+                if(!removedCust) return true;
+                const sameName = String((r && r.customerName)||'').trim() === String(removedCust.name||'').trim();
+                const rrPhone = String((r && r.phone)||'').replace(/[^0-9]/g,'');
+                if(sameName && ((!rPhone && !rrPhone) || (rPhone && rrPhone && rPhone===rrPhone))) return false;
+                return true;
+            });
+            localStorage.setItem('alvand_reservations', JSON.stringify(reservations));
+        }catch(e){}
         // Do not leave a membership row pointing at a customer that no longer
         // exists (it also kept the old name on the membership screen).
         try{
@@ -582,12 +603,64 @@
                 if(typeof window.renderCustomerMemberships==='function') window.renderCustomerMemberships();
             }
         }catch(e){}
+        // Do not leave loyalty points, game history, or wallet ledger rows
+        // pointing at a customer that no longer exists.
+        try{
+            const lp=safeParse(localStorage.getItem('alvand_loyaltyPoints')||'{}', {});
+            if(lp && typeof lp==='object'){
+                Object.keys(lp).forEach(k=>{ if(String(k)===String(id)) delete lp[k]; });
+                localStorage.setItem('alvand_loyaltyPoints', JSON.stringify(lp));
+            }
+        }catch(e){}
+        try{
+            const gh=safeParse(localStorage.getItem('alvand_gameHistory')||'[]', []);
+            if(Array.isArray(gh)) localStorage.setItem('alvand_gameHistory', JSON.stringify(gh.filter(g=>String(g && (g.customerId!=null?g.customerId:g.clientId))!==String(id))));
+        }catch(e){}
+        try{
+            walletHistory = walletHistory.filter(h=>String(h && h.customerId)!==String(id));
+            localStorage.setItem('alvand_walletHistory', JSON.stringify(walletHistory));
+        }catch(e){}
         renderCustomersEnhanced();
         showToast('حذف شد','success');
     }
+    /* ---------- per-session client note ----------
+       The note belongs to ONE game session: it is editable from the client
+       card while playing, shown in the end-of-time alarm and in the payment
+       modal, then cleared when the payment is banked. */
+    let _noteClientId = null;
+    function openClientNoteModal(idx){
+        if(!requirePerm('clients','یادداشت کلاینت')) return;
+        const c = clients[idx];
+        if(!c){ showToast('کلاینت پیدا نشد','error'); return; }
+        _noteClientId = c.id;
+        const n = document.getElementById('clientNoteClientName');
+        if(n) n.textContent = 'کلاینت: ' + c.name;
+        const t = document.getElementById('clientNoteText');
+        if(t) t.value = String(c.note || '');
+        document.getElementById('clientNoteModal').classList.add('show');
+        setTimeout(function(){ try{ t && t.focus(); }catch(e){} }, 80);
+    }
+    function saveClientNote(){
+        if(!requirePerm('clients','ذخیره یادداشت کلاینت')) return;
+        const c = clients.find(x=>String(x.id)===String(_noteClientId));
+        if(!c){ showToast('کلاینت پیدا نشد','error'); return; }
+        const t = document.getElementById('clientNoteText');
+        const text = String(t ? t.value : '').trim().slice(0,500);
+        c.note = text;
+        saveData();
+        renderClients();
+        closeModal('clientNoteModal');
+        showToast(text ? 'یادداشت کلاینت ذخیره شد' : 'یادداشت پاک شد','success');
+    }
+    function clearClientNote(){
+        const t = document.getElementById('clientNoteText');
+        if(t) t.value = '';
+        saveClientNote();
+    }
+
     function quickCharge(id){
         if(!requirePerm('customers','شارژ کیف پول')) return;
-        let c=customers.find(x=>x.id===id);
+        let c=customers.find(x=>String(x.id)===String(id));
         if(!c) return;
         window._chargeId=id;
         document.getElementById('chargeCustomerName').textContent=c.name;
@@ -603,7 +676,7 @@
         if(!(a > 0)) return;
         try{
             const pays = safeParse(localStorage.getItem('alvand_payments') || '[]');
-            pays.push({amount:a, method:(method === 'card' ? 'card' : 'cash'), date:new Date().toISOString(), clientName:name || ''});
+            pays.push({amount:a, method:(method === 'card' ? 'card' : 'cash'), date:new Date().toISOString(), clientName:name || '', branchId: (typeof currentBranchId==='function' ? currentBranchId() : '1')});
             localStorage.setItem('alvand_payments', JSON.stringify(pays));
             try{ updateCashCardStats(); }catch(e){}
         }catch(e){}
@@ -613,7 +686,7 @@
         let id=window._chargeId;
         let amount=parseFaNumber(document.getElementById('chargeAmount').value, 0);
         if(!amount||amount<=0){ showToast('مبلغ معتبر وارد کن','error'); return; }
-        let c=customers.find(x=>x.id===id);
+        let c=customers.find(x=>String(x.id)===String(id));
         if(!c) return;
         c.wallet=(c.wallet||0)+amount;
         walletHistory.push({customerId:id, amount, action:'شارژ', date:new Date().toISOString()});
@@ -634,10 +707,11 @@
         if(!isFinite(amount) || amount<=0){ showToast('مبلغ وارد کن','error'); return; }
         amount=Math.floor(amount);
         let action=document.getElementById('walletAction').value;
-        let c=customers.find(x=>x.id===id);
+        let c=customers.find(x=>String(x.id)===String(id));
         if(!c){ showToast('مشتری پیدا نشد','error'); return; }
         const wallet0=Number(c.wallet)||0, debt0=Number(c.debt)||0;
         let delta=0;
+        let cashIn=0;
         if(action==='charge'){ c.wallet=wallet0+amount; delta=amount; }
         else if(action==='deduct'){
             if(amount>wallet0){ showToast('موجودی کیف پول کافی نیست','error'); return; }
@@ -654,16 +728,21 @@
             if(debt0<=0){ showToast('این مشتری بدهی ندارد','error'); return; }
             const paid=Math.min(amount, debt0);
             if(paid<amount) showToast('فقط '+(paid).toLocaleString('fa-IR')+' تومان از بدهی کسر شد','warning');
-            c.debt=debt0-paid; c.wallet=wallet0+paid; delta=paid;
+            // Paying a debt is cash received; it must NOT also create wallet
+            // credit, otherwise the customer gets the same money twice.
+            c.debt=debt0-paid; c.wallet=wallet0; cashIn=paid;
         }
         else { showToast('عملیات نامعتبر','error'); return; }
-        walletHistory.push({customerId:id, amount: delta, action, date:new Date().toISOString()});
+        if(action!=='payDebt'){
+            walletHistory.push({customerId:id, amount: delta, action, date:new Date().toISOString()});
+        }
         localStorage.setItem('alvand_customers', JSON.stringify(customers));
         localStorage.setItem('alvand_walletHistory', JSON.stringify(walletHistory));
-        // charge/payDebt are money received; deduct/debt are not.
-        if(delta > 0){
+        // charge (and debt repayment) are money received; deduct/debt are not.
+        const cashAmount = cashIn > 0 ? cashIn : (delta > 0 ? delta : 0);
+        if(cashAmount > 0){
             const wm=document.getElementById('walletMethod');
-            recordWalletCashIn(delta, wm ? wm.value : 'cash', c.name);
+            recordWalletCashIn(cashAmount, wm ? wm.value : 'cash', c.name);
         }
         document.getElementById('custWalletDisplay').textContent=(c.wallet||0).toLocaleString('fa-IR')+' تومان';
         document.getElementById('walletAmount').value='';
@@ -713,6 +792,12 @@
     }
     function findCustomerForPayment(pp){
         if(!pp) return null;
+        // A linked customer is authoritative. Name/phone matching is only a
+        // fallback for old records created before clients had customerId.
+        if(pp.customerId != null){
+            const byId=(customers||[]).find(c=>c && String(c.id)===String(pp.customerId));
+            if(byId) return byId;
+        }
         const want = normPersonName(pp.clientName);
         const wantPhone = String(pp.phone||'').replace(/[^0-9]/g,'');
         if(!want && !wantPhone) return null;
@@ -745,6 +830,18 @@
                     pendingPayment.total -= bDisc;
                     showToast('🎂 تخفیف تولد 10% : -'+bDisc.toLocaleString('fa-IR'),'success');
                 }
+                // Membership discount is part of the plan the shop sold; it
+                // was stored on the membership row but never applied.
+                try {
+                    const memberId = (pendingPayment.customerId != null) ? pendingPayment.customerId : cust.id;
+                    const mem = (typeof window.getActiveMembership === 'function') ? window.getActiveMembership(memberId) : null;
+                    const pct = mem ? Math.max(0, Math.min(100, Number(mem.discount) || 0)) : 0;
+                    if (pct > 0) {
+                        const mDisc = Math.round(pendingPayment.total * pct / 100);
+                        pendingPayment.total = Math.max(0, pendingPayment.total - mDisc);
+                        showToast('🎫 تخفیف عضویت ' + pct + '% : -' + mDisc.toLocaleString('fa-IR'), 'success');
+                    }
+                } catch (e) {}
                 // reflect the discount in the payment modal so the number on
                 // screen is the number that will be charged
                 if(pendingPayment.total !== baseTotal){
@@ -765,15 +862,6 @@
                         pendingPayment.walletCustomerId = cust.id;
                     }
                 }
-                // update customer stats
-                const dur=Number(pendingPayment.duration);
-                cust.totalHours = (cust.totalHours||0) + (isFinite(dur) ? dur/3600 : 0);
-                cust.totalSpent = (cust.totalSpent||0) + pendingPayment.total;
-                localStorage.setItem('alvand_customers', JSON.stringify(customers));
-                localStorage.setItem('alvand_walletHistory', JSON.stringify(walletHistory));
-        localStorage.setItem('alvand_theme', currentTheme);
-        localStorage.setItem('alvand_alarmSound', alarmSound);
-        localStorage.setItem('alvand_alarmRepeat', alarmRepeat.toString());
             }
         }
         /* Rank/birthday discounts are applied here, after the payment modal
@@ -897,6 +985,17 @@
         const oldSales=sales.filter(s=>isOld(s.date));
         let pays=[]; try{ pays=safeParse(localStorage.getItem('alvand_payments')||'[]')||[]; }catch(e){ pays=[]; }
         const oldP=pays.filter(p=>isOld(p.date));
+        const extraPruneKeys=['alvand_groupSessions','alvand_walletHistory','alvand_attendance'];
+        let extraPruned=0;
+        extraPruneKeys.forEach(function(k){
+            try{
+                const arr=safeParse(localStorage.getItem(k)||'[]', []);
+                if(!Array.isArray(arr)) return;
+                const kept=arr.filter(function(row){ return !isOld(row && (row.date||row.clockIn)); });
+                if(kept.length!==arr.length){ localStorage.setItem(k, JSON.stringify(kept)); extraPruned += arr.length-kept.length; }
+            }catch(e){}
+        });
+        try{ if(typeof window.pruneFeatureData==='function') extraPruned += window.pruneFeatureData(cutoff); }catch(e){}
         if(!oldS.length && !oldSales.length && !oldP.length){ showToast('چیز قدیمی برای حذف نیست','success'); return; }
         if(!confirm(`🧹 ${oldS.length} سشن + ${oldSales.length} فروش بوفه + ${oldP.length} پرداخت قدیمی‌تر از ${days} روز حذف شود؟\nاول بکاپ خودکار گرفته می‌شود.`)) return;
         try{
@@ -911,7 +1010,7 @@
             try{ updateStats(); }catch(e){}
             try{ renderWeeklyChart(); }catch(e){}
             updateDbSizeText(); updateBackupDisplay();
-            showToast('پاکسازی شد (بکاپ قبلی ذخیره است)','success');
+            showToast('پاکسازی شد' + (extraPruned ? ' ('+extraPruned+' رکورد مرتبط دیگر)' : '') + ' - بکاپ قبلی ذخیره است','success');
         }catch(e){ showToast('خطا در پاکسازی','error'); }
     }
     function renderThemeGrid(){
@@ -1200,7 +1299,15 @@
                             return;
                             }
                         }
-                        try{ if(window.LicVerify.accept) window.LicVerify.accept(stored.token,res.payload); }catch(_e){}
+                        let accepted=false;
+                        try{ if(window.LicVerify.accept) accepted=await window.LicVerify.accept(stored.token); }catch(_e){}
+                        if(!accepted){
+                            window.__licState={status:'invalid', token:null, payload:null, fp:null};
+                            showLicenseGate();
+                            const ea=document.getElementById('licenseError');
+                            if(ea){ ea.textContent='تأیید مجدد لایسنس ناموفق بود؛ کلید را دوباره وارد کن.'; ea.style.display='block'; }
+                            return;
+                        }
                         window.__licState={status:'valid', token:stored.token, payload:res.payload, fp:stored.fp||fp};
                         try{ activeLicense=stored; }catch(_e){}
                         try{ await registerCurrentDevice(false); }catch(_e){}
@@ -1240,8 +1347,15 @@
         document.body.style.overflow='hidden';
     }
     function hideLicenseGate(){
+        // Do not let a console call hide the gate without a signature-verified
+        // token in this session; every legitimate caller sets __licState first.
+        const st=window.__licState;
+        const ok=!!(st && st.status==='valid' && st.token && window.LicVerify &&
+                   typeof window.LicVerify.isTrusted==='function' && window.LicVerify.isTrusted(st.token));
+        if(!ok) return false;
         document.getElementById('licenseOverlay').classList.remove('show');
         document.body.style.overflow='';
+        return true;
     }
     async function activateLicense(){
         const inputEl=document.getElementById('licenseKeyInput');
@@ -1296,7 +1410,14 @@
             return;
         }
         try{ await fbPingActivation(p.id, fp); }catch(_e){}
-        try{ if(window.LicVerify.accept) window.LicVerify.accept(token,p); }catch(_e){}
+        let accepted=false;
+        try{ if(window.LicVerify.accept) accepted=await window.LicVerify.accept(token); }catch(_e){}
+        if(!accepted){
+            try{ window.__licState={status:'invalid', token:null, payload:null, fp:null}; }catch(_e){}
+            showLicenseGate();
+            if(err){ err.textContent='کلید معتبر است اما تأیید نشست ناموفق بود؛ دوباره تلاش کن.'; err.style.display='block'; }
+            return;
+        }
         try{ window.__licState={status:'valid', token, payload:p, fp}; }catch(_e){}
         hideLicenseGate();
         renderLicenseSection();
@@ -1417,6 +1538,7 @@
     }
     function copyLicense(i){ try{ const k=allLicenses[i]&&(allLicenses[i].key||''); if(!k){ showToast('چیزی برای کپی نیست','error'); return; } navigator.clipboard.writeText(k).then(()=>showToast('کپی شد','success')); }catch(e){ showToast('کپی نشد','error'); } }
     function deleteLicense(i){
+        if(!requirePerm('license','حذف لایسنس')) return;
         if(!confirm('حذف شود؟')) return;
         allLicenses.splice(i,1);
         localStorage.setItem('alvand_allLicenses', JSON.stringify(allLicenses));
@@ -2182,8 +2304,13 @@
      *  and shown in the license panel. */
     function licenseStationCap(){
         const st=window.__licState;
-        if(!st || st.status!=='valid' || !st.payload) return null;   // local/dev mode
-        const cap=Number(st.payload.cap);
+        if(!st || st.status!=='valid' || !st.token) return null;
+        // Never take cap from the mutable __licState object: it must come from
+        // the payload whose RSA signature was verified in license.js.
+        const p = (window.LicVerify && window.LicVerify.trustedPayload)
+            ? window.LicVerify.trustedPayload(st.token) : null;
+        if(!p) return null;
+        const cap=Number(p.cap);
         if(!isFinite(cap) || cap<=0) return null;
         return Math.floor(cap);
     }
@@ -2228,6 +2355,9 @@
     function saveStationTypePrice(id, val){
         if(!requirePerm('tariffs','قیمت نوع دستگاه')) return;
         let t=stationTypes.find(x=>x.id===id); if(!t) return;
+        // Close the current rate segment for every running client on this
+        // station type before its price changes, so old minutes keep old price.
+        clients.forEach(function(c){ if(c && c.status==='online' && c.stationType===id) accrueRateSegment(c, Date.now()); });
         t.price=(typeof parseFaNumber==='function')? parseFaNumber(val,0) : (parseInt(val)||0);
         localStorage.setItem('alvand_stationTypes', JSON.stringify(stationTypes));
         renderClients(); updateStats();
@@ -2271,7 +2401,9 @@
     }
     function changeClientType(idx, val){
         if(!requirePerm('tariffs','نوع دستگاه کلاینت')) return;
-        clients[idx].stationType = val||null;
+        const __c = clients[idx];
+        if(__c && __c.status==='online') accrueRateSegment(__c, Date.now());
+        __c.stationType = val||null;
         saveData();
         renderClients();
         showToast('نوع دستگاه تغییر کرد','success');
@@ -2572,7 +2704,7 @@
         ops: 'clients',          // packages, coupons, deposits (amanat), maintenance
         insights: 'reports',
         tools: 'operators',
-        advancedSearch: true,
+        advancedSearch: 'reports',
         waiting: 'clients',
         // the about page only describes the app and how to reach the maker,
         // so every operator can open it. Without an entry here hasPerm()
@@ -2747,6 +2879,7 @@
                         <span style="display:flex; align-items:center; gap:8px;">${c.status==='online'?'<span class="active-pill">● فعال</span>':''}<span class="status-dot ${statusClass}" title="${escapeHtml(c.status)}"></span></span>
                     </div>
 
+                    ${c.note ? `<div style="display:flex; gap:8px; align-items:flex-start; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.28); border-radius:12px; padding:8px 10px; margin:10px 0; font-size:0.78rem; color:#fde68a; line-height:1.7;"><span style="flex:1; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" title="${escapeHtml(c.note)}">📝 ${escapeHtml(c.note)}</span><button class="glass-btn" style="padding:2px 8px; font-size:0.7rem;" onclick="openClientNoteModal(${numId(i)})">✏️</button></div>` : ''}
                     <div style="text-align: center; margin: 16px 0;">
                         <p style="font-size: 0.8rem; color: rgba(255,255,255,0.5); margin-bottom: 4px;">زمان سپری شده</p>
                         <p id="cliElapsed-${i}" style="font-size: 1.8rem; font-weight: 900; font-variant-numeric: tabular-nums; ${timerEnabled && c.status==='online' && remainingSec<=300 ? 'color:#ef4444;':''}">${timeStr}</p>
@@ -2788,6 +2921,8 @@
                     <div id="clientMenu-${i}" style="display:none; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:10px; margin-bottom:8px;">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom:8px;">
                             ${c.status==='online' ? `<button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="pauseClient(${numId(i)})">⏸ توقف موقت</button>` : ''}
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openClientNoteModal(${numId(i)})">📝 یادداشت</button>
+                            <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openCalculator()">🧮 ماشین‌حساب</button>
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openTimeModal(${numId(i)})">&#9201; زمان / مبلغ</button>
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="gpOpenReport('${escapeHtml(jsStr(c.id))}')">&#128202; کارکرد</button>
                             <button class="glass-btn" style="padding: 8px 10px; font-size: 0.78rem;" onclick="openReservationModal(${numId(i)})">&#128197; رزرو</button>
@@ -2820,7 +2955,7 @@
             svc.length, svc.reduce((s,x)=>s+x.serviceId+':'+x.qty+',',''),
             r?(r.id||(r.customerName+'|'+r.startTime)):'', c.ip||'',
             c.online==null?'?':(c.online?'1':'0'),
-            (rem>=0 && rem<=300)?'warn':'ok', c.name].join('|');
+            (rem>=0 && rem<=300)?'warn':'ok', c.name, c.note||''].join('|');
     }
     function setLiveText(id, txt){
         let el = document.getElementById(id);
@@ -2871,6 +3006,10 @@
         const btnAdd = document.getElementById('addClientSubmitBtn');
         if(btnAdd && left!==null) btnAdd.disabled = (left<=0);
         try{fillClientTypeSelect();}catch(e){}
+        const custSel=document.getElementById('newClientCustomer');
+        if(custSel){
+            custSel.innerHTML='<option value="">بدون اتصال</option>'+customers.map(c=>'<option value="'+escapeHtml(String(c.id))+'">'+escapeHtml(c.name)+'</option>').join('');
+        }
         document.getElementById('addClientModal').classList.add('show');
     }
 
@@ -2899,6 +3038,8 @@
         const tariff = (tariffEl && tariffEl.value) || 'single';
         const extra = (typeof parseFaNumber==='function')? parseFaNumber(document.getElementById('newClientExtra').value,0) : (parseInt(document.getElementById('newClientExtra').value) || 0);
         const timerMin = (typeof parseFaNumber==='function')? parseFaNumber(document.getElementById('newClientTimer')?.value,0) : (parseInt(document.getElementById('newClientTimer')?.value) || 0);
+        const custEl=document.getElementById('newClientCustomer');
+        const customerId = (custEl && custEl.value) ? custEl.value : null;
 
         if (!name) { showToast('لطفاً نام کلاینت را وارد کنید','error'); return; }
         // paid capacity: never let the shop exceed the number of stations it bought
@@ -2907,6 +3048,7 @@
         clients.push({
             id: Date.now(),
             name,
+            customerId,
             tariff,
             extra,
             stationType: (document.getElementById('newClientType') && document.getElementById('newClientType').value) || 'pc',
@@ -2926,6 +3068,7 @@
         renderClients();
         updateStats();
         document.getElementById('newClientName').value = '';
+        if(document.getElementById('newClientCustomer')) document.getElementById('newClientCustomer').value='';
         if(document.getElementById('newClientIP')) document.getElementById('newClientIP').value='';
         if(document.getElementById('newClientTimer')) document.getElementById('newClientTimer').value='0';
         showToast('کلاینت با موفقیت اضافه شد','success');
@@ -2936,20 +3079,44 @@
      * time never reached the reports and the cash was never counted. */
     function bankClientBeforeDelete(c){
         if(!c) return 0;
+        if(c.status === 'online'){ accrueRateSegment(c, Date.now()); }
         const seconds = clientElapsed(c);
-        if (!(seconds > 0)) return 0;   // never played: nothing to bill
-        const gameCost = Math.max(0, Number(calculateCost(c)) || 0);
-        const total = applyRounding(gameCost);
-        if (total > 0) {
+        const svc = Array.isArray(clientServiceMap[c.id]) ? clientServiceMap[c.id].slice() : [];
+        if (!(seconds > 0) && !svc.length && !c.activePackage) return 0;
+        let gameCost = Math.max(0, Number(calculateCost(c)) || 0);
+        let buffetCost = 0;
+        svc.forEach(it=>{ const s=services.find(x=>String(x.id)===String(it.serviceId)); if(s) buffetCost += (Number(s.price)||0)*(Number(it.qty)||0); });
+        const pkgCharge = packageChargeFor(c, buffetCost, seconds);
+        let included = {};
+        if (pkgCharge) {
+            gameCost = Math.max(0, Number(pkgCharge.gameCost) || 0);
+            buffetCost = Math.max(0, Number(pkgCharge.buffetCost) || 0);
+            included = pkgCharge.included || {};
+        }
+        const total = applyRounding(gameCost + buffetCost);
+        const saleRows = [];
+        svc.forEach(it=>{
+            const s = services.find(x=>String(x.id)===String(it.serviceId));
+            if(!s) return;
+            const qty = Math.max(0, Math.floor(Number(it.qty) || 0));
+            if(!qty) return;
+            s.stock = Math.max(0, (Number(s.stock) || 0) - qty);
+            const incQty = Math.min(qty, Math.max(0, Number(included[String(s.id)]) || 0));
+            const paidQty = qty - incQty;
+            const base = {serviceId:s.id, name:s.name, date:new Date().toISOString(), branchId:(c.sessionBranchId || currentBranchId())};
+            if(incQty>0) saleRows.push(Object.assign({}, base, {qty:incQty, price:0, cost:s.cost, profit:-(Number(s.cost)||0)*incQty}));
+            if(paidQty>0) saleRows.push(Object.assign({}, base, {qty:paidQty, price:Number(s.price)||0, cost:Number(s.cost)||0, profit:((Number(s.price)||0)-(Number(s.cost)||0))*paidQty}));
+        });
+        if (seconds > 0 || total > 0) {
             sessions.push({
-                branchId: currentBranchId(),
+                branchId: c.sessionBranchId || currentBranchId(),
                 clientId: c.id,
                 customerId: c.customerId != null ? c.customerId : null,
                 clientName: c.name,
                 duration: seconds,
                 cost: total,
                 gameCost: gameCost,
-                buffetCost: 0,
+                buffetCost: buffetCost,
                 tariff: c.tariff,
                 extra: c.extra,
                 extraSeconds: c.extraSeconds || 0,
@@ -2959,14 +3126,20 @@
                 date: new Date().toISOString(),
                 timerDuration: c.timerDuration || 0,
                 paymentMethod: 'cash',
-                services: [],
+                packageName: c.activePackage ? c.activePackage.name : '',
+                packagePrice: c.activePackage ? (Number(c.activePackage.price)||0) : 0,
+                services: svc.map(it=>({serviceId:it.serviceId, name:(services.find(s=>String(s.id)===String(it.serviceId))||{}).name||'', qty:Number(it.qty)||0})),
                 deletedWithCard: true,
             });
-            try {
-                const payments = safeParse(localStorage.getItem('alvand_payments') || '[]');
-                payments.push({ amount: total, method: 'cash', date: new Date().toISOString(), clientName: c.name, branchId: currentBranchId() });
-                localStorage.setItem('alvand_payments', JSON.stringify(payments));
-            } catch(e){}
+            saleRows.forEach(r=>sales.push(r));
+            try { saveSales(); } catch(e){}
+            if (total > 0) {
+                try {
+                    const payments = safeParse(localStorage.getItem('alvand_payments') || '[]');
+                    payments.push({ amount: total, method: 'cash', date: new Date().toISOString(), clientName: c.name, branchId: c.sessionBranchId || currentBranchId() });
+                    localStorage.setItem('alvand_payments', JSON.stringify(payments));
+                } catch(e){}
+            }
         }
         c.totalCost = (Number(c.totalCost) || 0) + total;
         return total;
@@ -3143,6 +3316,13 @@
 
         c.status = 'online';
         c.startTime = Date.now() - (c.elapsed || 0) * 1000;
+        if(!c.sessionBranchId) c.sessionBranchId = currentBranchId();
+        // Track the tariff that was actually active while the clock was running,
+        // so a night-rate change does not re-price the whole early session.
+        if(!(Number(c.elapsed) > 0) || !Array.isArray(c._rateSegments)) c._rateSegments = [];
+        c._rateLast = Date.now();
+        c._rateLastRate = getTariffForClient(c);
+        c._rateSegments.push({ rate: c._rateLastRate, seconds: 0 });
         c.notified=false;
         saveData();
         renderClients();
@@ -3159,8 +3339,10 @@
         if(!c){ currentTimeClient=null; return; }
         if (c.status !== 'online') return;
 
+        accrueRateSegment(c, Date.now());
         c.status = 'paused';
         c.elapsed = Math.floor((Date.now() - c.startTime) / 1000);
+        c._rateLast = null;
         c.startTime = null;
         saveData();
         renderClients();
@@ -3262,6 +3444,7 @@
         const c = clients[currentTimeClient];
         if(!c){ currentTimeClient=null; return; }
         if (c.status === 'online') {
+            accrueRateSegment(c, Date.now());
             const before = Number(c.elapsed) || 0;
             c.elapsed = clientElapsed(c);
             /* clientElapsed() already clamps a corrupt stored value to a sane
@@ -3281,6 +3464,7 @@
             }
             c.startTime = null;
             c.status = 'paused';
+            c._rateLast = null;
             saveData();
         }
         // calculate costs including buffet
@@ -3311,11 +3495,19 @@
             package: pkgCharge ? pkgCharge.pkg : null,
             packageIncluded: pkgCharge ? pkgCharge.included : null,
             packageOverCost: pkgCharge ? pkgCharge.overCost : 0,
+            branchId: c.sessionBranchId || currentBranchId(),
+            customerId: c.customerId != null ? c.customerId : null,
             tariff: c.tariff, extra: c.extra,
             stationType: c.stationType||null,
             services: (Array.isArray(svc) ? svc : []).slice()
         };
         document.getElementById('paymentClientName').textContent = c.name + ' - ' + formatTime(c.elapsed) + (pkgCharge ? ' - پکیج ' + pkgCharge.pkg.name : '');
+        const __payNote = document.getElementById('payClientNote');
+        if(__payNote){
+            const __nt = String(c.note || '').trim();
+            __payNote.textContent = __nt ? ('📝 یادداشت: ' + __nt) : '';
+            __payNote.style.display = __nt ? 'block' : 'none';
+        }
         document.getElementById('payDuration').textContent = formatTime(c.elapsed);
         document.getElementById('payGameCost').textContent = gameCost.toLocaleString('fa-IR') + ' تومان';
         document.getElementById('payBuffetCost').textContent = buffetCost.toLocaleString('fa-IR') + ' تومان';
@@ -3347,6 +3539,9 @@
         }
         let method = document.getElementById('payMethod').value;
         let total = Number(pendingPayment.total) || 0;
+        // The branch that earned this session is the one that was active when
+        // the timer started, not the branch selected at payment time.
+        const paidBranch = pendingPayment.branchId || currentBranchId();
         /* Coupons are validated when applied, and the use counter is consumed at
            that moment (so maxUses=1 still works). Recompute the discount here on
            the final amount, after rank/birthday changes, and make the charged
@@ -3385,7 +3580,7 @@
         }
         // record session
         sessions.push({
-            branchId: currentBranchId(),      // which branch earned this
+            branchId: paidBranch,             // branch active when the timer started
             clientId: pendingPayment.clientId,
             customerId: c.customerId != null ? c.customerId : null,
             clientName: pendingPayment.clientName,
@@ -3420,7 +3615,7 @@
             s.stock = Math.max(0, (s.stock||0) - qty);
             const incQty = Math.min(qty, Math.max(0, Number(included[String(s.id)]) || Number(included[s.id]) || 0));
             const paidQty = qty - incQty;
-            const saleBase = {serviceId:s.id, name:s.name, date:new Date().toISOString(), branchId:currentBranchId()};
+            const saleBase = {serviceId:s.id, name:s.name, date:new Date().toISOString(), branchId:paidBranch};
             if(incQty > 0){
                 sales.push(Object.assign({}, saleBase, {qty:incQty, price:0, cost:s.cost, profit:-(Number(s.cost)||0)*incQty}));
             }
@@ -3434,14 +3629,26 @@
         if(method==='wallet'){
             // Already received when the wallet was topped up; do not count it
             // as new cash in the drawer a second time.
-            payments.push({amount: total, method:'wallet', date:new Date().toISOString(), clientName:pendingPayment.clientName, branchId:currentBranchId()});
+            payments.push({amount: total, method:'wallet', date:new Date().toISOString(), clientName:pendingPayment.clientName, branchId:paidBranch});
         } else if(method==='split'){
-            payments.push({amount: Math.round(total/2), method:'cash', date:new Date().toISOString(), clientName:pendingPayment.clientName, branchId:currentBranchId()});
-            payments.push({amount: total - Math.round(total/2), method:'card', date:new Date().toISOString(), clientName:pendingPayment.clientName, branchId:currentBranchId()});
+            payments.push({amount: Math.round(total/2), method:'cash', date:new Date().toISOString(), clientName:pendingPayment.clientName, branchId:paidBranch});
+            payments.push({amount: total - Math.round(total/2), method:'card', date:new Date().toISOString(), clientName:pendingPayment.clientName, branchId:paidBranch});
         } else {
-            payments.push({amount: total, method, date:new Date().toISOString(), clientName:pendingPayment.clientName, branchId:currentBranchId()});
+            payments.push({amount: total, method, date:new Date().toISOString(), clientName:pendingPayment.clientName, branchId:paidBranch});
         }
         localStorage.setItem('alvand_payments', JSON.stringify(payments));
+        /* Customer lifetime totals are updated only after the money is banked.
+           The old wrapper wrote them before the client was re-resolved, so a
+           cancelled/deleted client still inflated totalHours/totalSpent. */
+        try {
+            const cust = findCustomerForPayment(pendingPayment);
+            if (cust) {
+                const dur = Number(pendingPayment.duration);
+                cust.totalHours = (Number(cust.totalHours) || 0) + (isFinite(dur) ? dur / 3600 : 0);
+                cust.totalSpent = (Number(cust.totalSpent) || 0) + total;
+                localStorage.setItem('alvand_customers', JSON.stringify(customers));
+            }
+        } catch (e) {}
         /* Game history and hourly usage belong to a PAID session. Recording them
            from stopTimer() meant a cancelled payment still appeared in history
            and the busy-hours report. Record here, after the money is banked. */
@@ -3478,6 +3685,10 @@
         c.activePackage=null;   // consumed exactly once, at this payment
         c.timerDuration=0;
         c.timerDurationSec=0;
+        c.sessionBranchId=null;
+        c.note='';              // the reminder belonged to this session
+        c._rateSegments=[];
+        c._rateLast=null;
         c._warned5=false;
         c._warned1=false;
         c._timeNotifSent=false;
@@ -3546,6 +3757,8 @@
             c.extraSeconds=0;
             c._lastElapsed=null;
             c.startTime = null;
+            c._rateSegments=[];
+            c._rateLast=null;
             c.status = 'offline';
             c.notified=false;
             saveData();
@@ -3603,6 +3816,7 @@
         let now=Date.now();
         clients.forEach((c, idx) => {
             if (c.status === 'online' && c.startTime) {
+                accrueRateSegment(c, now);
                 c.elapsed = Math.floor((now - c.startTime) / 1000);
                 // pro-rata extra billing: accumulate extra-person-seconds as time passes,
                 // so extras added mid-game are charged only from the moment they join
@@ -3668,7 +3882,9 @@
         alarmClientIndex=clientIdx;
         let c=clients[clientIdx];
         if(!c){ alarmClientIndex=null; return; }
-        document.getElementById('timerEndText').innerHTML=`کلاینت <b>${escapeHtml(c.name)}</b> به زمان تعیین شده (${c.timerDuration} دقیقه) رسید.<br>زمان سپری شده: <b>${formatTime(c.elapsed)}</b><br>هزینه فعلی: <b>${calculateCost(c).toLocaleString('fa-IR')} تومان</b>`;
+        const __endNote = String(c.note || '').trim();
+        document.getElementById('timerEndText').innerHTML=`کلاینت <b>${escapeHtml(c.name)}</b> به زمان تعیین شده (${c.timerDuration} دقیقه) رسید.<br>زمان سپری شده: <b>${formatTime(c.elapsed)}</b><br>هزینه فعلی: <b>${calculateCost(c).toLocaleString('fa-IR')} تومان</b>`
+            + (__endNote ? `<div style="margin-top:12px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.35); border-radius:12px; padding:10px; text-align:right; color:#fde68a; line-height:1.8;">📝 <b>یادداشت:</b> ${escapeHtml(__endNote)}</div>` : '');
         document.getElementById('timerEndModal').classList.add('show');
         // warning lights
         document.getElementById('warningBar')?.classList.add('show');
@@ -4097,6 +4313,7 @@
 `Gamenet Manager Pro`;
     }
     function openShareModalForClient(idx){
+        if(!requirePerm('clients','اشتراک گزارش')) return;
         let c=clients[idx];
         let cost=calculateCost(c);
         let text=buildShareTextForClient(c, c.elapsed||0, cost);
@@ -4105,6 +4322,7 @@
         preparePdfForClient(c, cost);
     }
     function openShareModalForSession(sessionIdx){
+        if(!requirePerm('reports','اشتراک گزارش')) return;
         let s=sessions[sessionIdx];
         if(!s) return;
         let text=`🎮 گزارش گیم‌نت الوند
@@ -4143,6 +4361,7 @@
         preparePdfForReservation(r);
     }
     function openShareModalForCustomer(name, phone, email){
+        if(!requirePerm('customers','اشتراک گزارش')) return;
         let text=`🎮 گیم‌نت الوند - گزارش کارکرد
 `+
 `مشتری: ${name}
@@ -4152,7 +4371,7 @@
         document.getElementById('sharePhone').value=phone||'';
         document.getElementById('shareEmail').value=email||'';
         // prepare generic pdf
-        let html=`<h2 style="text-align:center; color:#4f46e5;">گزارش مشتری: ${name}</h2>
+        let html=`<h2 style="text-align:center; color:#4f46e5;">گزارش مشتری: ${escapeHtml(name)}</h2>
 `+
 `<p>تلفن: ${escapeHtml(phone||'-')}</p><p>ایمیل: ${escapeHtml(email||'-')}</p>
 `+
@@ -4161,7 +4380,7 @@
 `<hr>
 `+
 `<p>این گزارش شامل خلاصه فعالیت شما در گیم‌نت میباشد.</p>`;
-        setPdfContent(html, `customer-${name}.pdf`);
+        setPdfContent(html, `customer-${String(name || '').replace(/[\/:*?"<>|]/g, '_').slice(0, 60)}.pdf`);
     }
     // Report share button -> share modal, reading the payload from data-*
     // attributes instead of building an inline JS string out of user data.
@@ -4226,8 +4445,8 @@
             <table style="width:100%; border-collapse:collapse; margin:16px 0;">
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">کلاینت</td><td style="padding:10px; border:1px solid #e2e8f0;">${escapeHtml(r.clientName)}</td></tr>
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">مشتری</td><td style="padding:10px; border:1px solid #e2e8f0;">${escapeHtml(r.customerName)}</td></tr>
-                <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">تاریخ و ساعت</td><td style="padding:10px; border:1px solid #e2e8f0;">${r.date} - ${r.startTime}</td></tr>
-                <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">مدت</td><td style="padding:10px; border:1px solid #e2e8f0;">${r.duration} دقیقه</td></tr>
+                <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">تاریخ و ساعت</td><td style="padding:10px; border:1px solid #e2e8f0;">${escapeHtml(r.date)} - ${escapeHtml(r.startTime)}</td></tr>
+                <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">مدت</td><td style="padding:10px; border:1px solid #e2e8f0;">${escapeHtml(String(num(r.duration)))} دقیقه</td></tr>
                 <tr><td style="padding:10px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:700;">تماس</td><td style="padding:10px; border:1px solid #e2e8f0;">${escapeHtml(r.phone||'-')}</td></tr>
             </table>
         `;
@@ -4366,17 +4585,20 @@
     }
 
     function generatePdfForClient(idx){
+        if(!requirePerm('clients','خروجی PDF')) return;
         let c=clients[idx];
         let cost=calculateCost(c);
         preparePdfForClient(c,cost);
         setTimeout(()=>downloadCurrentPdf(),700);
     }
     function generatePdfForSession(idx){
+        if(!requirePerm('reports','خروجی PDF')) return;
         let s=sessions[idx];
         preparePdfForSession(s);
         setTimeout(()=>downloadCurrentPdf(),700);
     }
     function generatePdfForReport(type){
+        if(!requirePerm('reports','خروجی PDF گزارش')) return;
         let now=new Date();
         let filtered=[];
         let title='';
@@ -4489,11 +4711,40 @@
         let active = getActiveTariff();
         return safeRate(active ? active.extra : tariffs.extra, 0);
     }
+    function accrueRateSegment(client, nowMs){
+        if(!client || !client._rateLast) return;
+        const now = Number(nowMs) || Date.now();
+        const dt = Math.max(0, (now - Number(client._rateLast)) / 1000);
+        const segs = Array.isArray(client._rateSegments) ? client._rateSegments : (client._rateSegments = []);
+        if(dt > 0){
+            let last = segs[segs.length - 1];
+            if(!last || Number(last.rate) !== Number(client._rateLastRate)){
+                last = { rate: Number(client._rateLastRate) || 0, seconds: 0 };
+                segs.push(last);
+            }
+            last.seconds = (Number(last.seconds) || 0) + dt;
+            client._rateLast = now;
+        }
+        const current = Number(getTariffForClient(client)) || 0;
+        if(current !== Number(client._rateLastRate)){
+            client._rateLastRate = current;
+            segs.push({ rate: current, seconds: 0 });
+            client._rateLast = now;
+        }
+        if(segs.length > 500) client._rateSegments = segs.slice(-500);
+    }
     function calculateCost(client) {
         if(!client) return 0;
         const hours = (Number(client.elapsed)||0) / 3600;
         let rate = getTariffForClient(client);
-        let cost = Math.round(hours * rate);
+        let cost;
+        if(Array.isArray(client._rateSegments) && client._rateSegments.length){
+            cost = Math.round(client._rateSegments.reduce(function(sum, seg){
+                return sum + ((Number(seg.seconds) || 0) / 3600) * (Number(seg.rate) || 0);
+            }, 0));
+        } else {
+            cost = Math.round(hours * rate);
+        }
         // extras are billed pro-rata from the moment each one joined (see updateTimers)
         const xs = Number(client.extraSeconds)||0;
         if (xs > 0) cost += Math.round((xs / 3600) * getExtraRate());
@@ -4921,6 +5172,126 @@
         }).join('');
     }
 
+    // ---------- internal calculator ----------
+    /* A small expression evaluator (no eval): + - * / % and parentheses.
+       Persian/Arabic digits and × ÷ are normalised first. */
+    let _calcJustEval = false;
+    function calcClean(expr){
+        return String(expr == null ? '' : expr)
+            .replace(/[۰-۹]/g, d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+            .replace(/[٠-٩]/g, d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+            .replace(/[×xX]/g,'*').replace(/÷/g,'/').replace(/٪/g,'%')
+            .replace(/,/g,'').replace(/\s+/g,'');
+    }
+    function calcEvaluate(expr){
+        const s = calcClean(expr);
+        if(!s) return 0;
+        let i = 0;
+        function skip(){ while(i<s.length && s[i]===' ') i++; }
+        function num(){
+            skip();
+            let start = i, dot = false;
+            while(i<s.length && ((s[i]>='0'&&s[i]<='9') || s[i]==='.')){
+                if(s[i]==='.'){ if(dot) break; dot=true; }
+                i++;
+            }
+            if(start===i) throw new Error('number');
+            const n = Number(s.slice(start,i));
+            if(!isFinite(n)) throw new Error('number');
+            return n;
+        }
+        function factor(){
+            skip();
+            let sign = 1;
+            while(s[i]==='+' || s[i]==='-'){ if(s[i]==='-') sign=-sign; i++; skip(); }
+            let v;
+            if(s[i]==='('){ i++; v=expression(); skip(); if(s[i]!==')') throw new Error('paren'); i++; }
+            else v=num();
+            skip();
+            while(s[i]==='%'){ v = v/100; i++; skip(); }
+            return sign*v;
+        }
+        function term(){
+            let v=factor();
+            while(true){
+                skip();
+                const op=s[i];
+                if(op!=='*' && op!=='/') break;
+                i++;
+                const r=factor();
+                if(op==='/' && r===0) throw new Error('divide');
+                v = op==='*' ? v*r : v/r;
+            }
+            return v;
+        }
+        function expression(){
+            let v=term();
+            while(true){
+                skip();
+                const op=s[i];
+                if(op!=='+' && op!=='-') break;
+                i++;
+                const r=term();
+                v = op==='+' ? v+r : v-r;
+            }
+            return v;
+        }
+        const v=expression();
+        skip();
+        if(i!==s.length) throw new Error('syntax');
+        if(!isFinite(v)) throw new Error('range');
+        return v;
+    }
+    function calcFormat(n){
+        try{ return Number(n).toLocaleString('fa-IR',{maximumFractionDigits:10}); }
+        catch(e){ return String(n); }
+    }
+    function calcShowResult(txt, ok){
+        const r=document.getElementById('calcResult');
+        if(r){ r.textContent=txt; r.style.color = ok===false ? '#fca5a5' : '#22c55e'; }
+    }
+    function calcPress(v){
+        const input=document.getElementById('calcExpr');
+        if(!input) return;
+        if(v==='C'){ input.value=''; calcShowResult(''); _calcJustEval=false; return; }
+        if(v==='back'){ input.value=input.value.slice(0,-1); _calcJustEval=false; return; }
+        if(_calcJustEval){
+            if(/^[0-9.]$/.test(v)) input.value='';
+            else input.value=String(input.value);
+            _calcJustEval=false;
+        }
+        input.value += v;
+        input.focus();
+    }
+    function calcEquals(){
+        const input=document.getElementById('calcExpr');
+        if(!input) return;
+        const raw=input.value;
+        try{
+            const v=calcEvaluate(raw);
+            input.value=String(v);
+            calcShowResult('= ' + calcFormat(v), true);
+            _calcJustEval=true;
+        }catch(e){
+            calcShowResult(e && e.message==='divide' ? 'تقسیم بر صفر' : 'عبارت نامعتبر', false);
+            _calcJustEval=false;
+        }
+    }
+    function calcInputChanged(){
+        _calcJustEval = false;
+        calcShowResult('');
+    }
+    function calcKeydown(e){
+        if(e.key==='Enter'){ e.preventDefault(); calcEquals(); }
+        else if(e.key==='Escape'){ e.preventDefault(); closeModal('calculatorModal'); }
+    }
+    function openCalculator(){
+        const m=document.getElementById('calculatorModal');
+        if(!m) return;
+        m.classList.add('show');
+        setTimeout(function(){ try{ document.getElementById('calcExpr').focus(); }catch(e){} }, 80);
+    }
+
     // Utilities
     function formatTime(seconds) {
         seconds=Math.max(0, Math.floor(seconds));
@@ -4945,7 +5316,15 @@
         ];
         for (var __i = 0; __i < __pairs.length; __i++) {
           try { localStorage.setItem(__pairs[__i][0], JSON.stringify(__pairs[__i][1])); }
-          catch (e) { try { console.warn('save failed:', __pairs[__i][0], e); } catch(_e){} }
+          catch (e) {
+            try { console.warn('save failed:', __pairs[__i][0], e); } catch(_e){}
+            try {
+              if(!window.__saveQuotaWarned){
+                window.__saveQuotaWarned = true;
+                showToast('⚠️ ذخیره‌سازی کامل نشد؛ حافظه پر شده است. فوراً بکاپ فایل بگیرید.', 'error');
+              }
+            } catch(_e){}
+          }
         }
         try { localStorage.setItem('alvand_theme', currentTheme); } catch(e){}
         try { localStorage.setItem('alvand_alarmSound', alarmSound); } catch(e){}
@@ -4963,7 +5342,9 @@
     // ========== PHASE 1 FUNCTIONS ==========
     function changeClientTariff(idx, val){
         if(!requirePerm('tariffs','تعرفه کلاینت')) return;
-        clients[idx].tariff = val;
+        const __c = clients[idx];
+        if(__c && __c.status==='online') accrueRateSegment(__c, Date.now());
+        __c.tariff = val;
         saveData();
         renderClients();
         showToast('تعرفه تغییر کرد','success');
@@ -5340,6 +5721,8 @@
         if(parseHhMm(start)===null || parseHhMm(end)===null){ showToast('ساعت را در قالب HH:MM وارد کن','error'); return; }
         if(start===end){ showToast('شروع و پایان بازه یکی است','error'); return; }
         if(single<0||double<0||extra<0){ showToast('مبلغ تعرفه نمی‌تواند منفی باشد','error'); return; }
+        // close the current rate segment before the new schedule is applied
+        clients.forEach(function(c){ if(c && c.status==='online') accrueRateSegment(c, Date.now()); });
         if(id){
             let ts=tariffSchedules.find(x=>x.id===parseInt(id));
             Object.assign(ts,{name,dayType,start,end,single,double,extra,prices});
@@ -5547,12 +5930,61 @@
         const pt=await subtle.decrypt({name:'AES-GCM',iv},key,ct);
         return new TextDecoder().decode(pt);
     }
+    /* Electron does not implement window.prompt(), and the old backup code
+       called it for both download and restore. Build a small in-app password
+       dialog instead so encrypted backups work in the packaged app. */
+    function askBackupPassword(message, title){
+        return new Promise(function(resolve){
+            const overlay=document.createElement('div');
+            overlay.className='modal-overlay';
+            overlay.style.cssText='position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);';
+            const box=document.createElement('div');
+            box.className='glass';
+            box.style.cssText='width:min(440px,92vw);padding:24px;border-radius:20px;direction:rtl;';
+            const h=document.createElement('h3');
+            h.textContent=title||'رمز بکاپ';
+            h.style.cssText='margin:0 0 12px;font-weight:900;';
+            const p=document.createElement('p');
+            p.textContent=message||'';
+            p.style.cssText='margin:0 0 14px;font-size:.88rem;line-height:1.8;color:rgba(255,255,255,.72);';
+            const input=document.createElement('input');
+            input.type='password';
+            input.className='glass-input';
+            input.autocomplete='current-password';
+            input.style.cssText='width:100%;text-align:left;direction:ltr;margin-bottom:16px;';
+            const actions=document.createElement('div');
+            actions.style.cssText='display:flex;gap:10px;justify-content:flex-end;';
+            const cancel=document.createElement('button');
+            cancel.type='button'; cancel.className='glass-btn'; cancel.textContent='انصراف';
+            const ok=document.createElement('button');
+            ok.type='button'; ok.className='glass-btn glass-btn-success'; ok.textContent='تأیید';
+            let settled=false;
+            function done(value){
+                if(settled) return;
+                settled=true;
+                try{ overlay.remove(); }catch(e){}
+                resolve(value);
+            }
+            cancel.onclick=function(){ done(null); };
+            ok.onclick=function(){ done(input.value); };
+            input.addEventListener('keydown', function(e){
+                if(e.key==='Enter'){ e.preventDefault(); done(input.value); }
+                else if(e.key==='Escape'){ e.preventDefault(); done(null); }
+            });
+            overlay.addEventListener('click', function(e){ if(e.target===overlay) done(null); });
+            actions.appendChild(cancel); actions.appendChild(ok);
+            box.appendChild(h); box.appendChild(p); box.appendChild(input); box.appendChild(actions);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            setTimeout(function(){ try{ input.focus(); }catch(e){} }, 50);
+        });
+    }
     async function downloadBackupFile(){
         if(!requirePerm('backup','دانلود بکاپ')) return;
         // Ask for the password BEFORE taking the snapshot: otherwise cancelling
         // the password prompt still marked today as backed up and suppressed
         // the automatic backup for the rest of the day.
-        const pass=prompt('رمز فایل بکاپ را وارد کن (حداقل ۸ کاراکتر). بدون رمز، فایل دانلود نمی‌شود:')||'';
+        const pass=await askBackupPassword('رمز فایل بکاپ را وارد کن (حداقل ۸ کاراکتر). بدون رمز، فایل دانلود نمی‌شود:','رمزنگاری فایل بکاپ')||'';
         if(pass.length<8){ showToast('رمز بکاپ حداقل ۸ کاراکتر باشد','error'); return; }
         // Always snapshot the CURRENT data. Downloading a stale localStorage
         // cache was a silent way to hand the customer yesterday's database.
@@ -5603,6 +6035,24 @@
                 catch(e){ showToast('فضای کافی برای بکاپ پیش از بازگردانی نیست','error'); return; }
                 try{ await writeBackupMirror(pre); }catch(e){}
                 let restored=0;
+                /* A complete (schema >= 2) backup is a replacement, not a merge:
+                   keys absent from the file must be cleared, otherwise data from
+                   the old shop (old branches/coupons/holidays) survives a restore
+                   and the UI shows a mixture of two databases. Older backups stay
+                   merge-only because they legitimately omitted newer stores. */
+                if(Number(data.schema)>=2){
+                    BACKUP_STORE_KEYS.forEach(function(k){
+                        if(k==='rounding'){
+                            if(data.roundingMode===undefined && data.rounding===undefined){
+                                try{ localStorage.removeItem('alvand_rounding'); }catch(e){}
+                            }
+                            return;
+                        }
+                        if(data[k]===undefined || data[k]===null){
+                            try{ localStorage.removeItem('alvand_'+k); }catch(e){}
+                        }
+                    });
+                }
                 BACKUP_STORE_KEYS.forEach(function(k){
                     if(k==='rounding'){
                         // Accept either the modern roundingMode field or the old
@@ -5625,7 +6075,7 @@
             try{
                 const text=String(e.target.result||'');
                 if(text.startsWith(BACKUP_ENC_PREFIX)){
-                    const pass=prompt('این بکاپ رمزنگاری‌شده است. رمز آن را وارد کن:')||'';
+                    const pass=await askBackupPassword('این بکاپ رمزنگاری‌شده است. رمز آن را وارد کن:','رمزگشایی بکاپ')||'';
                     if(!pass){ showToast('رمز بکاپ وارد نشد','error'); return; }
                     let plain;
                     try{ plain=await decryptBackupText(text,pass); }
@@ -5691,8 +6141,13 @@
     //  at the top of this file covers the same stores AND accepts writes, which
     //  the getters-only version silently dropped.)
 
-    // Init
-    init();
+    // Init. Wait for DOMContentLoaded when the document is still parsing so
+    // jalali.js (loaded after app.js) is available to the first chart render.
+    if(document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', init, { once: true });
+    } else {
+        init();
+    }
     
     function toggleSidebar() {
         const sidebar = document.querySelector('aside.glass');
@@ -5740,7 +6195,12 @@
     // Close modals on overlay click
     document.querySelectorAll('.modal-overlay').forEach(el=>{
         el.addEventListener('click', (e)=>{
-            if(e.target===el) el.classList.remove('show');
+            if(e.target!==el) return;
+            // Use closeModal() when available: it releases an applied coupon,
+            // clears pendingPayment and stops the timer alarm. Plain
+            // classList.remove('show') bypassed all of those side effects.
+            if(el.id && typeof closeModal==='function') closeModal(el.id);
+            else el.classList.remove('show');
         });
     });
 

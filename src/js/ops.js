@@ -17,7 +17,7 @@ function saveCpn(){ sv('alvand_coupons', CPN); }
 function saveAmn(){ sv('alvand_amanats', AMN); }
 function saveMnt(){ sv('alvand_maintenance', MNT); }
 function val(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
-function num(id){ var el = document.getElementById(id); return el ? (parseInt(el.value) || 0) : 0; }
+function num(id){ var el = document.getElementById(id); if(!el) return 0; return (window.parseFaNumber ? window.parseFaNumber(el.value, 0) : (parseInt(el.value) || 0)); }
 function nid(v){ return window.numId ? window.numId(v) : (parseInt(v, 10) || 0); }
 function permit(section, label){
   try { return typeof requirePerm === 'function' ? !!requirePerm(section, label) : true; }
@@ -95,7 +95,7 @@ window.savePackage = function(){
   var name = val('pkgName');
   var minutes = num('pkgMinutes');
   var price = num('pkgPrice');
-  if (!name || !minutes){ toast('نام و دقیقه الزامی است','error'); return; }
+  if (!name || !(minutes > 0) || price < 0){ toast('نام، دقیقه مثبت و قیمت غیرمنفی الزامی است','error'); return; }
   var items = [];
   var box = document.getElementById('pkgItems');
   if (box) box.querySelectorAll('input[data-sid]:checked').forEach(function(inp){
@@ -131,7 +131,8 @@ window.applyPackageToClient = function(){
   var svc = window.services || [];
   for (var k = 0; k < (p.items || []).length; k++){
     var s = svc.find(function(x){ return x.id === p.items[k].serviceId; });
-    if (!s || (s.stock || 0) < p.items[k].qty){ toast('موجودی ' + (s ? s.name : '?') + ' کافی نیست','error'); return; }
+    var free = (typeof window.availableServiceQty === 'function') ? window.availableServiceQty(p.items[k].serviceId, c.id) : (s ? (Number(s.stock)||0) : 0);
+    if (!s || free < p.items[k].qty){ toast('موجودی ' + (s ? s.name : '?') + ' کافی نیست','error'); return; }
   }
   if (c.status === 'online') c.timerDuration = (c.timerDuration || 0) + p.minutes;
   else c.timerDuration = p.minutes;

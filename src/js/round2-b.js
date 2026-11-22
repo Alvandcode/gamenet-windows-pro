@@ -246,10 +246,17 @@ window.renderStockAlerts = function(){
 window.generateMonthlyComparison = function(){
   var ss = window.sessions || [];
   var now = new Date();
-  function bucket(m, y){ return ss.filter(function(s){ var d=new Date(s.date); return d.getMonth()===m && d.getFullYear()===y; }); }
-  var tm = bucket(now.getMonth(), now.getFullYear());
-  var lmD = new Date(now.getFullYear(), now.getMonth()-1, 1);
-  var lm = bucket(lmD.getMonth(), lmD.getFullYear());
+  var inBranch = (typeof window.inCurrentBranch === 'function') ? window.inCurrentBranch : function(){ return true; };
+  var curStart = (typeof window.monthStart === 'function') ? window.monthStart(now).getTime() : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  var prevStart = (typeof window.monthStart === 'function') ? window.monthStart(new Date(curStart - 86400000)).getTime() : new Date(now.getFullYear(), now.getMonth()-1, 1).getTime();
+  function bucket(startMs, endMs){
+    return ss.filter(function(s){
+      var t = new Date(s.date).getTime();
+      return inBranch(s) && isFinite(t) && t >= startMs && t < endMs;
+    });
+  }
+  var tm = bucket(curStart, now.getTime() + 1);
+  var lm = bucket(prevStart, curStart);
   /* cost can be a string (restored backup) -> s+x.cost concatenated the sum
    * with a number and produced garbage like "012500". Coerce first. */
   function sum(a){ return a.reduce(function(s,x){ return s + (window.toNum ? window.toNum(x && x.cost, 0) : (Number(x && x.cost) || 0)); },0); }
@@ -268,7 +275,7 @@ window.generateMonthlyComparison = function(){
 window.renderForecast = function(){
   var c = document.getElementById('forecastContent');
   if (!c) return;
-  var ss = window.sessions || [];
+  var ss = (window.sessions || []).filter(function(s){ return (typeof window.inCurrentBranch === 'function') ? window.inCurrentBranch(s) : true; });
   if (!ss.length){ c.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.5)">داده‌ای نیست</p>'; return; }
   var days = {};
   ss.forEach(function(s){

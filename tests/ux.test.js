@@ -324,7 +324,7 @@ const waitFor = async (fn, ms = 3000) => {
   doc.getElementById = realGetByIdForWallet;
   let cw = window.eval('customers[0].wallet'), cd = window.eval('customers[0].debt');
   ok(cd === 0, 'debt cleared');
-  ok(cw === 30, 'wallet credited only what was owed (got ' + cw + ', was 30 owed / 100 paid)');
+  ok(cw === 0, 'paying a debt does not mint wallet credit (got ' + cw + ', was 30 owed / 100 paid)');
 
   // (e) confirmPayment resolves by id, not by a stale index
   window.eval("clients=[{id:51,name:'A',tariff:'single',extra:0,stationType:'pc',status:'offline',elapsed:600,startTime:null,totalCost:0,timerDuration:0,notified:false},{id:52,name:'B',tariff:'single',extra:0,stationType:'pc',status:'offline',elapsed:0,startTime:null,totalCost:0,timerDuration:0,notified:false}]");
@@ -427,20 +427,25 @@ const waitFor = async (fn, ms = 3000) => {
         ok(/ipcMain\.handle\('gamenet:agent-request'/.test(mainSrc), 'main process serves agent requests');
         const appSrc2 = fs.readFileSync(path.join(ROOT, 'src/js/app.js'), 'utf8');
         ok(/gamenet\.agent\.request/.test(appSrc2), 'agentFetch uses the main-process bridge');
-        ok(/img-src[^;]*api\.qrserver\.com/.test(csp), 'CSP allows the QR image service');
+        ok(!/api\.qrserver\.com/.test(csp), 'CSP no longer allows the external QR service');
   ok(typeof window.renderCustomerQR === 'function', 'renderCustomerQR exists');
   ok(typeof window.printThermalReceipt === 'function', 'printThermalReceipt exists');
   ok(!/window\.open\('', '_blank'/.test(fs.readFileSync(path.join(ROOT, 'src/js/round2-a.js'), 'utf8')),
      'thermal receipt no longer relies on window.open (denied by main.js)');
-  ok(!/api\.qrserver\.com/.test(fs.readFileSync(path.join(ROOT, 'src/js/round2-c.js'), 'utf8')) ||
-     /onerror/.test(fs.readFileSync(path.join(ROOT, 'src/js/round2-c.js'), 'utf8')),
-     'QR has an offline fallback');
+  ok(/src\/vendor\/qrcode\.js/.test(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')) &&
+     /qrcode\(0,\s*'M'\)/.test(fs.readFileSync(path.join(ROOT, 'src/js/round2-c.js'), 'utf8')),
+     'QR is generated locally (no external service)');
   ok(typeof window.copyTextToClipboard === 'function', 'clipboard helper with fallback exists');
 
   console.log('--- 15. license station capacity is enforced ---');
   // The paid `cap` used to be decorative: any license allowed unlimited stations.
   window.eval("clients=[{id:1,name:'A',tariff:'single',extra:0,stationType:'pc',status:'offline',elapsed:0,startTime:null,totalCost:0,timerDuration:0},{id:2,name:'B',tariff:'single',extra:0,stationType:'pc',status:'offline',elapsed:0,startTime:null,totalCost:0,timerDuration:0}]");
   window.eval("__licState={status:'valid',token:'t',payload:{id:'L-1',cap:3,maxDev:1,exp:null},fp:'x'}");
+  // Capacity tests isolate the cap arithmetic; verification itself is covered
+  // by license.test.js. Mock the trusted-token lookup, not the cap rule.
+  const __origTrusted = window.LicVerify.isTrusted, __origTrustedPayload = window.LicVerify.trustedPayload;
+  window.LicVerify.isTrusted = function(){ return true; };
+  window.LicVerify.trustedPayload = function(){ return {id:'L-1',cap:3,maxDev:1,exp:null}; };
   ok(window.eval('licenseStationCap()') === 3, 'cap read from the verified license payload');
   ok(window.eval('licenseStationsLeft()') === 1, 'stations left = cap - current');
   ok(window.eval('enforceStationCapacity()') === true, 'adding is allowed below the cap');
@@ -461,6 +466,8 @@ const waitFor = async (fn, ms = 3000) => {
   window.eval("__licState={status:'invalid',token:null,payload:null,fp:null}");
   ok(window.eval('licenseStationCap()') === null, 'no cap without a verified license');
   ok(window.eval('enforceStationCapacity()') === true, 'local mode is unlimited');
+  window.LicVerify.isTrusted = __origTrusted;
+  window.LicVerify.trustedPayload = __origTrustedPayload;
   ok(/known\.size>=p\.maxDev/.test(fs.readFileSync(path.join(ROOT, 'src/js/app.js'), 'utf8')), 'device-count off-by-one fixed');
 
   console.log('--- 16. backup: complete + validated ---');

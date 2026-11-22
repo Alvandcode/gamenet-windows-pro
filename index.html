@@ -7,7 +7,7 @@
          is reached from the main process over Node's http instead, via the
          gamenet:agent-request IPC channel, so this policy stays tight.
          https://api.ipify.org stays for the online/offline + license IP ping. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' https://www.gstatic.com; script-src-attr 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://api.qrserver.com; connect-src 'self' https://api.ipify.org https://api.github.com https://alvandcode.github.io https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' https://www.gstatic.com; script-src-attr 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://api.ipify.org https://api.github.com https://alvandcode.github.io https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
     <link rel="stylesheet" href="src/styles/main.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -286,7 +286,10 @@
 
             <div id="operatorBar" class="glass" style="padding:12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem;">
                 <span id="operatorNameDisplay">👤 مدیر</span>
-                <button class="glass-btn" style="padding:4px 10px; font-size:0.7rem;" onclick="logoutOperator()">خروج</button>
+                <span style="display:flex; gap:6px;">
+                    <button class="glass-btn" style="padding:4px 10px; font-size:0.7rem;" onclick="openCalculator()" title="ماشین‌حساب داخلی">🧮</button>
+                    <button class="glass-btn" style="padding:4px 10px; font-size:0.7rem;" onclick="logoutOperator()">خروج</button>
+                </span>
             </div>
             <div class="sidebar-date" style="padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
                 <div class="glass" style="padding: 16px; text-align: center;">
@@ -1644,6 +1647,10 @@
                 <input type="text" id="newClientName" placeholder="مثال: سیستم 1">
             </div>
             <div style="margin-bottom: 16px;">
+                <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.7);">🔗 اتصال به مشتری (اختیاری)</label>
+                <select id="newClientCustomer"><option value="">بدون اتصال</option></select>
+            </div>
+            <div style="margin-bottom: 16px;">
                 <label style="display: block; margin-bottom: 8px; color: rgba(255,255,255,0.7);">🌐 IP کامپیوتر (خالی = بدون کنترل از راه دور)</label>
                 <input type="text" id="newClientIP" placeholder="مثال: 192.168.1.50" style="text-align:left; direction:ltr;">
             </div>
@@ -2052,11 +2059,63 @@
         </div>
     </div>
 
+    <!-- Per-client session note -->
+    <div class="modal-overlay" id="clientNoteModal">
+        <div class="glass" style="width:90%; max-width:480px; padding:26px;">
+            <h2 style="margin-bottom:8px;">📝 یادداشت کلاینت</h2>
+            <p id="clientNoteClientName" style="color:rgba(255,255,255,0.6); margin-bottom:12px; font-size:0.9rem;"></p>
+            <textarea id="clientNoteText" maxlength="500" rows="5" placeholder="مثلاً: دو نوشابه حساب شود، یا مانیتور مشکل دارد..." style="width:100%; resize:vertical; margin-bottom:10px;"></textarea>
+            <p style="font-size:0.72rem; color:rgba(255,255,255,0.45); margin-bottom:14px;">این یادداشت هنگام اتمام زمان یا باز شدن تسویه حساب نمایش داده می‌شود و پس از تسویه پاک می‌شود.</p>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <button class="glass-btn glass-btn-success" onclick="saveClientNote()">ذخیره یادداشت</button>
+                <button class="glass-btn" onclick="clearClientNote()">پاک کردن</button>
+                <button class="glass-btn" style="grid-column:1/-1;" onclick="closeModal('clientNoteModal')">بستن</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Internal calculator -->
+    <div class="modal-overlay" id="calculatorModal">
+        <div class="glass" style="width:92%; max-width:380px; padding:22px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h2 style="margin:0;">🧮 ماشین‌حساب</h2>
+                <button class="glass-btn" style="padding:4px 10px;" onclick="closeModal('calculatorModal')">✕</button>
+            </div>
+            <input id="calcExpr" type="text" inputmode="decimal" autocomplete="off" placeholder="0" style="width:100%; text-align:left; direction:ltr; font-size:1.35rem; font-weight:800; margin-bottom:8px;" onkeydown="calcKeydown(event)" oninput="calcInputChanged()">
+            <div id="calcResult" style="min-height:28px; text-align:left; direction:ltr; font-size:1rem; color:#22c55e; font-weight:800; margin-bottom:10px;"></div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:7px;">
+                <button class="glass-btn glass-btn-danger" onclick="calcPress('C')">C</button>
+                <button class="glass-btn" onclick="calcPress('back')">⌫</button>
+                <button class="glass-btn" onclick="calcPress('(')">(</button>
+                <button class="glass-btn" onclick="calcPress(')')">)</button>
+                <button class="glass-btn" onclick="calcPress('7')">7</button>
+                <button class="glass-btn" onclick="calcPress('8')">8</button>
+                <button class="glass-btn" onclick="calcPress('9')">9</button>
+                <button class="glass-btn" onclick="calcPress('/')">÷</button>
+                <button class="glass-btn" onclick="calcPress('4')">4</button>
+                <button class="glass-btn" onclick="calcPress('5')">5</button>
+                <button class="glass-btn" onclick="calcPress('6')">6</button>
+                <button class="glass-btn" onclick="calcPress('*')">×</button>
+                <button class="glass-btn" onclick="calcPress('1')">1</button>
+                <button class="glass-btn" onclick="calcPress('2')">2</button>
+                <button class="glass-btn" onclick="calcPress('3')">3</button>
+                <button class="glass-btn" onclick="calcPress('-')">−</button>
+                <button class="glass-btn" onclick="calcPress('0')">0</button>
+                <button class="glass-btn" onclick="calcPress('.')">.</button>
+                <button class="glass-btn" onclick="calcPress('%')">%</button>
+                <button class="glass-btn" onclick="calcPress('+')">+</button>
+                <button class="glass-btn glass-btn-success" style="grid-column:1/-1; font-size:1.1rem;" onclick="calcEquals()">=</button>
+            </div>
+            <p style="font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:10px; text-align:center;">با کیبورد هم می‌توانی تایپ کنی؛ Enter محاسبه و Esc می‌بندد.</p>
+        </div>
+    </div>
+
     <!-- Payment Modal (when stopping) -->
     <div class="modal-overlay" id="paymentModal">
         <div class="glass" style="width:90%; max-width:500px; padding:28px; text-align:center;">
             <h2 style="margin-bottom:12px;">💳 تسویه حساب</h2>
             <p id="paymentClientName" style="color:rgba(255,255,255,0.6); margin-bottom:12px;"></p>
+            <div id="payClientNote" style="display:none; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); border-radius:14px; padding:12px; margin-bottom:14px; text-align:right; color:#fde68a; font-size:0.9rem; line-height:1.8;"></div>
             <div style="background:rgba(255,255,255,0.04); border-radius:16px; padding:16px; margin-bottom:16px; text-align:right;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>زمان بازی:</span><span id="payDuration" style="font-weight:800;"></span></div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>هزینه بازی:</span><span id="payGameCost" style="font-weight:800; color:#818cf8;"></span></div>
@@ -2260,6 +2319,7 @@
     <script src="src/js/new-features.js"></script>
     <script src="src/js/round2-a.js"></script>
     <script src="src/js/round2-b.js"></script>
+    <script src="src/vendor/qrcode.js"></script>
     <script src="src/js/round2-c.js"></script>
     <script src="src/js/phonebook.js"></script>
     <script src="src/js/ops.js"></script>

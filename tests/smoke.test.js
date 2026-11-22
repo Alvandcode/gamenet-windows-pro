@@ -322,7 +322,7 @@ try {
         ok(!/http:\/\/(192\.168|10|172\.1[6-9])\./.test(csp), 'CSP carries no ignored LAN host sources');
         ok(/gamenet:agent-request/.test(read('preload.js')), 'preload exposes the agent bridge');
         ok(/ipcMain\.handle\('gamenet:agent-request'/.test(read('main.js')), 'main process serves agent requests');
-        ok(/api\.qrserver\.com/.test(csp), 'CSP allows the QR image');
+        ok(!/api\.qrserver\.com/.test(csp), 'CSP no longer permits the external QR service');
 
         // 8. the version shown in the UI and the version electron-builder
         // stamps into the installer were two separate hardcoded strings, so a

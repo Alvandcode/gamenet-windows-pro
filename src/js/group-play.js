@@ -184,6 +184,14 @@
     } catch (e) {}
   }
   window.gpActive = active; window.gpSetActive = setActive;
+  window.gpSetPaymentMethod = function(v) {
+    const g = active();
+    if (!g) return;
+    const allowed = ['cash', 'card', 'online', 'split'];
+    if (allowed.indexOf(String(v)) < 0) return;
+    g.paymentMethod = String(v);
+    setActive(g);
+  };
 
   function elapsedOf(g) {
     if (!g) return 0;
@@ -197,7 +205,7 @@
      The party is billed as one unit: one person uses the single rate, two use
      the double rate, and everyone beyond the second is billed as an extra
      person - the same arithmetic the app already uses for "نفر اضافه". */
-  function quote(headcount) {
+  function quote(headcount, stationType) {
     const n = Math.max(1, Math.floor(num(headcount, 1)));
     const rateOf = (tariffType, stationType) => {
       if (typeof getTariffForClient === 'function') {
@@ -207,15 +215,15 @@
       return num(tariffType === 'single' ? t.single : t.double, 0);
     };
     const extraRate = (typeof getExtraRate === 'function') ? num(getExtraRate(), 0) : 0;
-    const base = n === 1 ? rateOf('single', null) : rateOf('double', null);
+    const base = n === 1 ? rateOf('single', stationType || null) : rateOf('double', stationType || null);
     const extras = Math.max(0, n - 2);
     const perHour = base + extras * extraRate;
     return { headcount: n, perHour: perHour, base: base, extras: extras, extraRate: extraRate };
   }
   window.gpQuote = quote;
 
-  function costFor(headcount, seconds) {
-    const q = quote(headcount);
+  function costFor(headcount, seconds, stationType) {
+    const q = quote(headcount, stationType);
     const hours = Math.max(0, num(seconds)) / 3600;
     let raw = Math.round(hours * q.perHour);
     if (typeof applyRounding === 'function') raw = applyRounding(raw);
@@ -277,11 +285,12 @@
       id: uid(),
       members: members,
       guestLabel: guestLabel,
-      stationType: opts.stationType || null,
+      stationType: opts.stationType || (members[0] && members[0].stationType) || null,
       startedAt: Date.now(),
       elapsedBase: 0,
       running: true,
       paymentMethod: 'cash',
+      branchId: (typeof currentBranchId === 'function') ? currentBranchId() : '1',
     };
     setActive(g);
 
@@ -366,13 +375,15 @@
     if (!g) { showToast('بازی فعالی وجود ندارد', 'error'); return null; }
     const seconds = elapsedOf(g);
     const headcount = g.members.length;
-    const total = costFor(headcount, seconds);
+    const total = costFor(headcount, seconds, g.stationType);
     const endedAt = Date.now();
+    const groupBranch = g.branchId || ((typeof currentBranchId === 'function') ? currentBranchId() : '1');
 
     // one session record per member: the shop needs per-person history, and
     // the bill is attached to the payer only so the income total stays right
     const payer = g.payerKind === 'guest' ? null : (g.payerId != null ? g.payerId : (g.members[0].kind === 'client' ? g.members[0].id : null));
-    const method = g.paymentMethod || 'cash';
+    let method = g.paymentMethod || 'cash';
+    if (['cash', 'card', 'online', 'split'].indexOf(method) < 0) method = 'cash';
 
     const list = load();
     const nowIso = new Date(endedAt).toISOString();
@@ -396,7 +407,7 @@
         stationType: m.stationType || null,
         stationTypeName: (typeof getStationType === 'function' && m.stationType) ? (getStationType(m.stationType) || {}).name || '' : '',
         paymentMethod: isPayer ? method : null,
-        branchId: (typeof currentBranchId === 'function') ? currentBranchId() : '1',
+        branchId: groupBranch,
       });
     });
     save(list);
@@ -423,7 +434,7 @@
         sessions.push({
           id: uid(),
           groupId: g.id,
-          branchId: (typeof currentBranchId === 'function') ? currentBranchId() : '1',
+          branchId: groupBranch,
           clientId: payer,
           customerId: payer,
           clientName: payerName,
@@ -453,12 +464,10 @@
         const payments = JSON.parse(localStorage.getItem('alvand_payments') || '[]');
         const payerName = (g.members.find((m) => (m.kind === 'client' ? String(m.id) === String(payer) : false)) || g.members[0] || {}).name || '';
         if (method === 'split') {
-          const gb = (typeof currentBranchId === 'function') ? currentBranchId() : '1';
-          payments.push({ amount: Math.round(total / 2), method: 'cash', date: nowIso, clientName: payerName, branchId: gb });
+          payments.push({ amount: Math.round(total / 2), method: 'cash', date: nowIso, clientName: payerName, branchId: groupBranch });
           payments.push({ amount: total - Math.round(total / 2), method: 'card', date: nowIso, clientName: payerName, branchId: gb });
         } else {
-          const gb2 = (typeof currentBranchId === 'function') ? currentBranchId() : '1';
-          payments.push({ amount: total, method: method, date: nowIso, clientName: payerName, branchId: gb2 });
+          payments.push({ amount: total, method: method, date: nowIso, clientName: payerName, branchId: groupBranch });
         }
         localStorage.setItem('alvand_payments', JSON.stringify(payments));
       } catch (e) {}
@@ -478,10 +487,31 @@
       if (!c) return;
       const isPayer = String(c.id) === String(payer) || String(c.customerId) === String(payer);
       c.totalCost = num(c.totalCost) + (isPayer ? total : 0);
+      const memberCustomerId = c.customerId != null ? c.customerId : m.customerId;
+      const cust = (window.customers || []).find(function(x){ return String(x.id) === String(memberCustomerId); });
+      if (cust) {
+        cust.totalHours = (Number(cust.totalHours) || 0) + seconds / 3600;
+        if (isPayer) cust.totalSpent = (Number(cust.totalSpent) || 0) + total;
+      }
       if (isPayer && planApplies(m, headcount) && typeof window.deductMembershipHours === 'function') {
         // groupSessions uses the register/customer id, not the temporary
         // station row id, so the membership must be spent on the same key.
-        try { window.deductMembershipHours(c.customerId != null ? c.customerId : c.id, seconds / 3600); } catch (e) {}
+        try { window.deductMembershipHours(memberCustomerId != null ? memberCustomerId : c.id, seconds / 3600); } catch (e) {}
+      }
+      if (typeof window.recordGameSession === 'function') {
+        try {
+          window.recordGameSession({
+            clientId: memberCustomerId != null ? memberCustomerId : c.id,
+            clientName: m.name,
+            customerName: cust ? cust.name : '',
+            duration: seconds,
+            cost: isPayer ? total : 0,
+            tariff: m.tariff || 'single',
+            stationType: m.stationType || '',
+            services: [],
+            paymentMethod: isPayer ? method : 'cash'
+          });
+        } catch (e) {}
       }
       releaseMemberRow(c);
     });
@@ -1217,7 +1247,7 @@
         : '<button class="glass-btn glass-btn-success" onclick="gpResume()">ادامه</button>')
       + '<button class="glass-btn glass-btn-success" onclick="gpFinish()">پایان و تسویه</button>'
       + '<button class="glass-btn glass-btn-danger" onclick="if(confirm(\'این بازی لغو شود؟ هیچ مبلغی ثبت نمی‌شود\')) gpAbort()">لغو بدون ثبت</button>'
-      + '<select id="gpPayMethod" class="glass-input" style="max-width:150px">'
+      + '<select id="gpPayMethod" class="glass-input" style="max-width:150px" onchange="gpSetPaymentMethod(this.value)">'
       + ['cash|نقدی', 'card|کارت', 'online|آنلاین', 'split|ترکیبی'].map((o) => {
           const v = o.split('|')[0], lbl = o.split('|')[1];
           return '<option value="' + v + '"' + ((g.paymentMethod || 'cash') === v ? ' selected' : '') + '>' + lbl + '</option>';

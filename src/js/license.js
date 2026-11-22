@@ -114,6 +114,16 @@
      accepts a token whose RSA signature was verified here. */
   var trusted = { token: null, payload: null };
   function markTrusted(token, payload) { trusted = { token: String(token || ''), payload: payload || null }; }
+  /* Only a token whose RSA signature actually verifies may become trusted.
+     The old API exposed markTrusted() directly, so a console user could
+     accept a forged token/payload pair and isLicenseValid() would trust it. */
+  async function acceptVerified(token) {
+    var r = await verifyLicenseToken(token);
+    if (!r || !r.ok) return false;
+    if (isExpired(r.payload)) return false;
+    markTrusted(token, r.payload);
+    return true;
+  }
   function clearTrusted() { trusted = { token: null, payload: null }; }
   function isTrusted(token) {
     return !!(trusted.token && token && String(trusted.token) === String(token) && trusted.payload);
@@ -161,7 +171,7 @@
     canonPayload: canonPayload,
     verifyWithKey: verifyWithKey,
     verifyLicenseToken: verifyLicenseToken,
-    accept: markTrusted,
+    accept: acceptVerified,
     isTrusted: isTrusted,
     trustedPayload: trustedPayload,
     clearTrusted: clearTrusted,

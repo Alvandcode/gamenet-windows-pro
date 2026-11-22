@@ -41,6 +41,25 @@ window.saveCustomerMemberships = saveCustomerMemberships;
 // into the module variable instead, the same way the other shared stores work.
 window.customerMemberships = customerMemberships;
 function saveGameHistory(){ try{ localStorage.setItem('alvand_gameHistory', JSON.stringify(gameHistory)); }catch(e){} }
+/* Called by app.js' pruneOldSessions(): keep the two feature-owned stores in
+   sync without app.js writing their localStorage keys directly. */
+window.pruneFeatureData = function(cutoffMs){
+    let removed = 0;
+    const cut = Number(cutoffMs) || 0;
+    try {
+        const beforeA = activityLog.length;
+        activityLog = activityLog.filter(function(a){ const t=new Date(a && a.date).getTime(); return !isFinite(t) || t >= cut; });
+        removed += beforeA - activityLog.length;
+        if (beforeA !== activityLog.length) saveActivityLog();
+    } catch(e) {}
+    try {
+        const beforeG = gameHistory.length;
+        gameHistory = gameHistory.filter(function(g){ const t=new Date(g && g.date).getTime(); return !isFinite(t) || t >= cut; });
+        removed += beforeG - gameHistory.length;
+        if (beforeG !== gameHistory.length) saveGameHistory();
+    } catch(e) {}
+    return removed;
+};
 function saveHourlyUsage(){ try{ localStorage.setItem('alvand_hourlyUsage', JSON.stringify(hourlyUsage)); }catch(e){} }
 function saveNotifications(){ try{ localStorage.setItem('alvand_notifications', JSON.stringify(notifications)); }catch(e){} }
 function saveActivityLog(){ try{ localStorage.setItem('alvand_activityLog', JSON.stringify(activityLog)); }catch(e){} }
@@ -56,12 +75,19 @@ function logActivity(type, description, details){
 window.logActivity = logActivity;
 
 // ===== HOURLY USAGE TRACKING =====
-function trackHourlyUsage(){
-    let hour = new Date().getHours();
+function trackHourlyUsage(durationSeconds){
+    /* Attribute the session to the hour it STARTED, not the hour it was paid.
+       The old code used payment time, so a 19:00-23:00 party landed in the
+       23:00 bucket. durationSeconds lets us reconstruct the start even after
+       stopTimer() cleared startTime. */
+    const dur = Math.max(0, Number(durationSeconds) || 0);
+    const d = new Date(Date.now() - dur * 1000);
+    let hour = isFinite(d.getTime()) ? d.getHours() : new Date().getHours();
     hourlyUsage[hour] = (hourlyUsage[hour]||0) + 1;
     saveHourlyUsage();
 }
 function resetHourlyUsage(){
+    if (!permit('reports', 'پاکسازی ساعات شلوغی')) return;
     hourlyUsage = {};
     saveHourlyUsage();
 }
@@ -131,11 +157,11 @@ function saveMembershipPlan(){
     var typeEl = document.getElementById('mpType');
     var type = typeEl ? typeEl.value : 'monthly';
     var priceEl = document.getElementById('mpPrice');
-    var price = parseInt(priceEl ? priceEl.value : '0') || 0;
+    var price = window.parseFaNumber ? window.parseFaNumber(priceEl ? priceEl.value : '0', 0) : (parseInt(priceEl ? priceEl.value : '0') || 0);
     var hoursEl = document.getElementById('mpHours');
-    var hours = parseInt(hoursEl ? hoursEl.value : '0') || 0;
+    var hours = window.parseFaNumber ? window.parseFaNumber(hoursEl ? hoursEl.value : '0', 0) : (parseInt(hoursEl ? hoursEl.value : '0') || 0);
     var discEl = document.getElementById('mpDiscount');
-    var discount = parseInt(discEl ? discEl.value : '0') || 0;
+    var discount = window.parseFaNumber ? window.parseFaNumber(discEl ? discEl.value : '0', 0) : (parseInt(discEl ? discEl.value : '0') || 0);
     var descEl = document.getElementById('mpDesc');
     var description = descEl ? descEl.value.trim() : '';
     if(!name || !price || !hours){ showToast('نام، قیمت و ساعت الزامی', 'error'); return; }
@@ -189,8 +215,32 @@ function assignMembershipToCustomer(customerId, planId){
     if(existingIdx >= 0) customerMemberships[existingIdx] = membership;
     else customerMemberships.push(membership);
     saveCustomerMemberships();
+    /* Selling a plan is money coming into the shop. The old code only wrote
+       the membership row, so the price never reached the cash ledger or P&L. */
+    const price = Math.max(0, Number(plan.price) || 0);
+    if (price > 0) {
+        const nowIso = new Date().toISOString();
+        const branchId = (typeof window.currentBranchId === 'function') ? window.currentBranchId() : '1';
+        try {
+            const ss = window.sessions;
+            if (Array.isArray(ss)) {
+                ss.push({
+                    id: Date.now(), branchId, clientId: null, customerId: cid,
+                    clientName: 'عضویت ' + customer.name, duration: 0, cost: price,
+                    gameCost: 0, buffetCost: 0, tariff: 'membership', extra: 0,
+                    extraSeconds: 0, extraRate: 0, stationType: null, stationTypeName: '',
+                    date: nowIso, timerDuration: 0, paymentMethod: 'cash',
+                    services: [], membership: true, membershipPlan: plan.name
+                });
+                if (typeof window.saveData === 'function') window.saveData();
+            }
+            const pays = (window.safeParse ? window.safeParse(localStorage.getItem('alvand_payments') || '[]', []) : []) || [];
+            pays.push({amount: price, method: 'cash', date: nowIso, clientName: customer.name, branchId});
+            localStorage.setItem('alvand_payments', JSON.stringify(pays));
+        } catch (e) {}
+    }
     logActivity('membership', 'عضویت ' + plan.name + ' برای ' + customer.name);
-    showToast('عضویت فعال شد', 'success');
+    showToast('عضویت فعال شد' + (price > 0 ? ' - ' + price.toLocaleString('fa-IR') + ' تومان دریافت شد' : ''), 'success');
     return true;
 }
 window.assignMembershipToCustomer = assignMembershipToCustomer;
@@ -278,7 +328,7 @@ function recordGameSession(sessionData){
     });
     if(gameHistory.length > 2000) gameHistory = gameHistory.slice(0, 2000);
     saveGameHistory();
-    trackHourlyUsage();
+    trackHourlyUsage(sessionData.duration);
 }
 window.recordGameSession = recordGameSession;
 
@@ -334,7 +384,7 @@ function renderBusyHoursReport(){
     if(!container) return;
     var hours = Object.keys(hourlyUsage).map(function(k){ return {hour: parseInt(k), count: hourlyUsage[k]}; });
     if(hours.length === 0){
-        container.innerHTML = '<p style="text-align:center; color:rgba(255,255,255,0.5); padding:20px;">داده‌ای موجود نیست. داده‌ها با شروع تایمر جمع می‌شوند.</p>';
+        container.innerHTML = '<p style="text-align:center; color:rgba(255,255,255,0.5); padding:20px;">داده‌ای موجود نیست. داده‌ها با تسویه سشن‌ها جمع می‌شوند.</p>';
         return;
     }
     hours.sort(function(a,b){ return a.hour - b.hour; });
@@ -367,6 +417,7 @@ function renderBusyHoursReport(){
 window.renderBusyHoursReport = renderBusyHoursReport;
 
 function exportBusyHoursReport(){
+    if (!permit('reports', 'خروجی ساعات شلوغی')) return;
     var hours = Object.keys(hourlyUsage).map(function(k){ return parseInt(k) + ':00 - ' + hourlyUsage[k] + ' نفر'; });
     if(hours.length === 0){ showToast('داده‌ای نیست', 'error'); return; }
     var text = 'گزارش ساعات شلوغ\n' + hours.join('\n');
@@ -697,7 +748,7 @@ function saveEmployee(){
     var phoneEl = document.getElementById('empPhone');
     var phone = phoneEl ? phoneEl.value.trim() : '';
     var salaryEl = document.getElementById('empSalary');
-    var salary = parseInt(salaryEl ? salaryEl.value : '0') || 0;
+    var salary = window.parseFaNumber ? window.parseFaNumber(salaryEl ? salaryEl.value : '0', 0) : (parseInt(salaryEl ? salaryEl.value : '0') || 0);
     var roleEl = document.getElementById('empRole');
     var role = roleEl ? roleEl.value.trim() : '';
     if(!name){ showToast('نام کارمند الزامی', 'error'); return; }

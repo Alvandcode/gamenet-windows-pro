@@ -80,23 +80,37 @@ window.sendToPOS = function(amount){
 };
 
   /* ---- 12. QR code ---- */
-  // The remote QR service is allowed by the CSP (img-src https://api.qrserver.com).
-  // Offline fallback: show the payload as selectable text plus a copy button,
-  // instead of a broken image icon.
+  // Generated locally with the vendored qrcode-generator (MIT). Sending the
+  // customer name/id to api.qrserver.com leaked data and failed offline.
   window.renderCustomerQR = function(cid, cname){
     var c = document.getElementById('customerQRContent');
     if (!c) return;
     var payload = 'GAMENET:' + cid + ':' + (cname || '');
-    var url = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(payload);
-    var fb = '<div style="text-align:center;padding:8px;">'
-      + '<p style="font-size:.85rem;color:rgba(255,255,255,0.6);">آفلاین - کد متنی مشتری:</p>'
+    var card = '';
+    try{
+      if (typeof qrcode === 'function'){
+        if (qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs['UTF-8']) {
+          qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+        }
+        var qr = qrcode(0, 'M');
+        qr.addData(payload, 'Byte');
+        qr.make();
+        card = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+      }
+    }catch(e){ card = ''; }
+    if (card){
+      c.innerHTML = '<div style="text-align:center">'
+        + '<div style="display:inline-block;background:#fff;border-radius:12px;padding:10px;max-width:220px">' + card + '</div>'
+        + '<p style="margin-top:8px;font-size:.8rem;color:rgba(255,255,255,0.5);direction:ltr">' + esc(payload) + '</p>'
+        + '<button class="glass-btn" data-payload="' + esc(payload) + '" onclick="copyTextToClipboard(this)">کپی کد</button></div>';
+      return;
+    }
+    // If the local encoder is missing, still offer the text code (never call
+    // an external service as the fallback).
+    c.innerHTML = '<div style="text-align:center;padding:8px;">'
+      + '<p style="font-size:.85rem;color:rgba(255,255,255,0.6);">کد متنی مشتری:</p>'
       + '<p style="font-family:monospace;direction:ltr;user-select:all;word-break:break-all;">' + esc(payload) + '</p>'
-      + '<button class="glass-btn" onclick="copyTextToClipboard(this)">کپی کد</button></div>';
-    c.innerHTML = '<div style="text-align:center">'
-      + '<img src="' + url + '" alt="QR" data-payload="' + esc(payload) + '"'
-      + ' style="border-radius:12px;background:#fff;padding:8px"'
-      + ' onerror="qrFallback(this)">'
-      + '<p style="margin-top:8px;font-size:.8rem;color:rgba(255,255,255,0.5)">' + esc(payload) + '</p></div>';
+      + '<button class="glass-btn" data-payload="' + esc(payload) + '" onclick="copyTextToClipboard(this)">کپی کد</button></div>';
   };
   function qrFallback(img){
     if(!img) return '';
@@ -108,6 +122,7 @@ window.sendToPOS = function(amount){
     img.outerHTML = html;
     return html;
   }
+  window.qrFallback = qrFallback;
   /** Clipboard helper. navigator.clipboard needs a secure context AND a
    *  granted 'clipboard-write' permission; fall back to execCommand. */
   window.copyTextToClipboard = function(node, text){
@@ -343,10 +358,11 @@ window.renderSecurityPanel = function(){
   var c = document.getElementById('securityPanelContent');
   if (!c) return;
   c.innerHTML = '<div class="glass" style="padding:16px">'
-    + '<h4>رمزنگاری بکاپ مشتریان</h4>'
+    + '<h4>نسخه پشتیبان رمزنگاری‌شده مشتریان</h4>'
     + '<input type="password" id="encPass" placeholder="رمز (حداقل ۸ کاراکتر)" style="margin:8px 0">'
-    + '<div style="display:flex;gap:8px"><button class="glass-btn glass-btn-success" onclick="encryptCustomersBackup()">رمزنگاری</button>'
-    + '<button class="glass-btn" onclick="decryptCustomersBackup()">بررسی رمزگشایی</button></div>'
+    + '<div style="display:flex;gap:8px"><button class="glass-btn glass-btn-success" onclick="encryptCustomersBackup()">ساخت نسخه رمزنگاری‌شده</button>'
+    + '<button class="glass-btn" onclick="decryptCustomersBackup()">بازیابی از نسخه</button></div>'
+    + '<p style="font-size:.75rem;color:rgba(255,255,255,0.45);margin-top:8px">این نسخه برای انتقال/نگهداری امن است؛ داده اصلی برای کار برنامه حذف نمی‌شود.</p>'
     + '<p id="encStatus" style="font-size:.8rem;color:rgba(255,255,255,0.5);margin-top:8px"></p></div>';
 };
 window.encryptCustomersBackup = async function(){
@@ -362,7 +378,7 @@ window.encryptCustomersBackup = async function(){
     if (raw) { var parsed = window.safeParse ? window.safeParse(raw, null) : JSON.parse(raw); if (Array.isArray(parsed)) list = parsed; }
   } catch (e) {}
   var ok = await window.encryptAndSave('alvand_customers', list, pass);
-  if (s) s.textContent = ok ? ('رمزنگاری شد (' + list.length + ' مشتری)') : 'خطا';
+  if (s) s.textContent = ok ? ('نسخه رمزنگاری‌شده ساخته شد (' + list.length + ' مشتری)') : 'خطا';
 };
 window.decryptCustomersBackup = async function(){
   var p = document.getElementById('encPass');
@@ -370,6 +386,13 @@ window.decryptCustomersBackup = async function(){
   var s = document.getElementById('encStatus');
   if (s) s.textContent = 'در حال بررسی...';
   var d = await window.decryptAndLoad('alvand_customers', pass);
-  if (s) s.textContent = d ? ('رمزگشایی شد: ' + d.length + ' مشتری') : 'رمز اشتباه است';
+  if (!d) { if (s) s.textContent = 'رمز اشتباه است'; return; }
+  if (!confirm('داده رمزگشایی‌شده جایگزین فهرست مشتریان فعلی شود؟')) { if (s) s.textContent = 'فقط بررسی شد؛ داده‌ای تغییر نکرد'; return; }
+  try {
+    window.customers = d;
+    localStorage.setItem('alvand_customers', JSON.stringify(d));
+    if (typeof window.saveData === 'function') window.saveData();
+    if (s) s.textContent = 'بازیابی شد: ' + d.length + ' مشتری';
+  } catch(e) { if (s) s.textContent = 'خطا در جایگزینی داده'; }
 };
 })();

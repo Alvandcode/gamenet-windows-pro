@@ -51,10 +51,14 @@
   }
 
   function collectDump() {
-    var dump = { date: new Date().toISOString(), version: window.APP_VERSION || '1.8.1' };
+    var dump = { date: new Date().toISOString(), version: window.APP_VERSION || 'unknown' };
     try {
       // every shop key, not just the first 10: a partial mirror is worse than
       // no mirror because it looks like a working safety net.
+      /* Secrets/API keys must not be mirrored as plaintext on every write.
+         Manual encrypted backups still include the full store. */
+      var skipSensitive = { smsConfig:1, agentToken:1, posConfig:1, license:1,
+                            allLicenses:1, allLicensesMeta:1 };
       var keys = ['clients', 'tariffs', 'sessions', 'reservations', 'services', 'expenses',
         'tariffSchedules', 'sales', 'clientServiceMap', 'stationTypes', 'payments',
         'customers', 'operators', 'walletHistory', 'license', 'allLicenses', 'allLicensesMeta',
@@ -67,6 +71,7 @@
         'taxRate', 'groupSessions', 'groupActive', 'walkInGuests', 'discardedTime',
         'customAlarm', 'agentToken', 'customers_enc'];
       for (var i = 0; i < keys.length; i++) {
+        if (skipSensitive[keys[i]]) continue;
         try { dump[keys[i]] = localStorage.getItem(PREFIX + keys[i]); } catch (_) {}
       }
     } catch (_) {}

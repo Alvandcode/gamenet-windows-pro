@@ -56,6 +56,7 @@ function sessionsFiltered(type){
   return {list: from(m), tag: 'monthly'};
 }
 window.exportSessionsCSV = function(type){
+  if (!permit('reports', 'خروجی CSV سشن‌ها')) return;
   var r = sessionsFiltered(type);
   var rows = [['کلاینت','تعرفه','مدت (دقیقه)','هزینه (تومان)','تاریخ']];
   r.list.forEach(function(s){
@@ -65,6 +66,7 @@ window.exportSessionsCSV = function(type){
   logAct('export','CSV sessions '+r.tag); toast('فایل CSV دانلود شد','success');
 };
 window.exportExpensesCSV = function(){
+  if (!permit('expenses', 'خروجی CSV هزینه‌ها')) return;
   var ex = sp('alvand_expenses', []);
   var bid = (typeof window.currentBranchId === 'function') ? window.currentBranchId() : '1';
   var branchOf = (typeof window.branchIdOf === 'function') ? window.branchIdOf : function(r){ return '1'; };
@@ -74,6 +76,7 @@ window.exportExpensesCSV = function(){
   logAct('export','CSV expenses'); toast('فایل CSV دانلود شد','success');
 };
 window.exportCustomersCSV = function(){
+  if (!permit('customers', 'خروجی CSV مشتریان')) return;
   var cs = window.customers || [];
   var rows = [['نام','تلفن','کیف پول','ساعت','هزینه']];
   cs.forEach(function(c){ rows.push([c.name, c.phone||'', Number(c.wallet)||0, Math.round(Number(c.totalHours)||0), Number(c.totalSpent)||0]); });
@@ -86,6 +89,7 @@ window.exportCustomersCSV = function(){
 // main process (setWindowOpenHandler returns 'deny'), so the old popup version
 // always reported "popup blocked" inside the packaged app.
 window.printThermalReceipt = function(d){
+  if (!permit('clients', 'چاپ رسید')) return;
   d = d || {};
   var shop = localStorage.getItem('alvand_shopName') || 'گیم‌نت';
   var no = 'R' + Date.now().toString().slice(-6);
@@ -196,16 +200,20 @@ var LP = sp('alvand_loyaltyPoints', {});
 function saveLP(){ try{ localStorage.setItem('alvand_loyaltyPoints', JSON.stringify(LP)); }catch(e){} }
 window.addLoyaltyPoints = function(cid, pts, reason){
   if(!permit('customers','امتیاز وفاداری')) return false;
+  pts = Number(pts);
+  if (!isFinite(pts) || pts <= 0) return false;
   var cur = LP[cid] || {total:0, history:[]};
-  cur.total += pts;
+  cur.total = (Number(cur.total) || 0) + pts;
   cur.history.unshift({points: pts, reason: reason||'', date: new Date().toISOString()});
   LP[cid] = cur; saveLP();
 };
 window.redeemLoyaltyPoints = function(cid, pts){
   if(!permit('customers','امتیاز وفاداری')) return false;
+  pts = Number(pts);
+  if (!isFinite(pts) || pts <= 0) return false;
   var cur = LP[cid];
-  if (!cur || cur.total < pts){ toast('امتیاز کافی نیست','error'); return false; }
-  cur.total -= pts;
+  if (!cur || (Number(cur.total) || 0) < pts){ toast('امتیاز کافی نیست','error'); return false; }
+  cur.total = (Number(cur.total) || 0) - pts;
   cur.history.unshift({points: -pts, reason: 'بازخرید', date: new Date().toISOString()});
   LP[cid] = cur; saveLP(); logAct('loyalty','redeem '+pts); return true;
 };

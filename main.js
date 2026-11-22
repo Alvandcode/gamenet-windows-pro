@@ -62,15 +62,28 @@ function isPrivateAddress(ip) {
       });
   }
   if (fam === 6) {
-    const low = ip.toLowerCase().replace(/^\[|\]$/g, '');
-    if (low === '::' || low === '::1') return true;
-    // IPv4-mapped addresses (::ffff:127.0.0.1) are checked as IPv4
-    const mapped = low.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped) return isPrivateAddress(mapped[1]);
-    return /^(fc|fd)/.test(low) || /^fe[89ab]/.test(low) || /^ff/.test(low) ||
-      /^2001:db8:/.test(low) || /^::ffff:/.test(low);
+    const low = ip.toLowerCase().replace(/^\[|\]$/g, '').split('%')[0];
+    /* Fail closed for everything outside global unicast 2000::/3. This covers
+       loopback, ULA (fc00::/7), link-local (fe80::/10), multicast, IPv4-mapped
+       forms (including fully expanded 0:0:0:0:0:ffff:7f00:1), IPv4-compatible
+       forms, NAT64 (64:ff9b::/96) and 6to4 (2002::/16). A simple prefix list
+       misses the expanded forms and was a working SSRF bypass. */
+    const first = parseInt(String(low).split(':')[0], 16);
+    if (!isFinite(first) || (first & 0xe000) !== 0x2000) return true;
+    if (/^2001:0?db8:/i.test(low)) return true;      // documentation
+    if (/^2001:0{1,4}:/i.test(low)) return true;     // Teredo
+    if (/^2002:/i.test(low)) return true;            // 6to4
+    return false;
   }
   return true;
+}
+function isLanAddress(ip) {
+  if (net.isIP(ip) !== 4) return false;
+  return ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']
+    .some((cidr) => {
+      const [base, bits] = cidr.split('/');
+      return inV4(ip, base, Number(bits));
+    });
 }
 function hostIsBlocked(host) {
   const h = String(host || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
@@ -496,10 +509,12 @@ function setupBackupIPC() {
     const rawPath = String(opts.path || '');
     const agentToken = String(opts.token || '');
     if (agentToken && !/^[A-Za-z0-9_-]{16,128}$/.test(agentToken)) return { ok: false, error: 'bad token' };
-    // only a bare IPv4 host and a same-origin-looking path: the renderer must
-    // not be able to use this as a general-purpose proxy
+    // only a LAN IPv4 host and a same-origin-looking path: the renderer must
+    // not be able to use this as a general-purpose proxy or scan loopback/public
+    // services. POS/agent are explicitly LAN features.
     if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return { ok: false, error: 'bad ip' };
     if (ip.split('.').some((o) => Number(o) > 255)) return { ok: false, error: 'bad ip' };
+    if (!isLanAddress(ip)) return { ok: false, error: 'ip must be on the local network' };
     if (!/^\/[A-Za-z0-9\-._~/?&=%+:@]*$/.test(rawPath) || rawPath.startsWith('//')) {
       return { ok: false, error: 'bad path' };
     }
@@ -556,6 +571,7 @@ function setupBackupIPC() {
       const rawPath = String(opts.path || '/charge').trim() || '/charge';
       const amount = Number(opts.amount || 0);
       if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip) || ip.split('.').some((o) => Number(o) > 255)) return { ok: false, error: 'bad ip' };
+      if (!isLanAddress(ip)) return { ok: false, error: 'ip must be on the local network' };
       if (!Number.isInteger(port) || port < 1 || port > 65535) return { ok: false, error: 'bad port' };
       if (!/^\/[A-Za-z0-9\-._~/?&=%+:@]*$/.test(rawPath) || rawPath.startsWith('//')) return { ok: false, error: 'bad path' };
       if (!isFinite(amount) || amount < 0 || amount > 1e12) return { ok: false, error: 'bad amount' };

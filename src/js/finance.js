@@ -7,7 +7,7 @@ function logAct(ty, d){ if (window.logActivity) window.logActivity(ty, d); }
 function sp(k, fb){ try { if (window.safeParse) return window.safeParse(localStorage.getItem(k)) || fb; } catch(e){} return fb; }
 function sv(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function val(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; }
-function num(id){ var el = document.getElementById(id); return el ? (parseInt(el.value) || 0) : 0; }
+function num(id){ var el = document.getElementById(id); if(!el) return 0; return (window.parseFaNumber ? window.parseFaNumber(el.value, 0) : (parseInt(el.value) || 0)); }
 function nid(v){ return window.numId ? window.numId(v) : (parseInt(v, 10) || 0); }
 function permit(section, label){
   try { return typeof requirePerm === 'function' ? !!requirePerm(section, label) : true; }
@@ -22,12 +22,12 @@ function saveHol(){ sv('alvand_holidays', HOL); }
 /* ================= TAX ================= */
 window.getTaxRate = function(){
   var v = 0;
-  try{ v = parseFloat(localStorage.getItem('alvand_taxRate')) || 0; }catch(e){}
+  try{ v = (window.parseFaDecimal ? window.parseFaDecimal(localStorage.getItem('alvand_taxRate'), 0) : (parseFloat(localStorage.getItem('alvand_taxRate')) || 0)); }catch(e){}
   return Math.min(100, Math.max(0, v));
 };
 window.setTaxRate = function(v){
   if (!permit('finance', 'تنظیم مالیات')) return;
-  v = Math.min(100, Math.max(0, parseFloat(v) || 0));
+  v = Math.min(100, Math.max(0, (window.parseFaDecimal ? window.parseFaDecimal(v, 0) : (parseFloat(v) || 0))));
   try{ localStorage.setItem('alvand_taxRate', String(v)); }catch(e){}
   toast('مالیات: ' + v + '٪','success');
 };
