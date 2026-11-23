@@ -1,21 +1,20 @@
-MIT License
+Gamenet Manager Pro — Copyright (c) 2026 Alvandcode
+گیم‌نت منیجر پرو — تمام حقوق محفوظ است.
 
-Copyright (c) 2026 Alvandcode
+NOT AN OPEN-SOURCE LICENSE. This software is proprietary:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+  • Free tier (basic features): you may download and use the official
+    release builds for operating your own gaming center.
+  • Windows Pro: commercial use requires a paid license
+    (see https://alvandcode.github.io/gamenet/ for pricing).
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+You may NOT redistribute, resell, sublicense, rebrand, or publish
+modified copies of this software or its source code without written
+permission from Alvandcode.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+این برنامه نرم‌افزار اختصاصی است؛ بازنشر، فروش مجدد یا استفاده تجاری از
+نسخه پرو بدون خرید لایسنس مجاز نیست. جزئیات در README.md.
+
+Third-party components remain under their own licenses:
+  • qrcode.js (src/vendor/qrcode.js) — qrcode-generator, MIT-style,
+    © Kazuhiko Arase (see the header of that file).

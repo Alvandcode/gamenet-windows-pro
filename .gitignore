@@ -29,3 +29,7 @@ desktop.ini
 # runtime backups (userData handles the real ones)
 backups/
 *.backup.json
+
+# local reference copies / vendored npm duplicates (not part of the app)
+upstream-repo/
+package/

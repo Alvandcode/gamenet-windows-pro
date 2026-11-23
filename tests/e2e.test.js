@@ -36,7 +36,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ]));
 
   // inject app scripts in real order (CSP is not enforced by jsdom; CDN tags never fetched)
-  for (const f of ['src/js/config.js', 'src/js/security.js', 'src/js/license-pubkey.js', 'src/js/license.js', 'src/js/storage.js', 'src/js/app.js', 'src/js/patches.js']) {
+  for (const f of ['src/js/inline-actions.js', 'src/js/config.js', 'src/js/security.js', 'src/js/license-pubkey.js', 'src/js/license.js', 'src/js/storage.js', 'src/js/app.js', 'src/js/patches.js']) {
     const s = window.document.createElement('script');
     s.textContent = fs.readFileSync(path.join(ROOT, f), 'utf8');
     window.document.body.appendChild(s);
@@ -94,6 +94,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(cost > 0, 'live cost computes (got ' + cost + ')');
   const gridHtml = window.document.getElementById('clientsGrid').innerHTML;
   ok(gridHtml.includes('+1 نفر'), 'stepper badge shows in card');
+
+  // E2. manual +10 / -10 minutes must actually change the billed amount
+  const costBeforeAdjust = window.eval('calculateCost(clients[0])');
+  window.document.getElementById('timeAdjust').value = '10';
+  window.addTime();
+  const costAfterAdd = window.eval('calculateCost(clients[0])');
+  ok(costAfterAdd > costBeforeAdjust, 'adding time increases the amount (' + costBeforeAdjust + ' -> ' + costAfterAdd + ')');
+  window.subTime();
+  const costAfterSub = window.eval('calculateCost(clients[0])');
+  ok(costAfterSub < costAfterAdd, 'subtracting time lowers the amount (' + costAfterAdd + ' -> ' + costAfterSub + ')');
+  ok(Math.abs(costAfterSub - costBeforeAdjust) < 200, 'subtracting the same 10 minutes restores the original amount');
 
   // F. full checkout cycle
   window.eval('stopTimer()');

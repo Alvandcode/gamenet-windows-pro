@@ -120,16 +120,48 @@
             ]));
         }catch(_e){ return false; }
     }
+    /* The three compat SDK tags used to be <script defer> in <head>, so every
+     * launch of every shop fetched ~300KB of CDN JS that 99% of installs (no
+     * config.local.json) never use. Now the SDK is injected once, in order,
+     * only when a firebase config actually exists. */
+    let fbSdkLoading = null;
+    function loadFirebaseScript(src){
+        return new Promise(function(resolve, reject){
+            const s = document.createElement('script');
+            s.src = src; s.async = true;
+            s.onload = function(){ resolve(true); };
+            s.onerror = function(){ window.__fbFailed = true; reject(new Error('firebase sdk load failed')); };
+            document.head.appendChild(s);
+        });
+    }
+    function loadFirebaseSdk(){
+        if (typeof firebase !== 'undefined') return Promise.resolve(true);
+        if (!fbSdkLoading){
+            const base = 'https://www.gstatic.com/firebasejs/10.12.0/';
+            fbSdkLoading = loadFirebaseScript(base + 'firebase-app-compat.js')
+                .then(function(){ return loadFirebaseScript(base + 'firebase-database-compat.js'); })
+                .then(function(){ return loadFirebaseScript(base + 'firebase-auth-compat.js'); })
+                .catch(function(e){ fbSdkLoading = null; throw e; });
+        }
+        return fbSdkLoading;
+    }
     function ensureFirebase(){
         try{
             const cfg = fbConfig();
             if(!cfg){ firebaseReady = false; return false; }
-            if(typeof firebase === 'undefined'){ firebaseReady = false; return false; }
-            if(firebase.apps && firebase.apps.length){ firebaseReady = true; startFirebaseAuth(); return true; }
-            firebase.initializeApp(cfg);
-            firebaseReady = true;
-            startFirebaseAuth();
-            return true;
+            if(typeof firebase !== 'undefined'){
+                if(firebase.apps && firebase.apps.length){ firebaseReady = true; startFirebaseAuth(); return true; }
+                firebase.initializeApp(cfg);
+                firebaseReady = true;
+                startFirebaseAuth();
+                return true;
+            }
+            /* SDK not loaded yet (it is fetched only on demand). Callers expect
+             * a SYNC boolean, so kick the load in the background and let the
+             * next poll see the initialized state. */
+            firebaseReady = false;
+            loadFirebaseSdk().then(function(){ ensureFirebase(); }).catch(function(){});
+            return false;
         }catch(e){ console.log('firebase init fail', e); firebaseReady = false; return false; }
     }
     try { ensureFirebase(); } catch(e){ firebaseReady = false; }
@@ -264,7 +296,7 @@
         }
         // lock nav
         document.querySelectorAll('.nav-item').forEach(el=>{
-            let sec=el.getAttribute('onclick')?.match(/showSection\('([^']+)'/);
+            let sec=el.getAttribute('data-onclick')?.match(/showSection\('([^']+)'/);
             if(sec){
                 let s=sec[1];
                 if(!hasPerm(s)) el.classList.add('operator-locked');
@@ -423,9 +455,13 @@
                 showToast('رمز باید هم حرف و هم عدد داشته باشد','error'); return;
             }
             try {
-                adm.password = window.gamenetHashPassword
-                    ? await window.gamenetHashPassword(p1)
-                    : await window.sha256hex('gamenet::'+p1);
+                /* patches.js (loaded after app.js) provides PBKDF2-SHA256 with a
+                 * per-user salt. The old fallback here hashed with a single
+                 * unsalted SHA-256 ("gamenet::"+pass), which is cracked instantly
+                 * if the store leaks. If the strong hasher is missing we now
+                 * REFUSE to save instead of silently writing a weak hash. */
+                if (!window.gamenetHashPassword){ showToast('خطای داخلی: هش رمز در دسترس نیست','error'); return; }
+                adm.password = await window.gamenetHashPassword(p1);
             }
             catch(e){ showToast('خطا در ذخیره رمز','error'); return; }
         }
@@ -1641,7 +1677,7 @@
     }
     /* Attribute values came from user data (section ids, client ids), so
      * pasting them straight into a CSS selector blew up on quotes/brackets:
-     * "[onclick*=\"showSection('a\"b'\"]" is not a valid selector and the
+     * "[data-onclick*=\"showSection('a\"b'\"]" is not a valid selector and the
      * DOM parser then throws. Filter in JS instead. */
     function byAttrValue(sel, attr, value){
         const want = String(value);
@@ -1656,7 +1692,7 @@
     function navEntryForSection(section){
         if(!section) return null;
         const q = "showSection('" + section + "'";
-        let hit = byAttrValue('.nav-item, .settings-sub-item', 'onclick', q);
+        let hit = byAttrValue('.nav-item, .settings-sub-item', 'data-onclick', q);
         return hit;
     }
     /** Open the group that owns <section> and mark the group as "has active item". */
@@ -3773,19 +3809,46 @@
         askConfirm('تایمر «'+c.name+'» ریست شود؟ کل زمان بازی از دست می‌رود و به‌صورت یک رکورد در دفتر ثبت می‌شود.', doReset);
     }
 
+    /* Manual +/- time must also move the billed rate segments. calculateCost()
+       uses _rateSegments whenever they exist, so changing only elapsed (the old
+       behaviour) left the displayed money untouched on every running client. */
+    function adjustClientTime(c, deltaSeconds){
+        if(!c) return 0;
+        const now = Date.now();
+        const current = clientElapsed(c);
+        const delta = deltaSeconds >= 0
+            ? Math.max(0, Math.round(deltaSeconds))
+            : -Math.min(Math.max(0, Math.round(-deltaSeconds)), current);
+        if(!delta) return 0;
+        const next = Math.max(0, current + delta);
+        c.elapsed = next;
+        if(c.status === 'online'){
+            // elapsed is derived from startTime every tick; move the anchor so
+            // the manual change survives the next updateTimers() tick.
+            c.startTime = now - next * 1000;
+            c._rateLast = now;
+        }
+        if(Array.isArray(c._rateSegments) && c._rateSegments.length){
+            const rate = Number(getTariffForClient(c)) || 0;
+            let last = c._rateSegments[c._rateSegments.length - 1];
+            if(!last || Number(last.rate) !== rate){
+                c._rateSegments.push({rate:rate, seconds:delta});
+            } else {
+                last.seconds = (Number(last.seconds) || 0) + delta;
+            }
+        }
+        c._lastElapsed = next;
+        return delta;
+    }
+
     function addTime() {
         if(!requirePerm('clients','افزودن زمان')) return;
         if (currentTimeClient === null) return;
         const mins = parseFaNumber(document.getElementById('timeAdjust').value, 0) || 0;
         const c = clients[currentTimeClient];
         if(!c){ currentTimeClient=null; return; }
-        c.elapsed = (c.elapsed || 0) + mins * 60;
-        if (c.status === 'online' && c.startTime) {
-            // elapsed is derived from startTime every tick: shift it back so the bonus sticks
-            c.startTime -= mins * 60 * 1000;
-        }
-        // keep pro-rata extra billing consistent (manual edits don't back-charge extras)
-        c._lastElapsed = c.elapsed;
+        if(mins <= 0){ showToast('مقدار زمان باید مثبت باشد','error'); return; }
+        adjustClientTime(c, mins * 60);
         saveData();
         updateTimeDisplay();
         renderClients();
@@ -3798,17 +3861,13 @@
         const mins = parseFaNumber(document.getElementById('timeAdjust').value, 0) || 0;
         const c = clients[currentTimeClient];
         if(!c){ currentTimeClient=null; return; }
-        c.elapsed = Math.max(0, (c.elapsed || 0) - mins * 60);
-        if (c.status === 'online') {
-            // shift startTime forward; clamp so elapsed never goes negative
-            c.startTime = Date.now() - c.elapsed * 1000;
-        }
-        // keep pro-rata extra billing consistent (manual edits don't refund extras)
-        c._lastElapsed = c.elapsed;
+        if(mins <= 0){ showToast('مقدار زمان باید مثبت باشد','error'); return; }
+        const applied = -adjustClientTime(c, -mins * 60);
+        if(!applied){ showToast('زمانی برای کم کردن نیست','warning'); return; }
         saveData();
         updateTimeDisplay();
         renderClients();
-        showToast(mins + ' دقیقه کم شد','success');
+        showToast(applied/60 + ' دقیقه کم شد','success');
     }
 
     function updateTimers() {

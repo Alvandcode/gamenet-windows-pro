@@ -57,7 +57,8 @@ try {
   ok(files.includes('src/**/*'), 'electron-builder includes src/**');
   ok(files.includes('preload.js'), 'electron-builder includes preload.js');
   ok(files.includes('assets/**/*'), 'electron-builder includes assets/**');
-  ok(pkg.license === 'MIT', 'license field MIT');
+  // the app is proprietary (paid Pro licenses); see LICENSE / README.md
+  ok(pkg.license === 'UNLICENSED', 'license field is UNLICENSED (proprietary app)');
   ok(!JSON.stringify(pkg).includes('AIzaSy'), 'no hardcoded firebase key in package.json');
 } catch (e) {
   ok(false, 'package.json parses: ' + e.message);
@@ -104,10 +105,12 @@ try {
   ok(initBody.indexOf('checkLogin();') !== -1 && initBody.indexOf('checkLogin();') < initBody.indexOf('updateStats();'), 'init locks (login) before rendering');
   ok(initBody.indexOf('initLicenseGate();') !== -1 && initBody.indexOf('initLicenseGate();') < initBody.indexOf('updateStats();'), 'init locks (license) before rendering');
   ok(initBody.includes('renderClients, renderReservations'), 'heavy renders deferred past first paint');
-  // The app still needs inline *attributes* (onclick=...), but inline script
-  // ELEMENTS and javascript: URLs can now be blocked independently.
-  ok(/script-src-attr[^;]*'unsafe-inline'/.test(h), 'CSP allows the app inline handlers via script-src-attr');
-  ok(!/script-src(?!-attr)[^;]*'unsafe-inline'/.test(h), 'script-src itself does not allow inline scripts');
+  // Inline event attributes are converted to data-on* by src/js/inline-actions.js
+  // and delegated through a restricted evaluator, so the CSP can drop
+  // script-src-attr entirely: HTML injection can no longer execute JS.
+  ok(!/script-src-attr/.test(h), 'CSP no longer carries script-src-attr (handlers are delegated)');
+  ok(/script-src(?!-attr)[^;]*'self'/.test(h), 'script-src still allows only self + gstatic');
+  ok(h.includes('src/js/inline-actions.js'), 'index.html loads inline-actions.js (CSP-safe handler layer)');
   ok(h.includes('src/js/app.js'), 'index.html loads src/js/app.js');
   ok(h.includes('src/styles/main.css'), 'index.html loads main.css');
   ok(h.includes('src/js/security.js'), 'index.html loads security.js');
@@ -160,7 +163,7 @@ try {
   ok(h2.includes('adminCredCard') && h2.includes('changeAdminCredentials'), 'settings has admin credential card');
   const a3 = read('src/js/app.js');
   ok(a3.includes('function changeAdminCredentials') && a3.includes('function syncAdminCredCard') && a3.includes('function getAdminOp'), 'admin credential functions exist');
-  ok(a3.includes('sha256hex') && a3.includes('gamenet::'), 'admin password is hashed (not plaintext)');
+  ok(a3.includes('gamenetHashPassword') && !/sha256hex\('gamenet::'/.test(a3), 'admin password is hashed with the PBKDF2 hasher (no weak fallback)');
   const accents = (a3.match(/accent:'#[0-9a-fA-F]{6}'/g) || []).length;
   ok(accents >= 21, 'all 21 themes have accent colors (found ' + accents + ')');
   ok(a3.includes("id:'roshan'"), 'light theme exists');

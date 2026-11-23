@@ -58,7 +58,12 @@
       /* Secrets/API keys must not be mirrored as plaintext on every write.
          Manual encrypted backups still include the full store. */
       var skipSensitive = { smsConfig:1, agentToken:1, posConfig:1, license:1,
-                            allLicenses:1, allLicensesMeta:1 };
+                            allLicenses:1, allLicensesMeta:1,
+                            /* customAlarm is a user audio file stored as a data URL
+                               (up to 20MB). Hourly mirroring it would write ~1GB
+                               of backups for one setting; it still travels in
+                               manual/encrypted backups. */
+                            customAlarm:1 };
       var keys = ['clients', 'tariffs', 'sessions', 'reservations', 'services', 'expenses',
         'tariffSchedules', 'sales', 'clientServiceMap', 'stationTypes', 'payments',
         'customers', 'operators', 'walletHistory', 'license', 'allLicenses', 'allLicensesMeta',

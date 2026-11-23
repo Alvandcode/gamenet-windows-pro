@@ -17,9 +17,11 @@
     // every <section> must be reachable from a sidebar entry
     chk('everySectionReachable', function () {
       var reach = {};
-      var nodes = document.querySelectorAll('[onclick]');
+      /* handlers are converted to data-onclick by inline-actions.js (CSP has no
+         script-src-attr anymore) */
+      var nodes = document.querySelectorAll('[data-onclick]');
       for (var i = 0; i < nodes.length; i++) {
-        var v = nodes[i].getAttribute('onclick') || '';
+        var v = nodes[i].getAttribute('data-onclick') || '';
         var p = v.indexOf("showSection('");
         if (p < 0) continue;
         var end = v.indexOf("'", p + 13);
@@ -59,13 +61,24 @@
     });
     chk('noInlinedUserDataInHandlers', function () {
       var bad = [];
-      var all = document.querySelectorAll('[onclick]');
+      var all = document.querySelectorAll('[data-onclick]');
       for (var i = 0; i < all.length; i++) {
-        var v = all[i].getAttribute('onclick') || '';
+        var v = all[i].getAttribute('data-onclick') || '';
         if (v.indexOf('openShareModalForCustomer(') >= 0 || v.indexOf('openShareModal(') >= 0) bad.push(v.slice(0, 70));
       }
       window.__badHandlers = bad;
       return bad.length === 0;
+    });
+    /* inline-actions.js must have converted every inline event attribute;
+       a leftover one would be dead under the CSP (no script-src-attr) */
+    chk('noInlineHandlerAttrs', function () {
+      var live = document.querySelectorAll('[onclick],[onchange],[oninput],[onkeydown],[onerror],[onload]');
+      window.__inlineLeftovers = live.length;
+      return live.length === 0;
+    });
+    chk('cspHasNoInlineAttrSource', function () {
+      var meta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+      return !!meta && meta.getAttribute('content').indexOf('script-src-attr') === -1;
     });
     chk('everySectionRenders', function () {
       var errs = [];

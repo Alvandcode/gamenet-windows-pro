@@ -653,11 +653,11 @@ function renderSearchResults(query){
     var html = '<p style="color:rgba(255,255,255,0.6); margin-bottom:12px;">' + total + ' نتیجه برای "' + esc(query) + '"</p>';
     if(results.clients.length > 0){
         html += '<h4 style="margin-bottom:8px;">🖥️ دستگاه‌ها (' + results.clients.length + ')</h4>';
-        html += results.clients.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px; cursor:pointer;" onclick="showSection(\'clients\', document.querySelector(\'[onclick*=clients]\'));">' + esc(r.data.name) + ' - ' + esc(r.data.stationType||'') + '</div>'; }).join('');
+        html += results.clients.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px; cursor:pointer;" onclick="showSection(\'clients\', document.querySelector(\'[data-onclick*=clients]\'));">' + esc(r.data.name) + ' - ' + esc(r.data.stationType||'') + '</div>'; }).join('');
     }
     if(results.customers.length > 0){
         html += '<h4 style="margin:12px 0 8px;">👤 مشتریان (' + results.customers.length + ')</h4>';
-        html += results.customers.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px; cursor:pointer;" onclick="showSection(\'customers\', document.querySelector(\'[onclick*=customers]\'));">' + esc(r.data.name) + ' - ' + esc(r.data.phone||'') + '</div>'; }).join('');
+        html += results.customers.map(function(r){ return '<div class="glass" style="padding:8px 12px; margin-bottom:6px; cursor:pointer;" onclick="showSection(\'customers\', document.querySelector(\'[data-onclick*=customers]\'));">' + esc(r.data.name) + ' - ' + esc(r.data.phone||'') + '</div>'; }).join('');
     }
     if(results.sessions.length > 0){
         html += '<h4 style="margin:12px 0 8px;">🎮 سشن‌ها (' + results.sessions.length + ')</h4>';

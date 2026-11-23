@@ -50,7 +50,7 @@ function check(cond, msg) {
   if (cond) console.log('  PASS ' + msg);
   else { failures++; console.error('  FAIL ' + msg); }
 }
-const files = ['src/js/config.js', 'src/js/security.js', 'src/js/license-pubkey.js', 'src/js/license.js', 'src/js/storage.js', 'src/js/app.js', 'src/js/patches.js', 'src/js/jalali.js', 'src/js/zoom.js', 'src/js/new-features.js', 'src/js/round2-a.js', 'src/js/round2-b.js', 'src/js/round2-c.js', 'src/js/phonebook.js'];
+const files = ['src/js/inline-actions.js', 'src/js/config.js', 'src/js/security.js', 'src/js/license-pubkey.js', 'src/js/license.js', 'src/js/storage.js', 'src/js/app.js', 'src/js/patches.js', 'src/js/jalali.js', 'src/js/zoom.js', 'src/js/new-features.js', 'src/js/round2-a.js', 'src/js/round2-b.js', 'src/js/round2-c.js', 'src/js/phonebook.js'];
 for (const f of files) {
   try {
     vm.runInContext(load(f), sandbox, { filename: f });

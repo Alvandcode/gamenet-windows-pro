@@ -71,7 +71,7 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
       showSection('clients'); renderClients(); gpRenderPicker();
       const chips = document.querySelectorAll('#gpPicker .gp-chip').length;
       // the per-client usage button lives on the rendered card, so check it here
-      const cardBtn = document.querySelectorAll('#clientsGrid .client-card button[onclick^="gpOpenReport"]').length;
+      const cardBtn = document.querySelectorAll('#clientsGrid .client-card button[data-onclick^="gpOpenReport"]').length;
       const b = document.querySelectorAll('#gpPicker input[type=checkbox]');
       b[0].checked = true; b[0].dispatchEvent(new Event('change', {bubbles:true}));
       b[1].checked = true; b[1].dispatchEvent(new Event('change', {bubbles:true}));

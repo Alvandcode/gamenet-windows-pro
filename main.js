@@ -12,7 +12,7 @@
  * - atomic file backup IPC (renderer data mirrored to userData, not only LocalStorage)
  * - icon fallback (icon.ico -> logo.ico -> none)
  */
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -161,7 +161,11 @@ function legacyDeviceFingerprint() {
 function windowsMachineGuid() {
   if (process.platform !== 'win32') return '';
   try {
-    const out = execFileSync('reg', ['query', 'HKLM\SOFTWARE\Microsoft\Cryptography', '/v', 'MachineGuid'], {
+    /* Backslashes must be doubled in a JS string literal: without it, \S, \M and
+     * \C are unknown escapes and the backslash is dropped, so reg was queried
+     * for the impossible key 'HKLMSOFTWAREMicrosoftCryptography' and every
+     * machine silently fell back to the legacy MAC-based fingerprint. */
+    const out = execFileSync('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'], {
       encoding: 'utf8', timeout: 1500, windowsHide: true,
     });
     const m = out.match(/MachineGuid\s+REG_SZ\s+([0-9a-fA-F-]{36})/);
@@ -234,6 +238,20 @@ function ensureStartMenuShortcut(iconPath) {
   } catch { /* ignore */ }
   const lnk = path.join(app.getPath('appData'), 'Microsoft', 'Windows',
     'Start Menu', 'Programs', 'Gamenet Manager Pro.lnk');
+  /* Writing the shortcut spawns PowerShell, which blocks the main process for
+     up to 15s. The shell also re-reads the icon from the .lnk lazily, so a
+     rewrite is only needed when the .lnk is missing or points somewhere else
+     (e.g. after moving/reinstalling the app). Skip the spawn otherwise. */
+  try {
+    if (fs.existsSync(lnk)) {
+      const { spawnSync: probe } = require('child_process');
+      const cur = probe('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+        '(New-Object -ComObject WScript.Shell).CreateShortcut(' + JSON.stringify(lnk) + ').TargetPath'],
+        { timeout: 5000, windowsHide: true, encoding: 'utf8' });
+      if (cur.status === 0 && cur.stdout &&
+          cur.stdout.trim().toLowerCase() === String(exePath).toLowerCase()) return;
+    }
+  } catch { /* probe failed -> fall through and write it */ }
   const ps = [
     '$sh = New-Object -ComObject WScript.Shell',
     '$l = $sh.CreateShortcut(' + JSON.stringify(lnk) + ')',
@@ -388,26 +406,62 @@ function setupBackupIPC() {
   /* The license clock used to live only in localStorage, so clearing site data
    * (or deleting one key) disabled the "clock moved backwards" check. Mirror
    * the highest timestamp seen into userData; the renderer asks before it
-   * trusts a date. The file is intentionally not part of a restore. */
+   * trusts a date. Two independent copies are kept: an attacker must find and
+   * delete BOTH to reset the anti-rollback check, and the highest surviving
+   * value still wins. The files are intentionally not part of a restore. */
+  const CLOCK_FILES = ['license-clock.json', 'license-clock-mirror.json'];
   ipcMain.handle('gamenet:license-clock', async (_evt, nowValue) => {
     try {
       const now = Number(nowValue);
       if (!isFinite(now) || now <= 0) return { ok: false, error: 'bad time' };
-      const file = path.join(app.getPath('userData'), 'license-clock.json');
       let last = 0;
-      try {
-        const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-        last = Number(saved && saved.last) || 0;
-      } catch { /* first run */ }
+      for (const fname of CLOCK_FILES) {
+        try {
+          const saved = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), fname), 'utf8'));
+          last = Math.max(last, Number(saved && saved.last) || 0);
+        } catch { /* missing or corrupt copy */ }
+      }
       const tolerance = 6 * 60 * 60 * 1000;
       if (last > 0 && now < last - tolerance) return { ok: true, tampered: true, last };
       if (now > last) {
         try {
-          fs.mkdirSync(path.dirname(file), { recursive: true });
-          fs.writeFileSync(file, JSON.stringify({ last: now }), 'utf8');
-        } catch { /* read-only installs still get the in-memory check */ }
+          fs.mkdirSync(path.dirname(path.join(app.getPath('userData'), CLOCK_FILES[0])), { recursive: true });
+          for (const fname of CLOCK_FILES) {
+            try {
+              const f = path.join(app.getPath('userData'), fname);
+              const tmp = f + '.tmp';
+              fs.writeFileSync(tmp, JSON.stringify({ last: now }), 'utf8');
+              fs.renameSync(tmp, f);
+            } catch { /* read-only installs still get the in-memory check */ }
+          }
+        } catch { /* ignore */ }
       }
       return { ok: true, tampered: false, last: Math.max(last, now) };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  });
+
+  /* Secrets (SMS API key) must not sit as plaintext in localStorage. They are
+   * stored as 'enc:v1:<base64>' blobs encrypted by the OS (DPAPI on Windows via
+   * safeStorage), so only this user profile on this machine can decrypt them.
+   * Graceful degradation: without OS encryption the renderer keeps plaintext. */
+  ipcMain.handle('gamenet:secret-encrypt', async (_evt, plain) => {
+    try {
+      const s = String(plain == null ? '' : plain);
+      if (s.length > 8192) return { ok: false, error: 'secret too long' };
+      if (!safeStorage.isEncryptionAvailable()) return { ok: false, unsupported: true };
+      return { ok: true, data: 'enc:v1:' + safeStorage.encryptString(s).toString('base64') };
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+  });
+  ipcMain.handle('gamenet:secret-decrypt', async (_evt, stored) => {
+    try {
+      const s = String(stored == null ? '' : stored);
+      if (!s.startsWith('enc:v1:')) return { ok: true, data: s }; // plaintext passthrough
+      if (!safeStorage.isEncryptionAvailable()) return { ok: false, error: 'encryption unavailable' };
+      return { ok: true, data: safeStorage.decryptString(Buffer.from(s.slice(7), 'base64')) };
     } catch (err) {
       return { ok: false, error: String((err && err.message) || err) };
     }

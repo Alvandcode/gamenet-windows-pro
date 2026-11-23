@@ -165,7 +165,7 @@ app.whenReady().then(async () => {
   // and blocks this headless check forever
   await ev(`(function(){ window.__gpPrintCalls = 0; window.print = function(){ window.__gpPrintCalls++; }; return 1; })()`);
   const clicked = await ev(`(function(){
-    var btn = document.querySelector('#usageReportModal button[onclick*="gpPrintReport"]');
+    var btn = document.querySelector('#usageReportModal button[data-onclick*="gpPrintReport"]');
     if (!btn) return 'no button';
     btn.click();
     return 'clicked';

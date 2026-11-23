@@ -26,7 +26,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   window.fetch = () => Promise.reject(new Error('offline'));
   window.confirm = () => true;
   window.print = () => {};
-  for (const f of ['config.js', 'security.js', 'license-pubkey.js', 'license.js', 'storage.js', 'app.js',
+  for (const f of ['inline-actions.js', 'config.js', 'security.js', 'license-pubkey.js', 'license.js', 'storage.js', 'app.js',
     'patches.js', 'jalali.js', 'zoom.js', 'new-features.js', 'round2-a.js', 'round2-b.js', 'round2-c.js',
     'phonebook.js', 'ops.js', 'finance.js']) {
     const s = doc.createElement('script');
@@ -104,7 +104,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(100);
 
   console.log('--- 5. the survey can finally be reached ---');
-  const btn = doc.querySelector('button[onclick="openSurveyModal()"]');
+  const btn = doc.querySelector('button[data-onclick="openSurveyModal()"]');
   ok(!!btn, 'a button opens the survey modal');
   const modal = doc.getElementById('surveyModal');
   ok(!!modal, 'the survey modal exists');

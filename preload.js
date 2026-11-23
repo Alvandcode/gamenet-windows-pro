@@ -37,4 +37,10 @@ contextBridge.exposeInMainWorld('gamenet', {
   pos: {
     charge: (opts) => ipcRenderer.invoke('gamenet:pos-request', opts || {}),
   },
+  /* OS-backed secret storage (DPAPI on Windows). Falls back to plaintext
+   * (unsupported:true) on systems without it - callers must handle that. */
+  secret: {
+    encrypt: (plain) => ipcRenderer.invoke('gamenet:secret-encrypt', plain),
+    decrypt: (stored) => ipcRenderer.invoke('gamenet:secret-decrypt', stored),
+  },
 });

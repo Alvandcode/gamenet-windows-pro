@@ -28,7 +28,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   window.fetch = () => Promise.reject(new Error('offline'));
   window.confirm = () => true;
 
-  for (const f of ['config.js','security.js','license-pubkey.js','license.js','storage.js','app.js',
+  for (const f of ['inline-actions.js','config.js','security.js','license-pubkey.js','license.js','storage.js','app.js',
     'patches.js','jalali.js','zoom.js','new-features.js','round2-a.js','round2-b.js','round2-c.js',
     'phonebook.js','ops.js','finance.js','group-play.js']) {
     const s = doc.createElement('script');
@@ -113,7 +113,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
      'PERM_MAP lets everyone through, so the nav entry is not dead');
 
   console.log('--- it is reachable from the nav ---');
-  const nav = doc.querySelector('.nav-item[onclick*="about"]');
+  const nav = doc.querySelector('.nav-item[data-onclick*="about"]');
   ok(!!nav, 'there is a sidebar entry');
   ok(nav && /درباره/.test(nav.textContent), 'and it is labelled');
 

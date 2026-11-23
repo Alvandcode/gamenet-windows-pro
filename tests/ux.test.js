@@ -33,7 +33,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     { id: 13, name: 'PC-3', tariff: 'single', extra: 0, extraSeconds: 0, stationType: 'ps', ip: '', status: 'offline', elapsed: 0, startTime: null, totalCost: 0, timerDuration: 0, notified: false },
   ]));
 
-  for (const f of ['src/js/config.js', 'src/js/security.js', 'src/js/license-pubkey.js', 'src/js/license.js', 'src/js/storage.js', 'src/js/app.js', 'src/js/patches.js', 'src/js/jalali.js', 'src/js/zoom.js', 'src/js/new-features.js', 'src/js/round2-a.js', 'src/js/round2-b.js', 'src/js/round2-c.js', 'src/js/phonebook.js']) {
+  for (const f of ['src/js/inline-actions.js', 'src/js/config.js', 'src/js/security.js', 'src/js/license-pubkey.js', 'src/js/license.js', 'src/js/storage.js', 'src/js/app.js', 'src/js/patches.js', 'src/js/jalali.js', 'src/js/zoom.js', 'src/js/new-features.js', 'src/js/round2-a.js', 'src/js/round2-b.js', 'src/js/round2-c.js', 'src/js/phonebook.js']) {
     const s = doc.createElement('script');
     s.textContent = fs.readFileSync(path.join(ROOT, f), 'utf8');
     doc.body.appendChild(s);
@@ -51,6 +51,9 @@ const waitFor = async (fn, ms = 3000) => {
 };
 
   console.log('--- 1. sidebar groups ---');
+  // inline-actions.js converts static inline handlers at DOMContentLoaded;
+  // poll until the conversion has landed before reading data-onclick
+  ok(await waitFor(() => doc.querySelector('.nav-item[data-onclick]')), 'static handlers converted to data-on*');
   const groups = [...doc.querySelectorAll('.nav-group')];
   ok(groups.length >= 7, 'sidebar has ' + groups.length + ' groups');
   const names = groups.map(g => (g.querySelector('.nav-group-title') || {}).textContent);
@@ -62,18 +65,18 @@ const waitFor = async (fn, ms = 3000) => {
   ok(items.length >= 26, 'nav items inside groups: ' + items.length);
   // money group really contains income/reports/insights/busyHours/expenses
   const money = groups.find(g => (g.getAttribute('data-group') === 'money'));
-  const moneySections = [...money.querySelectorAll('.nav-item')].map(i => (i.getAttribute('onclick') || '').match(/showSection\('([^']+)'/)[1]);
+  const moneySections = [...money.querySelectorAll('.nav-item')].map(i => (i.getAttribute('data-onclick') || '').match(/showSection\('([^']+)'/)[1]);
   ok(['income', 'reports', 'insights', 'busyHours', 'expenses'].every(s => moneySections.includes(s)),
      'money group = ' + moneySections.join(','));
   // people group
   const people = groups.find(g => (g.getAttribute('data-group') === 'people'));
-  const peopleSections = [...people.querySelectorAll('.nav-item')].map(i => (i.getAttribute('onclick') || '').match(/showSection\('([^']+)'/)[1]);
+  const peopleSections = [...people.querySelectorAll('.nav-item')].map(i => (i.getAttribute('data-onclick') || '').match(/showSection\('([^']+)'/)[1]);
   ok(['customers', 'membership', 'phonebook', 'events'].every(s => peopleSections.includes(s)),
      'people group = ' + peopleSections.join(','));
   // every section in the app is still reachable from the sidebar
   const reachable = new Set();
-  doc.querySelectorAll('[onclick*="showSection(\'"]').forEach(el => {
-    const m = (el.getAttribute('onclick') || '').match(/showSection\('([^']+)'/);
+  doc.querySelectorAll('[data-onclick*="showSection(\'"]').forEach(el => {
+    const m = (el.getAttribute('data-onclick') || '').match(/showSection\('([^']+)'/);
     if (m) reachable.add(m[1]);
   });
   const allSections = [...doc.querySelectorAll('.section')].map(s => s.id.replace('-section', ''));
@@ -93,14 +96,14 @@ const waitFor = async (fn, ms = 3000) => {
   ok(money.classList.contains('open') === true, 'showSection("reports") auto-opens the money group');
   ok(money.classList.contains('has-active') === true, 'money group marked has-active');
   const activeItem = doc.querySelector('.nav-item.active');
-  ok(!!activeItem && /reports/.test(activeItem.getAttribute('onclick')), 'nav item marked active');
+  ok(!!activeItem && /reports/.test(activeItem.getAttribute('data-onclick')), 'nav item marked active');
   // settings: an ordinary group, toggling like the other seven
   const setHead = doc.getElementById('navSettings');
   const setGroup = setHead.closest('.nav-group');
   ok(setGroup.classList.contains('open') === false, 'settings group starts collapsed');
   // the whole head is the button: the arrow, the name, anything in between
-  ok(/toggleNavGroup\('settings'\)/.test(setHead.getAttribute('onclick')),
-    'the settings head toggles like every other group', setHead.getAttribute('onclick'));
+  ok(/toggleNavGroup\('settings'\)/.test(setHead.getAttribute('data-onclick')),
+    'the settings head toggles like every other group', setHead.getAttribute('data-onclick'));
   ok(typeof window.toggleSettingsMenu === 'undefined',
     'the open-only settings handler is gone');
   setHead.click();
@@ -114,7 +117,7 @@ const waitFor = async (fn, ms = 3000) => {
   // the submenu stacks like the other groups rather than flowing inline
   const subBtns = doc.querySelectorAll('#settingsSubmenu .settings-sub-item');
   ok(subBtns.length === 4, 'the settings submenu still lists its four pages', String(subBtns.length));
-  ok(subBtns[0].getAttribute('onclick').indexOf('showSection') >= 0,
+  ok(subBtns[0].getAttribute('data-onclick').indexOf('showSection') >= 0,
     'each one navigates to its page');
 
   console.log('--- 3. dashboard quick actions ---');
@@ -127,13 +130,13 @@ const waitFor = async (fn, ms = 3000) => {
   ok(!!list.querySelector('[data-cid="12"]'), 'paused client row carries data-cid');
   ok(!list.querySelector('[data-cid="13"]'), 'offline client is NOT listed');
   const row11 = list.querySelector('[data-cid="11"]');
-  ok(row11.getAttribute('onclick') === 'openClientFromDashboard(11)', 'row click -> openClientFromDashboard(' + row11.getAttribute('onclick') + ')');
-  const btns = [...row11.querySelectorAll('.qa-btn')].map(b => b.getAttribute('onclick'));
+  ok(row11.getAttribute('data-onclick') === 'openClientFromDashboard(11)', 'row click -> openClientFromDashboard(' + row11.getAttribute('data-onclick') + ')');
+  const btns = [...row11.querySelectorAll('.qa-btn')].map(b => b.getAttribute('data-onclick'));
   ok(btns.some(b => /dashboardAction\(11,'pause'\)/.test(b)), 'pause button wired');
   ok(btns.some(b => /dashboardAction\(11,'stop'\)/.test(b)), 'stop button wired');
   ok(btns.every(b => /event\.stopPropagation\(\)/.test(b)), 'quick buttons stopPropagation (no accidental row click)');
   const row12 = list.querySelector('[data-cid="12"]');
-  const btns12 = [...row12.querySelectorAll('.qa-btn')].map(b => b.getAttribute('onclick'));
+  const btns12 = [...row12.querySelectorAll('.qa-btn')].map(b => b.getAttribute('data-onclick'));
   ok(btns12.some(b => /dashboardAction\(12,'start'\)/.test(b)), 'paused row offers start/resume');
   ok(!!doc.getElementById('actElapsed-11') && !!doc.getElementById('actCost-11'), 'live ids kept for the 1s updater');
   // live updater must not wipe the buttons
@@ -212,7 +215,7 @@ const waitFor = async (fn, ms = 3000) => {
   ]));
   window.eval("currentOperator={id:2,username:'op',role:'operator',perms:{clients:true,reports:true,income:true,reservations:true,buffet:true}}");
   window.applyPerms();
-  ok(doc.querySelector('.nav-item[onclick*="operators"]').classList.contains('operator-locked'), 'operators locked for the operator');
+  ok(doc.querySelector('.nav-item[data-onclick*="operators"]').classList.contains('operator-locked'), 'operators locked for the operator');
   const adminGroup = groups.find(g => g.getAttribute('data-group') === 'admin');
   ok(!adminGroup.classList.contains('group-all-locked'), 'admin group not fully locked (employees still reachable)');
   ok(window.getComputedStyle(doc.getElementById('navOperators')).display === 'none', 'navOperators hidden for the operator');
@@ -269,15 +272,15 @@ const waitFor = async (fn, ms = 3000) => {
   ok(grid.querySelector('[onerror]') === null && grid.querySelector('[onload]') === null,
      'no live onerror/onload attribute anywhere in the card');
   ok(/&lt;img src=x/.test(grid.innerHTML), 'client name is present but HTML-escaped');
-  const editBtn = grid.querySelector('[onclick*="deleteClient"]');
-  ok(editBtn && /^deleteClient\(\d+\)$/.test(editBtn.getAttribute('onclick')), 'inline handler arg is a plain number: ' + (editBtn && editBtn.getAttribute('onclick')));
+  const editBtn = grid.querySelector('[data-onclick*="deleteClient"]');
+  ok(editBtn && /^deleteClient\(\d+\)$/.test(editBtn.getAttribute('data-onclick')), 'inline handler arg is a plain number: ' + (editBtn && editBtn.getAttribute('data-onclick')));
   window.renderTypeFilter();
   const bar = doc.getElementById('typeFilterBar');
   ok(bar.querySelector('img') === null && bar.querySelector('[onerror]') === null,
      'station type id cannot inject an element/handler in the filter bar');
-  const barBtn = bar.querySelector('[onclick^="filterClientsByType"]');
-  ok(barBtn && /^\s*filterClientsByType\('(?:[^'\\]|\\.)*'\)\s*$/.test(barBtn.getAttribute('onclick')),
-     'filter button handler is a single well-formed call: ' + (barBtn && barBtn.getAttribute('onclick')));
+  const barBtn = bar.querySelector('[data-onclick^="filterClientsByType"]');
+  ok(barBtn && /^\s*filterClientsByType\('(?:[^'\\]|\\.)*'\)\s*$/.test(barBtn.getAttribute('data-onclick')),
+     'filter button handler is a single well-formed call: ' + (barBtn && barBtn.getAttribute('data-onclick')));
   ok(typeof window.jsStr === 'function' && window.jsStr('a"b') === 'a\\"b', 'jsStr() escapes double quotes');
   ok(window.jsStr('a"b\'') === 'a\\"b\\\'', 'jsStr() escapes both quote styles');
   window.renderTariffSchedules();
@@ -418,7 +421,8 @@ const waitFor = async (fn, ms = 3000) => {
         // left the LAN agent buttons unable to reach any machine.
         ok(!/http:\/\/(192\.168|10|172\.1[6-9]|172\.2\d|172\.3[01])\./.test(csp), 'CSP has no ignored LAN host sources');
         ok(/connect-src[^;]*'self'/.test(csp), 'CSP connect-src still allows same-origin');
-        ok(/script-src-attr[^;]*'unsafe-inline'/.test(csp), 'CSP allows inline handlers only through script-src-attr');
+        ok(csp.indexOf('script-src-attr') === -1, 'CSP no longer carries script-src-attr (handlers are delegated)');
+        ok(doc.querySelector('script[src*="inline-actions"]') !== null || fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').includes('src/js/inline-actions.js'), 'index.html loads the inline-actions layer');
         ok(!/script-src(?!-attr)[^;]*'unsafe-inline'/.test(csp), 'CSP script-src blocks inline script elements');
         ok(!/connect-src[^;]*\shttps:(\s|;)/.test(csp), 'CSP connect-src has no wildcard https: exfil sink');
         const preloadSrc = fs.readFileSync(path.join(ROOT, 'preload.js'), 'utf8');

@@ -19,7 +19,7 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
   window.addEventListener('error', (e) => errors.push(e.message || String(e.error)));
   window.fetch = () => Promise.reject(new Error('offline'));
   window.confirm = () => true; window.print = () => {};
-  for (const f of ['config.js','security.js','license-pubkey.js','license.js','storage.js','app.js',
+  for (const f of ['inline-actions.js','config.js','security.js','license-pubkey.js','license.js','storage.js','app.js',
     'patches.js','jalali.js','zoom.js','new-features.js','round2-a.js','round2-b.js','round2-c.js',
     'phonebook.js','ops.js','finance.js','group-play.js']) {
     const s = doc.createElement('script');

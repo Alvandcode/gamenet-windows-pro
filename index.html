@@ -7,7 +7,7 @@
          is reached from the main process over Node's http instead, via the
          gamenet:agent-request IPC channel, so this policy stays tight.
          https://api.ipify.org stays for the online/offline + license IP ping. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' https://www.gstatic.com; script-src-attr 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://api.ipify.org https://api.github.com https://alvandcode.github.io https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' https://www.gstatic.com; object-src 'none'; base-uri 'none'; form-action 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://api.ipify.org https://api.github.com https://alvandcode.github.io https://*.firebaseio.com https://*.googleapis.com wss://*.firebaseio.com; media-src 'self' data: blob:;">
     <link rel="stylesheet" href="src/styles/main.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -24,11 +24,11 @@
      The CDN copy was removed: on a machine with no connection the script tag
      failed, the buttons fell back to the print dialog, and a half-loaded
      library produced a blank page. -->
-<script src="assets/vendor/html2pdf.bundle.min.js" defer onerror="window.__pdfFailed=true"></script>
-    <!-- Firebase is optional (online license sync). App fully works offline without it. -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" defer onerror="window.__fbFailed=true"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js" defer onerror="window.__fbFailed=true"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" defer onerror="window.__fbFailed=true"></script>
+<script src="src/js/flags.js"></script>
+<script src="assets/vendor/html2pdf.bundle.min.js" defer></script>
+    <!-- Firebase SDK is NOT loaded statically anymore: it is injected on demand
+         from app.js (ensureFirebase) only when a config.local.json with a real
+         firebase key exists, so offline/regular shops fetch nothing. -->
     <style id="groupPlayStyles">
         /* chips in the picker */
         .gp-chip{display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:12px;
@@ -2306,6 +2306,13 @@
     </div>
 
     <!-- app logic moved to src/js/app.js -->
+    <!-- inline-actions MUST run first: it converts every inline onclick=/onchange=/...
+         attribute to data-on* and delegates it through a restricted evaluator,
+         which is what allows the CSP above to be free of the inline-attribute
+         source entirely. Any later module that renders HTML emits inline
+         handlers, and the MutationObserver converts them before they can be
+         clicked. -->
+    <script src="src/js/inline-actions.js"></script>
     <script src="src/js/config.js"></script>
     <script src="src/js/security.js"></script>
     <script src="src/js/license-pubkey.js"></script>

@@ -93,25 +93,24 @@ jobs:
         run: node tests/electron-gui.test.js
 
       # Proves the saved PDF is not blank: generates one through the app's own
-      # export path and inspects the file on disk. continue-on-error for the
-      # same headless reason as the GUI test above.
-      - name: PDF export is not blank (non-blocking on a headless runner)
-        continue-on-error: true
+      # export path and inspects the file on disk. windows-latest runners have
+      # a real desktop session, so Electron windows do open there - these
+      # print/PDF steps are REQUIRED, not continue-on-error: a release that
+      # prints blank pages must never ship. (Only the interactive GUI test
+      # below stays non-blocking.)
+      - name: PDF export is not blank
         run: node tests/pdf-output.test.js
   # The usage report used to print as a blank page: gpPrintReport closed the
       # modal before printing and the print stylesheet hid everything else. This
       # prints it through Electron's own pipeline and reads the PDF back off disk.
-      - name: Usage report prints with real content (non-blocking headless)
-        continue-on-error: true
+      - name: Usage report prints with real content
         run: node tests/print-report.test.js
-      - name: Usage report PDF is not blank (non-blocking headless)
-        continue-on-error: true
+      - name: Usage report PDF is not blank
         run: npx electron tests/print-pdf.js
       # the hand-over PDF: proves the file is not blank, and that the sheet is
       # formatted with inline styles, which is what actually makes it readable
       # once html2canvas has rendered it
-      - name: Customer detail PDF is not blank (non-blocking headless)
-        continue-on-error: true
+      - name: Customer detail PDF is not blank
         run: npx electron tests/detail-pdf.js
 
       - name: Read app version
@@ -123,8 +122,7 @@ jobs:
         run: npm run dist:win -- --publish never
 
       # needs dist/win-unpacked, so it has to run after the build step
-      - name: Packaged usage report print view (non-blocking headless)
-        continue-on-error: true
+      - name: Packaged usage report print view
         run: node tests/packaged-print.test.js
 
       - name: Upload EXE Artifact

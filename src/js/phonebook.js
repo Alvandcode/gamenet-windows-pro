@@ -19,8 +19,54 @@ function permit(section, label){
 var PB = sp('alvand_phonebook', []);
 var SMSCFG = sp('alvand_smsConfig', {provider:'kavenegar', apiKey:'', sender:'', enabled:false, method:'GET', urlTemplate:'', headersJson:''});
 var SMSLOG = sp('alvand_smsLog', []);
+/* The API key is a secret that used to sit as plaintext in localStorage. It is
+ * now stored as 'enc:v1:<base64>' encrypted by the OS (DPAPI via safeStorage,
+ * through the main process). At runtime SMSCFG.apiKey always carries the
+ * PLAINTEXT (decrypted once here); only the persisted copy is a blob. Without
+ * the bridge (browser/tests) or without OS encryption it stays plaintext. */
+var ENC_RE = /^enc:v1:[A-Za-z0-9+/=]+$/;
+function secretBridge(){
+  try { return (window.gamenet && window.gamenet.secret && window.gamenet.secret.encrypt) ? window.gamenet.secret : null; }
+  catch(e){ return null; }
+}
+(function migrateSmsKey(){
+  var bridge = secretBridge();
+  if (!bridge) return;
+  var k = SMSCFG.apiKey;
+  if (ENC_RE.test(k)){
+    // blob at rest -> decrypt into memory (storage keeps the blob)
+    bridge.decrypt(k).then(function(r){
+      if (r && r.ok && !r.error){ SMSCFG.apiKey = String(r.data); }
+      else {
+        SMSCFG.apiKey = '';
+        if (typeof toast === 'function') toast('کلید API قابل خواندن نیست — یک بار دیگر واردش کن','error');
+      }
+    }).catch(function(){ SMSCFG.apiKey = ''; });
+  } else if (k){
+    // legacy plaintext at rest -> rewrite it encrypted, memory stays plaintext
+    bridge.encrypt(k).then(function(r){
+      if (r && r.ok){
+        var persisted = Object.assign({}, SMSCFG);
+        persisted.apiKey = String(r.data);
+        try{ localStorage.setItem('alvand_smsConfig', JSON.stringify(persisted)); }catch(e){}
+      }
+    }).catch(function(){});
+  }
+})();
 function savePB(){ sv('alvand_phonebook', PB); }
-function saveCfg(){ sv('alvand_smsConfig', SMSCFG); }
+function saveCfg(){
+  var bridge = secretBridge();
+  var k = SMSCFG.apiKey;
+  var persisted = Object.assign({}, SMSCFG);
+  if (k && !ENC_RE.test(k) && bridge){
+    bridge.encrypt(k).then(function(r){
+      if (r && r.ok){ persisted.apiKey = String(r.data); sv('alvand_smsConfig', persisted); }
+      else sv('alvand_smsConfig', persisted); // unsupported or failed -> plaintext as before
+    }).catch(function(){ sv('alvand_smsConfig', persisted); });
+  } else {
+    sv('alvand_smsConfig', persisted);
+  }
+}
 function saveLog(){ sv('alvand_smsLog', SMSLOG); }
 
 /* ---------- normalization / matching ---------- */

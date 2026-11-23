@@ -90,7 +90,7 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
 
   console.log('--- press the print button ---');
   console.log('  ' + await ev(`(function(){
-    var b = document.querySelector('#usageReportModal button[onclick*="gpPrintReport"]');
+    var b = document.querySelector('#usageReportModal button[data-onclick*="gpPrintReport"]');
     if (!b) return 'no button';
     window.__calls = 0; window.print = function(){ window.__calls++; };
     b.click(); return 'clicked';
