@@ -101,8 +101,10 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
   ok(other.length === 0, 'no other console errors in the packaged app', other.slice(0, 2).join(' | ').slice(0, 140));
 
   const shot = await send('Page.captureScreenshot', { format: 'png' });
-  fs.writeFileSync('C:/Users/IRANNO~1/AppData/Local/Temp/opencode/packaged-shot.png', Buffer.from(shot.data, 'base64'));
-  console.log('  screenshot: C:/Users/IRANNO~1/AppData/Local/Temp/opencode/packaged-shot.png');
+  const shotPath = path.join(os.tmpdir(), 'opencode', 'packaged-shot.png');
+  fs.mkdirSync(path.dirname(shotPath), { recursive: true });
+  fs.writeFileSync(shotPath, Buffer.from(shot.data, 'base64'));
+  console.log('  screenshot: ' + shotPath);
 
   ws.close(); child.kill(); await sleep(700);
   console.log('\n' + (fail === 0 ? 'PACKAGED APP VERIFIED (' + pass + ' checks)' : fail + ' PACKAGED CHECK(S) FAILED (' + pass + ' passed)'));

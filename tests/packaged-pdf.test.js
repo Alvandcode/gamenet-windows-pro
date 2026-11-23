@@ -11,7 +11,8 @@ const ROOT = path.join(__dirname, '..');
 const EXE = path.join(ROOT, 'dist/win-unpacked/Gamenet Manager Pro.exe');
 const PROFILE = path.join(os.tmpdir(), 'opencode', 'pkg-pdf');
 const PORT = 9401;
-const OUT = 'C:/Users/IRANNO~1/AppData/Local/Temp/opencode/report-packaged.pdf';
+const OUT = path.join(os.tmpdir(), 'opencode', 'report-packaged.pdf');
+fs.mkdirSync(path.dirname(OUT), { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let pass = 0, fail = 0;
@@ -107,7 +108,7 @@ const ok = (c, l, e) => { if (c) { pass++; console.log('  PASS ' + l); } else { 
     }
     ok(!!best, 'the report was embedded as an image');
     if (best) {
-      const IMG = 'C:/Users/IRANNO~1/AppData/Local/Temp/opencode/report-packaged.jpg';
+      const IMG = path.join(os.tmpdir(), 'opencode', 'report-packaged.jpg');
       fs.writeFileSync(IMG, best.buf);
       console.log('  page image: ' + best.w + 'x' + best.h + ', ' + Math.round(best.buf.length / 1024) + ' KB -> ' + IMG);
       ok(best.w > 400 && best.h > 400, 'the page was rendered at a real size');

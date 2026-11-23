@@ -10,7 +10,8 @@ const ROOT = path.join(__dirname, '..');
 const ELECTRON = path.join(ROOT, 'node_modules/electron/dist/electron.exe');
 const PROFILE = path.join(os.tmpdir(), 'opencode', 'pdf-offline');
 const PORT = 9399;
-const OUT = 'C:/Users/IRANNO~1/AppData/Local/Temp/opencode/report-offline.pdf';
+const OUT = path.join(os.tmpdir(), 'opencode', 'report-offline.pdf');
+fs.mkdirSync(path.dirname(OUT), { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let pass = 0, fail = 0;
